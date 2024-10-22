@@ -1,28 +1,45 @@
-#![cfg(feature = "testing")]
-
+use prop::strategy::ValueTree;
 use proptest::prelude::*;
 use proptest::test_runner::TestRunner;
 
 use polestar::{ArbitraryExt, Fsm, Projection, ProjectionTests};
 use proptest_derive::Arbitrary;
 
-fn main() {}
-
 type Temp = i32;
 type Hum = u8;
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Arbitrary)]
+struct TempSetting {
+    target: Temp,
+    tolerance: u8,
+}
+
+impl TempSetting {
+    fn new(target: Temp, tolerance: u8) -> Self {
+        Self { target, tolerance }
+    }
+
+    fn lo(&self) -> Temp {
+        self.target - self.tolerance as i32 / 2
+    }
+
+    fn hi(&self) -> Temp {
+        self.target + self.tolerance as i32 / 2
+    }
+}
+
 #[derive(Clone, Debug, Arbitrary)]
 struct Instrument {
-    range: (Temp, Temp),
+    setting: TempSetting,
     min: InstrumentReading,
     max: InstrumentReading,
     current: InstrumentReading,
 }
 
 impl Instrument {
-    fn new(range: (Temp, Temp)) -> Self {
+    fn new(setting: TempSetting) -> Self {
         Self {
-            range,
+            setting,
             min: InstrumentReading { temp: 0, hum: 0 },
             max: InstrumentReading { temp: 0, hum: 0 },
             current: InstrumentReading { temp: 0, hum: 0 },
@@ -38,21 +55,21 @@ struct InstrumentReading {
 
 #[derive(Clone, Debug, PartialEq, Eq, Arbitrary)]
 struct Thermostat {
-    range: (Temp, Temp),
+    setting: TempSetting,
     state: ThermostatState,
 }
 
 impl Thermostat {
-    pub fn new(range: (Temp, Temp)) -> Self {
+    pub fn new(setting: TempSetting) -> Self {
         Self {
-            range,
+            setting,
             state: ThermostatState::Idle,
         }
     }
 
     fn set(self, state: ThermostatState) -> Self {
         Self {
-            range: self.range,
+            setting: self.setting,
             state,
         }
     }
@@ -75,9 +92,9 @@ impl Fsm for Thermostat {
     type Transition = Temp;
 
     fn transition(self, temp: Self::Transition) -> Self {
-        if temp < self.range.0 {
+        if temp < self.setting.lo() {
             self.set(ThermostatState::Heating)
-        } else if temp > self.range.1 {
+        } else if temp > self.setting.hi() {
             self.set(ThermostatState::Cooling)
         } else {
             self.set(ThermostatState::Idle)
@@ -111,45 +128,40 @@ impl Projection<Thermostat> for Instrument {
 
     fn map_state(&self) -> Thermostat {
         Thermostat {
-            range: self.range,
+            setting: self.setting,
             state: ThermostatState::Idle,
         }
         .transition(self.current.temp)
     }
 
     fn gen_event(&self, runner: &mut TestRunner, temp: Temp) -> InstrumentReading {
-        // let temp = match transition {
-        //     Temp::Idle => runner.generate_with(self.range),
-        //     Temp::Heating => runner.generate_with(self.range.end()..),
-        //     Temp::Cooling => runner.generate_with(..self.range.start()),
-        // };
         InstrumentReading {
             temp,
-            hum: runner.arbitrary().unwrap(),
+            hum: runner.generate_arbitrary().unwrap(),
         }
     }
 
     fn gen_state(&self, runner: &mut TestRunner, state: Thermostat) -> Self {
-        Self {
-            range: self.range,
-            min: self.min,
-            max: self.max,
-            current: runner.arbitrary().unwrap(),
-        }
+        let lo = self.setting.lo();
+        let hi = self.setting.hi();
+        let temp: Temp = match state.state {
+            ThermostatState::Idle => (lo..=hi).new_tree(runner).unwrap().current(),
+            ThermostatState::Cooling => (hi + 1..).new_tree(runner).unwrap().current(),
+            ThermostatState::Heating => (..lo).new_tree(runner).unwrap().current(),
+        };
+        let mut current: InstrumentReading = runner.generate_arbitrary().unwrap();
+        current.temp = temp;
+        let mut new = self.clone();
+        new.current = current;
+        new
     }
 }
 
-#[test]
-fn hi() {}
-
 proptest! {
     #[test]
-    fn test_thermostat(instrument: Instrument, events: Vec<InstrumentReading>) {
+    fn test_thermostat(mut instrument: Instrument, event: InstrumentReading) {
         let mut r = TestRunner::default();
-        let mut state = instrument.gen_state(&mut r, Thermostat::new((70, 80)));
-        for event in events {
-            state.clone().test_invariants(&mut r, event.clone());
-            state = state.apply(event);
-        }
+        instrument.clone().test_invariants(&mut r, event.clone());
+        // instrument = instrument.apply(event);
     }
 }

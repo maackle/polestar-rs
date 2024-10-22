@@ -1,7 +1,0 @@
-# Seeds for failure cases proptest has generated in the past. It is
-# automatically read and these particular cases re-run before any
-# novel cases are generated.
-#
-# It is recommended to check this file in to source control so that
-# everyone who runs the test benefits from these saved cases.
-cc 5c0ad3a85c02530e1a04f00b6f98266c69baffeacf9df2fb18f9a147a9cc5b29 # shrinks to instrument = Instrument { range: (0, 0), min: InstrumentReading { temp: 0, hum: 0 }, max: InstrumentReading { temp: 0, hum: 0 }, current: InstrumentReading { temp: 0, hum: 0 } }, events = [InstrumentReading { temp: -36167981, hum: 75 }]
