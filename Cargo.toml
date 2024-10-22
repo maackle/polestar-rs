@@ -1,0 +1,14 @@
+[package]
+name = "polestar"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+proptest = "1.2.0"
+proptest-derive = "0.5"
+
+[dev-dependencies]
+polestar = { path = ".", feature = ["testing"] }
+
+[features]
+testing = []
