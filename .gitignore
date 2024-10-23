@@ -1,3 +1,10 @@
-/target
+node_modules
+.dendron.*
+build
+seeds
+.next
+pods/service-connections
+
+target/
 Cargo.lock
 .vscode/
