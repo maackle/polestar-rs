@@ -1,0 +1,7 @@
+[package]
+name = "holochain-polestar"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+holo_hash = "*"

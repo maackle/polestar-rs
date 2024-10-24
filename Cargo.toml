@@ -12,3 +12,6 @@ polestar = { path = ".", feature = ["testing"] }
 
 [features]
 testing = []
+
+[workspace]
+members = ["holochain-polestar"]

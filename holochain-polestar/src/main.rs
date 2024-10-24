@@ -1,3 +1,9 @@
+use std::collections::HashMap;
+
+use holo_hash::{AgentPubKey as AgentKey, *};
+
+fn main() {}
+
 enum HolochainEvent {
     Init,
 }
@@ -48,13 +54,18 @@ enum AppEvent {
     // EnableApp,
 }
 
+enum AppState {}
+
 enum CellEvent {
     // CallZome(CallZome),
 }
 
+enum CellState {}
+
 type AppId = String;
 type CellId = (DnaHash, AgentKey);
 type CloneId = DnaHash;
+type RoleName = String;
 
 pub struct InstallAppPayload {}
 
