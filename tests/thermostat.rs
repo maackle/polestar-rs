@@ -89,9 +89,9 @@ enum HygrometerFsm {
 }
 
 impl Fsm for Thermostat {
-    type Transition = Temp;
+    type Event = Temp;
 
-    fn transition(self, temp: Self::Transition) -> Self {
+    fn transition(self, temp: Self::Event) -> Self {
         if temp < self.setting.lo() {
             self.set(ThermostatState::Heating)
         } else if temp > self.setting.hi() {

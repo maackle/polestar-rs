@@ -17,16 +17,16 @@ pub use fsm::Fsm;
 pub trait Projection<M>
 where
     M: Fsm + Arbitrary,
-    M::Transition: Arbitrary,
+    M::Event: Arbitrary,
 {
     type Event;
 
     fn apply(self, event: Self::Event) -> Self;
 
-    fn map_event(&self, event: Self::Event) -> M::Transition;
+    fn map_event(&self, event: Self::Event) -> M::Event;
     fn map_state(&self) -> M;
 
-    fn gen_event(&self, runner: &mut TestRunner, transition: M::Transition) -> Self::Event;
+    fn gen_event(&self, runner: &mut TestRunner, transition: M::Event) -> Self::Event;
     fn gen_state(&self, runner: &mut TestRunner, state: M) -> Self;
 }
 
@@ -36,7 +36,7 @@ where
     Self: Clone + Debug,
     Self::Event: Clone + Debug,
     M: Fsm + Clone + Debug + Eq + Arbitrary,
-    M::Transition: Clone + Debug + Eq + Arbitrary,
+    M::Event: Clone + Debug + Eq + Arbitrary,
 {
     fn test_invariants(self, runner: &mut TestRunner, event: Self::Event) {
         let state = self.map_state();
@@ -56,8 +56,8 @@ where
         )
     }
 
-    fn map_event_is_a_retraction(&self, runner: &mut TestRunner, transition: M::Transition) {
-        let roundtrip: M::Transition = self.map_event(self.gen_event(runner, transition.clone()));
+    fn map_event_is_a_retraction(&self, runner: &mut TestRunner, transition: M::Event) {
+        let roundtrip: M::Event = self.map_event(self.gen_event(runner, transition.clone()));
         assert_eq!(
             transition, roundtrip,
             "map_event_is_a_retraction failed:   transition != map_event(gen_event(_, transition))"
@@ -77,7 +77,7 @@ where
         self,
         runner: &mut TestRunner,
         state: M,
-        transition: M::Transition,
+        transition: M::Event,
     ) {
         let left: Self = self.gen_state(runner, M::transition(state.clone(), transition.clone()).0);
         let right: Self = Self::apply(
@@ -95,7 +95,7 @@ where
     Self: Clone + Debug,
     Self::Event: Clone + Debug,
     M: Fsm + Clone + Debug + Eq + Arbitrary,
-    M::Transition: Clone + Debug + Eq + Arbitrary,
+    M::Event: Clone + Debug + Eq + Arbitrary,
 {
 }
 
