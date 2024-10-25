@@ -2,11 +2,8 @@ use prop::{strategy::ValueTree, test_runner::TestRunner};
 use proptest::{arbitrary::Arbitrary, prelude::*};
 use std::fmt::Debug;
 
-pub trait Fsm {
-    type Transition;
-
-    fn transition(self, transition: Self::Transition) -> Self;
-}
+mod fsm;
+use fsm::Fsm;
 
 /// Invariants:
 ///
