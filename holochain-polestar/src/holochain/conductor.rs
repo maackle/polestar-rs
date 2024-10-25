@@ -1,18 +1,50 @@
 use super::*;
 use crate::*;
 
-enum ConductorEvent {
+#[derive(Debug, derive_more::From)]
+pub enum ConductorEvent {
     Admin(AdminEvent),
-    App(AppEvent),
-    Cell(CellEvent),
+    App(AppId, AppEvent),
+    // Cell(CellId, CellEvent),
 }
 
-pub(crate) struct ConductorState {
-    apps: HashMap<AppId, AppFsm>,
-    cells: HashMap<CellId, CellFsm>,
+#[derive(Default)]
+pub struct ConductorState {
+    apps: polestar::ActorRw<AppStore>,
+    cells: polestar::ActorRw<CellStore>,
 }
 
-enum AdminEvent {
+impl polestar::Fsm for ConductorState {
+    type Event = ConductorEvent;
+    type Fx = ();
+
+    fn transition(&mut self, event: Self::Event) -> Self::Fx {
+        match event {
+            ConductorEvent::Admin(e) => {
+                match e {
+                    AdminEvent::InstallApp(payload) => {
+                        self.apps.transition(AppStoreEvent::InstallApp(
+                            payload.app_id,
+                            AppContext::new(payload.agent_key, payload.manifest),
+                        ));
+                    }
+                    _ => {
+                        todo!()
+                    }
+                }
+                // self.apps.transition(e);
+            }
+            ConductorEvent::App(id, e) => {
+                self.apps.transition(AppStoreEvent::AppEvent(id, e));
+            } // ConductorEvent::Cell(id, e) => {
+              //     self.cells.transition(CellStoreEvent::CellEvent(id, e));
+              // }
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum AdminEvent {
     InstallApp(InstallAppPayload),
     UninstallApp(AppId),
     EnableApp { app_id: AppId },

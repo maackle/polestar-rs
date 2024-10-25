@@ -1,21 +1,44 @@
 // Adapted from https://github.com/holochain/holochain/blob/ded3a663c9065d998d9f20d2a821836335467a4b/crates/stef/src/share.rs#L0-L1
 
+use std::sync::Arc;
+
+use parking_lot::RwLock;
+
 use super::*;
 
-/// Wrap a State in a mutex for shared access.
+/// Wrap a Fsm in a mutex for shared access.
+///
+/// It's intentionally not Cloneable, because we intend
+/// there to be only a single writer. There can be many readers,
+/// via the [`ActorRead`] wrapper.
 #[derive(Default)]
-pub struct Actor<S>(std::sync::Arc<parking_lot::RwLock<S>>);
+pub struct ActorRw<S>(Arc<RwLock<S>>);
 
-impl<S> Clone for Actor<S> {
+#[derive(Default, derive_more::From)]
+pub struct ActorRead<S>(ActorRw<S>);
+
+impl<S> Clone for ActorRead<S> {
     fn clone(&self) -> Self {
-        Self(self.0.clone())
+        Self(ActorRw(self.0 .0.clone()))
     }
 }
 
-impl<S> Actor<S> {
+impl<S> ActorRead<S> {
     /// Constructor
     pub fn new(s: S) -> Self {
-        Self(std::sync::Arc::new(parking_lot::RwLock::new(s)))
+        ActorRw::new(s).into()
+    }
+
+    /// Acquire read-only access to the shared state.
+    pub fn read<R>(&self, f: impl FnOnce(&S) -> R) -> R {
+        self.0.read(f)
+    }
+}
+
+impl<S> ActorRw<S> {
+    /// Constructor
+    pub fn new(s: S) -> Self {
+        Self(Arc::new(RwLock::new(s)))
     }
 
     /// Acquire read-only access to the shared state.
@@ -36,22 +59,25 @@ impl<S> Actor<S> {
     }
 }
 
-impl<S: State<'static>> Actor<S> {
+// TODO: even this probably isn't ideal. The actual transition should be applied
+// only to the top level state, and may trickle down to this sub-state. With the
+// proper "lenses", the substate event can be lifted to the whole-system event.
+impl<S: Fsm> ActorRw<S> {
     /// Acquire write access to the shared state to perform a mutation.
-    pub fn transition(&self, t: S::Action) -> S::Effect {
+    pub fn transition(&self, t: S::Event) -> S::Fx {
         self.transition_with(t, |_| ()).1
     }
 
     /// Acquire write access to the shared state to perform a mutation,
     /// and do a read on the modified state within the same atomic mutex acquisition.
-    pub fn transition_with<R>(&self, t: S::Action, f: impl FnOnce(&S) -> R) -> (R, S::Effect) {
+    pub fn transition_with<R>(&self, t: S::Event, f: impl FnOnce(&S) -> R) -> (R, S::Fx) {
         let mut g = self.0.write();
         let eff = g.transition(t);
         (f(&g), eff)
     }
 }
 
-impl<S: State<'static> + Clone> Actor<S> {
+impl<S: Fsm + Clone> ActorRw<S> {
     /// Return a cloned copy of the shared state
     pub fn get(&self) -> S {
         let g = self.0.read();
@@ -59,16 +85,16 @@ impl<S: State<'static> + Clone> Actor<S> {
     }
 }
 
-impl<S: State<'static>> State<'static> for Actor<S> {
-    type Action = S::Action;
-    type Effect = S::Effect;
+impl<S: Fsm> Fsm for ActorRw<S> {
+    type Event = S::Event;
+    type Fx = S::Fx;
 
-    fn transition(&mut self, t: Self::Action) -> Self::Effect {
-        Actor::transition(self, t)
+    fn transition(&mut self, t: Self::Event) -> Self::Fx {
+        ActorRw::transition(self, t)
     }
 }
 
-impl<T: State<'static> + std::fmt::Debug> std::fmt::Debug for Actor<T> {
+impl<T: Fsm + std::fmt::Debug> std::fmt::Debug for ActorRw<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.read(|s| f.debug_tuple("Share").field(s).finish())
     }

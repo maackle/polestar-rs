@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+derive_more = "0.99"
+parking_lot = "*"
 proptest = "1.2.0"
 proptest-derive = "0.5"
 

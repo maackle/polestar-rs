@@ -4,8 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-holo_hash = "*"
+anyhow = "*"
+derive_more = "0.99"
+holo_hash = { version = "*", features = ["fuzzing"] }
 polestar = { path = ".." }
 
-# probably moved to polestar
-parking_lot = "*"
+[dev-dependencies]
+proptest = "*"
+proptest-derive = "*"

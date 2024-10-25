@@ -5,7 +5,7 @@ where
     Self: Sized,
 {
     type Event;
-    type Fx = ();
+    type Fx;
 
     fn transition(&mut self, event: Self::Event) -> Self::Fx;
 }
@@ -39,7 +39,7 @@ where
     type Event = S::Event;
 
     fn transition(&mut self, event: Self::Event) {
-        let _ = Fsm::transition(self, event);
+        let () = Fsm::transition(self, event);
     }
 }
 
@@ -48,6 +48,18 @@ where
 pub struct Contextual<F: Fsm, C> {
     fsm: F,
     context: Arc<C>,
+}
+
+impl<F, C> Contextual<F, C>
+where
+    F: Fsm,
+{
+    pub fn new(fsm: F, context: C) -> Self {
+        Self {
+            fsm,
+            context: Arc::new(context),
+        }
+    }
 }
 
 impl<F, C, E> Fsm for Contextual<F, C>
@@ -62,29 +74,43 @@ where
     }
 }
 
-// pub trait Pfsm<'a> {
-//     type Event;
-//     type State: Fsm<Event = (Self::Event, &'a Self::Meta)>;
-//     type Meta: 'a;
-//     type Fx;
+impl Fsm for bool {
+    type Event = bool;
+    type Fx = ();
 
-//     fn meta(&self) -> &Self::Meta;
-//     fn state_mut(&mut self) -> &mut Self::State;
+    fn transition(&mut self, event: Self::Event) -> Self::Fx {
+        *self = event;
+    }
+}
 
-//     fn transition(&mut self, event: Self::Event) -> Self::Fx {
-//         Self::State::transition(self.state_mut(), (event, self.meta()))
-//     }
-// }
+/// Convenience for updating state by returning an optional owned value
+pub fn maybe_update<S, E>(s: &mut S, f: impl FnOnce(&S) -> (Option<S>, E)) -> E
+where
+    S: Sized,
+{
+    let (next, fx) = f(s);
+    if let Some(next) = next {
+        *s = next;
+    }
+    fx
+}
 
-// // impl<S, T> Fsm for T
-// // where
-// //     S: Fsm,
-// //     T: Pfsm<State = S> + Sized,
-// // {
-// //     type Event = T::Event;
-// //     type Fx = T::Fx;
+/// Convenience for updating state by returning an owned value
+pub fn update_replace<S, E>(s: &mut S, f: impl FnOnce(&S) -> (S, E)) -> E
+where
+    S: Sized + Clone,
+{
+    let (next, fx) = f(s);
+    *s = next;
+    fx
+}
 
-// //     fn transition(self, transition: Self::Event) -> (Self, Self::Fx) {
-// //         Fsm::transition(self, transition)(self, ())
-// //     }
-// // }
+/// Convenience for updating state by returning an owned value
+pub fn update_copy<S, E>(s: &mut S, f: impl FnOnce(S) -> (S, E)) -> E
+where
+    S: Sized + Copy,
+{
+    let (next, fx) = f(*s);
+    *s = next;
+    fx
+}

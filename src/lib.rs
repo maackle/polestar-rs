@@ -4,8 +4,11 @@ use prop::{strategy::ValueTree, test_runner::TestRunner};
 use proptest::{arbitrary::Arbitrary, prelude::*};
 use std::fmt::Debug;
 
-mod fsm;
-pub use fsm::Fsm;
+pub mod actor;
+pub mod fsm;
+
+pub use actor::{ActorRead, ActorRw};
+pub use fsm::{Fsm, FsmPure};
 
 /// Invariants:
 ///
@@ -56,17 +59,18 @@ where
         )
     }
 
-    fn map_event_is_a_retraction(&self, runner: &mut TestRunner, transition: M::Event) {
-        let roundtrip: M::Event = self.map_event(self.gen_event(runner, transition.clone()));
+    fn map_event_is_a_retraction(&self, runner: &mut TestRunner, event: M::Event) {
+        let roundtrip: M::Event = self.map_event(self.gen_event(runner, event.clone()));
         assert_eq!(
-            transition, roundtrip,
+            event, roundtrip,
             "map_event_is_a_retraction failed:   transition != map_event(gen_event(_, transition))"
         )
     }
 
     fn transition_commutes_with_mapping(self, event: Self::Event) {
         let left: M = Self::map_state(&self.clone().apply(event.clone()));
-        let (right, _): (M, _) = M::transition(self.map_state(), self.map_event(event));
+        let mut right = self.map_state();
+        let _ = M::transition(&mut right, self.map_event(event));
         assert_eq!(
             left, right,
             "transition_commutes_with_mapping failed:    map_state(apply(x, event)) != transition(map_state(x), map_event(event))"
@@ -77,13 +81,14 @@ where
         self,
         runner: &mut TestRunner,
         state: M,
-        transition: M::Event,
+        event: M::Event,
     ) {
-        let left: Self = self.gen_state(runner, M::transition(state.clone(), transition.clone()).0);
-        let right: Self = Self::apply(
-            self.gen_state(runner, state),
-            self.gen_event(runner, transition),
-        );
+        let left: Self = {
+            let mut state = state.clone();
+            let _ = state.transition(event.clone());
+            self.gen_state(runner, state)
+        };
+        let right: Self = Self::apply(self.gen_state(runner, state), self.gen_event(runner, event));
         assert_eq!(left.map_state(), right.map_state(), "transition_commutes_with_generation failed:    map_state(gen_state(_, transition(state, transition))) != map_state(apply(gen_state(_, state), gen_event(_, transition)))")
     }
 }

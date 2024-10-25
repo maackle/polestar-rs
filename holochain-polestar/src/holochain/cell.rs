@@ -1,9 +1,23 @@
 use crate::*;
 
-pub(crate) enum CellEvent {
+pub enum CellEvent {
     // CallZome(CallZome),
 }
 
-pub(crate) enum CellState {}
+#[derive(Default)]
+pub enum CellState {
+    #[default]
+    Uninit,
+}
 
-pub type CellFsm = ParamFsm<CellState, CellEvent, ()>;
+impl polestar::Fsm for CellState {
+    type Event = CellEvent;
+    type Fx = ();
+
+    fn transition(&mut self, _: Self::Event) -> Self::Fx {
+        todo!()
+    }
+}
+
+pub type CellFsm = CellState;
+pub type CellActor = polestar::ActorRead<CellFsm>;
