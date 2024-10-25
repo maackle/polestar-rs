@@ -37,7 +37,7 @@ pub struct AppManifest {
     roles: HashMap<RoleName, DnaHash>,
 }
 
-pub type AppFsm = Fsm<AppState, AppEvent, AppMeta>;
+pub type AppFsm = ParamFsm<AppState, AppEvent, AppMeta>;
 
 pub struct InstallAppPayload {}
 

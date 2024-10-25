@@ -1,9 +1,11 @@
+#![feature(associated_type_defaults)]
+
 use prop::{strategy::ValueTree, test_runner::TestRunner};
 use proptest::{arbitrary::Arbitrary, prelude::*};
 use std::fmt::Debug;
 
 mod fsm;
-use fsm::Fsm;
+pub use fsm::Fsm;
 
 /// Invariants:
 ///
@@ -64,7 +66,7 @@ where
 
     fn transition_commutes_with_mapping(self, event: Self::Event) {
         let left: M = Self::map_state(&self.clone().apply(event.clone()));
-        let right: M = M::transition(self.map_state(), self.map_event(event));
+        let (right, _): (M, _) = M::transition(self.map_state(), self.map_event(event));
         assert_eq!(
             left, right,
             "transition_commutes_with_mapping failed:    map_state(apply(x, event)) != transition(map_state(x), map_event(event))"
@@ -77,7 +79,7 @@ where
         state: M,
         transition: M::Transition,
     ) {
-        let left: Self = self.gen_state(runner, M::transition(state.clone(), transition.clone()));
+        let left: Self = self.gen_state(runner, M::transition(state.clone(), transition.clone()).0);
         let right: Self = Self::apply(
             self.gen_state(runner, state),
             self.gen_event(runner, transition),

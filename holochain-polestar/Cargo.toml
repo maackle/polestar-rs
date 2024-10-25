@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 holo_hash = "*"
+polestar = { path = ".." }
 
 # probably moved to polestar
 parking_lot = "*"

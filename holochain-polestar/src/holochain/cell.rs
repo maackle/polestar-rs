@@ -6,4 +6,4 @@ pub(crate) enum CellEvent {
 
 pub(crate) enum CellState {}
 
-pub type CellFsm = Fsm<CellState, CellEvent, ()>;
+pub type CellFsm = ParamFsm<CellState, CellEvent, ()>;

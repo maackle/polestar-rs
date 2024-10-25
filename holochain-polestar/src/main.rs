@@ -7,6 +7,6 @@ mod actor;
 mod fsm;
 mod holochain;
 
-use fsm::Fsm;
+use fsm::ParamFsm;
 
 fn main() {}
