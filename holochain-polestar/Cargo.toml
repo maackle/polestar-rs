@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 anyhow = "*"
 derive_more = "0.99"
-holo_hash = { version = "*", features = ["fuzzing"] }
+holo_hash = { version = "0.5.0-dev.1", features = ["fuzzing"] }
 polestar = { path = ".." }
 proptest = "*"
 proptest-derive = "*"

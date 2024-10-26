@@ -17,3 +17,6 @@ testing = []
 
 [workspace]
 members = ["holochain-polestar"]
+
+[patch.crates-io]
+holo_hash = { path = "/home/michael/Holo/chain/crates/holo_hash" }

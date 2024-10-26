@@ -63,6 +63,7 @@ pub struct CellId(pub DnaHash, pub AgentPubKey);
 mod tests {
     use core::default::Default;
 
+    use polestar::prelude::Generate;
     use polestar::Fsm;
     use prop::test_runner::TestRunner;
     use proptest::prelude::*;
@@ -72,15 +73,9 @@ mod tests {
 
     #[test]
     fn test_init() {
-        let mut runner = TestRunner::default();
-        let agent_key = AgentKey::arbitrary()
-            .new_tree(&mut runner)
-            .unwrap()
-            .current();
-        let manifest = AppManifest::arbitrary()
-            .new_tree(&mut runner)
-            .unwrap()
-            .current();
+        let mut g = TestRunner::default();
+        let agent_key = g.generate().unwrap();
+        let manifest = g.generate().unwrap();
         let mut h = HolochainState::default();
         h.transition(HolochainEvent::Init).unwrap();
         h.transition(
