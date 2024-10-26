@@ -8,7 +8,7 @@ anyhow = "*"
 derive_more = "0.99"
 holo_hash = { version = "*", features = ["fuzzing"] }
 polestar = { path = ".." }
-
-[dev-dependencies]
 proptest = "*"
 proptest-derive = "*"
+
+[dev-dependencies]

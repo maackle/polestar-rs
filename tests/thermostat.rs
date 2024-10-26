@@ -1,8 +1,7 @@
-use prop::strategy::ValueTree;
 use proptest::prelude::*;
 use proptest::test_runner::TestRunner;
 
-use polestar::{ArbitraryExt, Fsm, Projection, ProjectionTests};
+use polestar::prelude::*;
 use proptest_derive::Arbitrary;
 
 type Temp = i32;
@@ -90,14 +89,15 @@ enum HygrometerFsm {
 
 impl Fsm for Thermostat {
     type Event = Temp;
+    type Fx = ();
 
-    fn transition(self, temp: Self::Event) -> Self {
+    fn transition(&mut self, temp: Self::Event) {
         if temp < self.setting.lo() {
-            self.set(ThermostatState::Heating)
+            self.state = ThermostatState::Heating;
         } else if temp > self.setting.hi() {
-            self.set(ThermostatState::Cooling)
+            self.state = ThermostatState::Cooling;
         } else {
-            self.set(ThermostatState::Idle)
+            self.state = ThermostatState::Idle;
         }
     }
 }
@@ -127,29 +127,30 @@ impl Projection<Thermostat> for Instrument {
     }
 
     fn map_state(&self) -> Thermostat {
-        Thermostat {
+        let mut s = Thermostat {
             setting: self.setting,
             state: ThermostatState::Idle,
-        }
-        .transition(self.current.temp)
+        };
+        s.transition(self.current.temp);
+        s
     }
 
-    fn gen_event(&self, runner: &mut TestRunner, temp: Temp) -> InstrumentReading {
+    fn gen_event(&self, g: &mut impl Generate, temp: Temp) -> InstrumentReading {
         InstrumentReading {
             temp,
-            hum: runner.generate_arbitrary().unwrap(),
+            hum: g.generate().unwrap(),
         }
     }
 
-    fn gen_state(&self, runner: &mut TestRunner, state: Thermostat) -> Self {
+    fn gen_state(&self, g: &mut impl Generate, state: Thermostat) -> Self {
         let lo = self.setting.lo();
         let hi = self.setting.hi();
         let temp: Temp = match state.state {
-            ThermostatState::Idle => (lo..=hi).new_tree(runner).unwrap().current(),
-            ThermostatState::Cooling => (hi + 1..).new_tree(runner).unwrap().current(),
-            ThermostatState::Heating => (..lo).new_tree(runner).unwrap().current(),
+            ThermostatState::Idle => g.generate_with(lo..=hi).unwrap(),
+            ThermostatState::Cooling => g.generate_with(hi + 1..).unwrap(),
+            ThermostatState::Heating => g.generate_with(..lo).unwrap(),
         };
-        let mut current: InstrumentReading = runner.generate_arbitrary().unwrap();
+        let mut current: InstrumentReading = g.generate().unwrap();
         current.temp = temp;
         let mut new = self.clone();
         new.current = current;

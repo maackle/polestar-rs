@@ -61,24 +61,36 @@ pub struct CellId(pub DnaHash, pub AgentPubKey);
 
 #[cfg(test)]
 mod tests {
+    use core::default::Default;
+
     use polestar::Fsm;
+    use prop::test_runner::TestRunner;
     use proptest::prelude::*;
+    use proptest::strategy::ValueTree;
 
     use super::*;
 
     #[test]
     fn test_init() {
-        proptest!(|(agent_key in any::<AgentKey>(), manifest in any::<AppManifest>  ())| {
-                let mut h = HolochainState::default();
-                h.transition(HolochainEvent::Init).unwrap();
-                h.transition(
-                ConductorEvent::Admin(AdminEvent::InstallApp(InstallAppPayload {
-                    app_id: "test".to_string(),
-                    agent_key,
-                    manifest,
-                }))
-                .into(),
-            ).unwrap();
-        });
+        let mut runner = TestRunner::default();
+        let agent_key = AgentKey::arbitrary()
+            .new_tree(&mut runner)
+            .unwrap()
+            .current();
+        let manifest = AppManifest::arbitrary()
+            .new_tree(&mut runner)
+            .unwrap()
+            .current();
+        let mut h = HolochainState::default();
+        h.transition(HolochainEvent::Init).unwrap();
+        h.transition(
+            ConductorEvent::Admin(AdminEvent::InstallApp(InstallAppPayload {
+                app_id: "test".to_string(),
+                agent_key,
+                manifest,
+            }))
+            .into(),
+        )
+        .unwrap();
     }
 }

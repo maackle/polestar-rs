@@ -20,4 +20,4 @@ impl polestar::Fsm for CellState {
 }
 
 pub type CellFsm = CellState;
-pub type CellActor = polestar::ActorRead<CellFsm>;
+pub type CellActor = polestar::actor::ActorRead<CellFsm>;

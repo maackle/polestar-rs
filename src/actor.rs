@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use parking_lot::RwLock;
 
-use super::*;
+use crate::fsm::Fsm;
 
 /// Wrap a Fsm in a mutex for shared access.
 ///
