@@ -5,6 +5,9 @@ pub mod fsm;
 pub mod generate;
 pub mod projection;
 
+#[cfg(feature = "diagrams")]
+pub mod diagram;
+
 pub use fsm::Fsm;
 
 pub mod prelude {

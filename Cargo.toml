@@ -5,14 +5,21 @@ edition = "2021"
 
 [dependencies]
 derive_more = "0.99"
+num-derive = "0.4"
+num-traits = "0.2"
 parking_lot = "*"
 proptest = "1.2.0"
 proptest-derive = "0.5"
+
+petgraph = { version = "*", optional = true }
 
 [dev-dependencies]
 polestar = { path = ".", feature = ["testing"] }
 
 [features]
+default = ["diagrams", "testing"]
+
+diagrams = ["petgraph"]
 testing = []
 
 [workspace]

@@ -77,7 +77,9 @@ mod tests {
         let agent_key = g.generate().unwrap();
         let manifest = g.generate().unwrap();
         let mut h = HolochainState::default();
+
         h.transition(HolochainEvent::Init).unwrap();
+
         h.transition(
             ConductorEvent::Admin(AdminEvent::InstallApp(InstallAppPayload {
                 app_id: "test".to_string(),

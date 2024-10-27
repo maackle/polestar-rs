@@ -23,6 +23,7 @@ impl polestar::Fsm for ConductorState {
             ConductorEvent::Admin(e) => {
                 match e {
                     AdminEvent::InstallApp(payload) => {
+                        // TODO: how to glue together this substate transition with the global one that caused it?
                         self.apps.transition(AppStoreEvent::InstallApp(
                             payload.app_id,
                             AppContext::new(payload.agent_key, payload.manifest),
@@ -49,7 +50,7 @@ pub enum AdminEvent {
     UninstallApp(AppId),
     EnableApp { app_id: AppId },
     DisableApp { app_id: AppId },
-    DeleteCloneCell { app_id: AppId, clone_id: CloneId },
+    // DeleteCloneCell { app_id: AppId, clone_id: CloneId },
     // GenerateAgentKey,
     // AttachAppInterface {
     //     port: Option<u16>,
