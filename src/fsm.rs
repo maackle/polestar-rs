@@ -45,6 +45,7 @@ where
 
 /// Wrapper around an FSM which carries a context that gets injected into each event.
 /// Useful for attaching some immutable context to the FSM which is not part of its own state.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Contextual<F: Fsm, C> {
     fsm: F,
     context: Arc<C>,

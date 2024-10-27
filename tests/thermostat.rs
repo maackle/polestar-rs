@@ -135,14 +135,14 @@ impl Projection<Thermostat> for Instrument {
         s
     }
 
-    fn gen_event(&self, g: &mut impl Generate, temp: Temp) -> InstrumentReading {
+    fn gen_event(&self, g: &mut impl Generator, temp: Temp) -> InstrumentReading {
         InstrumentReading {
             temp,
             hum: g.generate().unwrap(),
         }
     }
 
-    fn gen_state(&self, g: &mut impl Generate, state: Thermostat) -> Self {
+    fn gen_state(&self, g: &mut impl Generator, state: Thermostat) -> Self {
         let lo = self.setting.lo();
         let hi = self.setting.hi();
         let temp: Temp = match state.state {

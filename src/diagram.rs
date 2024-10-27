@@ -20,7 +20,7 @@ where
 }
 
 /// Generate a "Monte Carlo state diagram" of this state machine.
-fn state_diagram<M>(m: M, walks: u32, walk_len: u32) -> DiGraph<M, M::Event>
+pub fn state_diagram<M>(m: M, walks: u32, walk_len: u32) -> DiGraph<M, M::Event>
 where
     M: Fsm + Clone + Eq + std::hash::Hash,
     M::Event: Arbitrary + Clone + Eq + std::hash::Hash,

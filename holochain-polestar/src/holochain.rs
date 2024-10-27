@@ -4,6 +4,7 @@ mod cell;
 mod cell_store;
 mod conductor;
 
+use crate::*;
 use std::default;
 
 use app::*;
@@ -63,13 +64,26 @@ pub struct CellId(pub DnaHash, pub AgentPubKey);
 mod tests {
     use core::default::Default;
 
-    use polestar::prelude::Generate;
+    use polestar::prelude::{Generator, Projection};
     use polestar::Fsm;
     use prop::test_runner::TestRunner;
     use proptest::prelude::*;
     use proptest::strategy::ValueTree;
 
     use super::*;
+
+    struct ConductorStateDiagram;
+
+    enum ConductorEventDiagram {
+        InstallApp(InstallAppPayload),
+    }
+
+    #[test]
+    fn test_diagram() {
+        use polestar::diagram::*;
+        let graph = state_diagram(HolochainState::default(), 10, 10);
+        // println!("{}", to_dot(graph));
+    }
 
     #[test]
     fn test_init() {

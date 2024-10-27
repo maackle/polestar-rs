@@ -13,6 +13,6 @@ pub use fsm::Fsm;
 pub mod prelude {
     pub use crate::actor::{ActorRead, ActorRw};
     pub use crate::fsm::Fsm;
-    pub use crate::generate::Generate;
+    pub use crate::generate::Generator;
     pub use crate::projection::{Projection, ProjectionTests};
 }

@@ -22,8 +22,8 @@ where
     fn map_event(&self, event: Self::Event) -> M::Event;
     fn map_state(&self) -> M;
 
-    fn gen_event(&self, runner: &mut impl Generate, transition: M::Event) -> Self::Event;
-    fn gen_state(&self, runner: &mut impl Generate, state: M) -> Self;
+    fn gen_event(&self, generator: &mut impl Generator, event: M::Event) -> Self::Event;
+    fn gen_state(&self, generator: &mut impl Generator, state: M) -> Self;
 }
 
 // #[cfg(feature = "testing")]
@@ -34,7 +34,7 @@ where
     M: Fsm + Clone + Debug + Eq + Arbitrary,
     M::Event: Clone + Debug + Eq + Arbitrary,
 {
-    fn test_invariants(self, runner: &mut impl Generate, event: Self::Event) {
+    fn test_invariants(self, runner: &mut impl Generator, event: Self::Event) {
         let state = self.map_state();
         let transition = self.map_event(event.clone());
         self.map_state_is_a_retraction(runner, state.clone());
@@ -43,7 +43,7 @@ where
         self.transition_commutes_with_generation(runner, state, transition);
     }
 
-    fn map_state_is_a_retraction(&self, runner: &mut impl Generate, state: M) {
+    fn map_state_is_a_retraction(&self, runner: &mut impl Generator, state: M) {
         let generated = self.gen_state(runner, state.clone());
         let roundtrip: M = Self::map_state(&generated);
         assert_eq!(
@@ -52,7 +52,7 @@ where
         )
     }
 
-    fn map_event_is_a_retraction(&self, runner: &mut impl Generate, event: M::Event) {
+    fn map_event_is_a_retraction(&self, runner: &mut impl Generator, event: M::Event) {
         let roundtrip: M::Event = self.map_event(self.gen_event(runner, event.clone()));
         assert_eq!(
             event, roundtrip,
@@ -72,7 +72,7 @@ where
 
     fn transition_commutes_with_generation(
         self,
-        runner: &mut impl Generate,
+        runner: &mut impl Generator,
         state: M,
         event: M::Event,
     ) {
