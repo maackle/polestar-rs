@@ -1,3 +1,4 @@
+use core::{marker::PhantomData, ops::Deref};
 use std::sync::Arc;
 
 pub trait Fsm
@@ -11,18 +12,54 @@ where
 }
 
 pub trait FsmExt: Fsm {
-    fn context<C>(self, context: C) -> Contextual<Self, C>;
-}
-
-impl<T> FsmExt for T
-where
-    T: Fsm,
-{
     fn context<C>(self, context: C) -> Contextual<Self, C> {
         Contextual {
             fsm: self,
             context: Arc::new(context),
         }
+    }
+
+    fn map<T: Fsm>(
+        self,
+        state: impl FnOnce(Self) -> T,
+        event: impl FnOnce(Self::Event) -> T::Event,
+        fx: impl FnOnce(Self::Fx) -> T::Fx,
+    ) -> Mapped<Self, T, _, _, _, _> {
+        Mapped {
+            inner: self,
+            state_map: state,
+            event_map: event,
+            fx_map: fx,
+            target: PhantomData,
+            phantom: PhantomData,
+        }
+    }
+}
+
+impl<T> FsmExt for T where T: Fsm {}
+
+struct Mapped<S, E, F, FS, FE, FF> {
+    inner: S,
+    state_map: FS,
+    event_map: FE,
+    fx_map: FF,
+    target: PhantomData<E>,
+    phantom: PhantomData<F>,
+}
+
+impl<S, E, F, FS, FE, FF> Fsm for Mapped<S, E, F, FS, FE, FF>
+where
+    S: Fsm,
+    E: Deref<Target = S::Event>,
+    FS: FnOnce(S) -> Self,
+    FE: FnOnce(S::Event) -> E,
+    FF: FnOnce(S::Fx) -> F,
+{
+    type Event = E;
+    type Fx = F;
+
+    fn transition(&mut self, event: Self::Event) -> Self::Fx {
+        self.fx_map(S::transition(&mut self.inner, *event))
     }
 }
 

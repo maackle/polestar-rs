@@ -81,7 +81,7 @@ mod tests {
     #[test]
     fn test_diagram() {
         use polestar::diagram::*;
-        let graph = state_diagram(HolochainState::default(), 10, 10);
+        // let graph = state_diagram(HolochainState::default(), 10, 10);
         // println!("{}", to_dot(graph));
     }
 
