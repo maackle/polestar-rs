@@ -79,13 +79,6 @@ mod tests {
     }
 
     #[test]
-    fn test_diagram() {
-        use polestar::diagram::*;
-        let graph = state_diagram(HolochainState::default(), 10, 10);
-        // println!("{}", to_dot(graph));
-    }
-
-    #[test]
     fn test_init() {
         let mut g = TestRunner::default();
         let agent_key = g.generate().unwrap();

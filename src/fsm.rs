@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{marker::PhantomData, sync::Arc};
 
 pub trait Fsm
 where
@@ -8,16 +8,7 @@ where
     type Fx;
 
     fn transition(&mut self, event: Self::Event) -> Self::Fx;
-}
 
-pub trait FsmExt: Fsm {
-    fn context<C>(self, context: C) -> Contextual<Self, C>;
-}
-
-impl<T> FsmExt for T
-where
-    T: Fsm,
-{
     fn context<C>(self, context: C) -> Contextual<Self, C> {
         Contextual {
             fsm: self,
@@ -26,22 +17,11 @@ where
     }
 }
 
-// pub trait FsmPure {
-//     type Event;
-
-//     fn transition(&mut self, event: Self::Event);
+// pub trait FsmExt: Fsm {
+//     fn context<C>(self, context: C) -> Contextual<Self, C>;
 // }
 
-// impl<S> FsmPure for S
-// where
-//     S: Fsm<Fx = ()>,
-// {
-//     type Event = S::Event;
-
-//     fn transition(&mut self, event: Self::Event) {
-//         let () = Fsm::transition(self, event);
-//     }
-// }
+// impl<T> FsmExt for T where T: Fsm {}
 
 /// Wrapper around an FSM which carries a context that gets injected into each event.
 /// Useful for attaching some immutable context to the FSM which is not part of its own state.

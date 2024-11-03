@@ -50,8 +50,8 @@ pub enum AdminEvent {
     UninstallApp(AppId),
     EnableApp { app_id: AppId },
     DisableApp { app_id: AppId },
+    GenerateAgentKey,
     // DeleteCloneCell { app_id: AppId, clone_id: CloneId },
-    // GenerateAgentKey,
     // AttachAppInterface {
     //     port: Option<u16>,
     //     allowed_origins: AllowedOrigins,

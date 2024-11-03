@@ -3,6 +3,10 @@ use core::fmt::Debug;
 use crate::prelude::*;
 use proptest::prelude::*;
 
+/// A Projection takes a system which may or may not an FSM, and maps it onto
+/// an FSM. This is useful for reaping the benefits of FSMs in systems which
+/// are not or cannot be represented as FSMs.
+///
 /// Invariants:
 ///
 /// - map_state(gen_state(_, state)) == state
