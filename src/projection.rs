@@ -21,7 +21,7 @@ where
 {
     type Event;
 
-    fn apply(self, event: Self::Event) -> Self;
+    fn apply(&mut self, event: Self::Event);
 
     fn map_event(&self, event: Self::Event) -> M::Event;
     fn map_state(&self) -> M;
@@ -65,7 +65,11 @@ where
     }
 
     fn transition_commutes_with_mapping(self, event: Self::Event) {
-        let left: M = Self::map_state(&self.clone().apply(event.clone()));
+        let left = {
+            let mut state = self.clone();
+            state.apply(event.clone());
+            state.map_state()
+        };
         let mut right = self.map_state();
         let _ = M::transition(&mut right, self.map_event(event));
         assert_eq!(
@@ -85,7 +89,8 @@ where
             let _ = state.transition(event.clone());
             self.gen_state(runner, state)
         };
-        let right: Self = Self::apply(self.gen_state(runner, state), self.gen_event(runner, event));
+        let mut right = self.gen_state(runner, state);
+        right.apply(self.gen_event(runner, event));
         assert_eq!(left.map_state(), right.map_state(), "transition_commutes_with_generation failed:    map_state(gen_state(_, transition(state, transition))) != map_state(apply(gen_state(_, state), gen_event(_, transition)))")
     }
 }

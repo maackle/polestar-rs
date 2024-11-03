@@ -105,7 +105,7 @@ impl Fsm for Thermostat {
 impl Projection<Thermostat> for Instrument {
     type Event = InstrumentReading;
 
-    fn apply(mut self, event: Self::Event) -> Self {
+    fn apply(&mut self, event: Self::Event) {
         self.current = event;
         if self.min.temp > event.temp {
             self.min.temp = event.temp;
@@ -119,7 +119,6 @@ impl Projection<Thermostat> for Instrument {
         if self.max.hum < event.hum {
             self.max.hum = event.hum;
         }
-        self
     }
 
     fn map_event(&self, event: Self::Event) -> Temp {

@@ -23,7 +23,7 @@ diagrams = ["petgraph"]
 testing = []
 
 [workspace]
-members = ["holochain-polestar"]
+members = ["holochain-polestar", "kitsune-polestar"]
 
 [patch.crates-io]
 holo_hash = { path = "/home/michael/Holo/chain/crates/holo_hash" }

@@ -1,0 +1,17 @@
+[package]
+name = "kitsune-polestar"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "*"
+derive_more = "0.99"
+polestar = { path = ".." }
+proptest = "*"
+proptest-derive = "*"
+tokio = { version = "*", features = ["full"] }
+
+# kitsune_p2p = "*"
+kitsune_p2p = { path = "/home/michael/Holo/chain/crates/kitsune_p2p/kitsune_p2p" }
+
+[dev-dependencies]
