@@ -1,9 +1,11 @@
+use nanoid::nanoid;
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Id(String);
 
 impl Id {
     pub fn new() -> Self {
-        Self(nanoid::nanoid!(5))
+        Self(nanoid!(5))
     }
 }
 
@@ -17,17 +19,24 @@ pub struct NodeId(Id);
 )]
 pub struct Agent(Id);
 
-#[derive(
-    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, derive_more::From, derive_more::Deref,
-)]
-pub struct Op(Id);
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, derive_more::From)]
+pub struct Op {
+    pub hash: OpHash,
+    pub deps: Vec<OpHash>,
+}
+
+impl Op {
+    pub fn new(hash: OpHash, deps: Vec<OpHash>) -> Self {
+        Self { hash, deps }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, derive_more::From)]
-pub struct OpHash(String);
+pub struct OpHash(Id);
 
 impl From<&Op> for OpHash {
     fn from(op: &Op) -> Self {
-        OpHash(op.0 .0.clone())
+        op.hash.clone()
     }
 }
 
