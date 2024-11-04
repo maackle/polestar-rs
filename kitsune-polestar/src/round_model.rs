@@ -50,6 +50,9 @@ impl Fsm for RoundPhase {
                 (T::Recent, P::AgentsReceived, E::OpDiff) => P::OpDiffReceived,
                 (_, P::OpDiffReceived, E::Ops) => P::Finished,
 
+                // This might not be right
+                (_, _, E::Close) => P::Finished,
+
                 _ => P::Error,
             };
             (next, ())
@@ -94,9 +97,8 @@ fn diagram_round_state() {
 
     tracing::subscriber::set_global_default(tracing_subscriber::FmtSubscriber::new()).unwrap();
 
-    let m = RoundFsm::new(RoundPhase::Begin, GossipType::Recent);
     print_dot_state_diagram(
-        m,
+        RoundPhase::Begin.context(GossipType::Recent),
         vec![
             RoundPhase::Error.context(GossipType::Recent),
             RoundPhase::Finished.context(GossipType::Recent),
@@ -104,9 +106,8 @@ fn diagram_round_state() {
         1000,
     );
 
-    let m = RoundFsm::new(RoundPhase::Begin, GossipType::Historical);
     print_dot_state_diagram(
-        m,
+        RoundPhase::Begin.context(GossipType::Historical),
         vec![
             RoundPhase::Error.context(GossipType::Historical),
             RoundPhase::Finished.context(GossipType::Historical),
