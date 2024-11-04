@@ -26,4 +26,5 @@ testing = []
 members = ["holochain-polestar", "kitsune-polestar"]
 
 [patch.crates-io]
-holo_hash = { path = "/home/michael/Holo/chain/crates/holo_hash" }
+# holo_hash = { path = "/home/michael/Holo/chain/crates/holo_hash" }
+proptest-derive = { path = "/home/michael/gitfork/proptest/proptest-derive" }

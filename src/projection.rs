@@ -23,11 +23,11 @@ where
 
     fn apply(&mut self, event: Self::Event);
 
-    fn map_event(&self, event: Self::Event) -> M::Event;
-    fn map_state(&self) -> M;
+    fn map_state(&self) -> Option<M>;
+    fn map_event(&self, event: Self::Event) -> Option<M::Event>;
 
-    fn gen_event(&self, generator: &mut impl Generator, event: M::Event) -> Self::Event;
     fn gen_state(&self, generator: &mut impl Generator, state: M) -> Self;
+    fn gen_event(&self, generator: &mut impl Generator, event: M::Event) -> Self::Event;
 }
 
 // #[cfg(feature = "testing")]
@@ -39,27 +39,30 @@ where
     M::Event: Clone + Debug + Eq + Arbitrary,
 {
     fn test_invariants(self, runner: &mut impl Generator, event: Self::Event) {
-        let state = self.map_state();
-        let transition = self.map_event(event.clone());
-        self.map_state_is_a_retraction(runner, state.clone());
-        self.map_event_is_a_retraction(runner, transition.clone());
-        self.clone().transition_commutes_with_mapping(event);
-        self.transition_commutes_with_generation(runner, state, transition);
+        if let (Some(state), Some(transition)) = (self.map_state(), self.map_event(event.clone())) {
+            self.map_state_is_a_retraction(runner, state.clone());
+            self.map_event_is_a_retraction(runner, transition.clone());
+            self.clone().transition_commutes_with_mapping(event);
+            self.transition_commutes_with_generation(runner, state, transition);
+        }
+        // TODO: all other cases ok?
     }
 
     fn map_state_is_a_retraction(&self, runner: &mut impl Generator, state: M) {
         let generated = self.gen_state(runner, state.clone());
-        let roundtrip: M = Self::map_state(&generated);
+        let roundtrip = Self::map_state(&generated);
         assert_eq!(
-            state, roundtrip,
+            Some(state),
+            roundtrip,
             "map_state_is_a_retraction failed:    state != map_state(gen_state(_, state))"
         )
     }
 
     fn map_event_is_a_retraction(&self, runner: &mut impl Generator, event: M::Event) {
-        let roundtrip: M::Event = self.map_event(self.gen_event(runner, event.clone()));
+        let roundtrip = self.map_event(self.gen_event(runner, event.clone()));
         assert_eq!(
-            event, roundtrip,
+            Some(event),
+            roundtrip,
             "map_event_is_a_retraction failed:   transition != map_event(gen_event(_, transition))"
         )
     }
@@ -70,8 +73,14 @@ where
             state.apply(event.clone());
             state.map_state()
         };
-        let mut right = self.map_state();
-        let _ = M::transition(&mut right, self.map_event(event));
+        let right = {
+            let mut s = self.map_state();
+            let e = self.map_event(event);
+            if let (Some(s), Some(e)) = (s.as_mut(), e) {
+                let _ = M::transition(s, e);
+            }
+            s
+        };
         assert_eq!(
             left, right,
             "transition_commutes_with_mapping failed:    map_state(apply(x, event)) != transition(map_state(x), map_event(event))"

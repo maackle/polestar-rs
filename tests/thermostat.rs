@@ -121,17 +121,17 @@ impl Projection<Thermostat> for Instrument {
         }
     }
 
-    fn map_event(&self, event: Self::Event) -> Temp {
-        event.temp
+    fn map_event(&self, event: Self::Event) -> Option<Temp> {
+        Some(event.temp)
     }
 
-    fn map_state(&self) -> Thermostat {
+    fn map_state(&self) -> Option<Thermostat> {
         let mut s = Thermostat {
             setting: self.setting,
             state: ThermostatState::Idle,
         };
         s.transition(self.current.temp);
-        s
+        Some(s)
     }
 
     fn gen_event(&self, g: &mut impl Generator, temp: Temp) -> InstrumentReading {
@@ -161,7 +161,7 @@ proptest! {
     #[test]
     fn test_thermostat(mut instrument: Instrument, event: InstrumentReading) {
         let mut r = TestRunner::default();
-        instrument.clone().test_invariants(&mut r, event.clone());
+        instrument.clone().test_invariants(&mut r, event);
         // instrument = instrument.apply(event);
     }
 }

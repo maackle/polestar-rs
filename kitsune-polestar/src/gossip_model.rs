@@ -1,41 +1,38 @@
+use std::collections::HashMap;
+
 use kitsune_p2p::{
     dependencies::kitsune_p2p_types::{KitsuneError, KitsuneResult},
-    gossip::sharded_gossip::{store::AgentInfoSession, ShardedGossipLocal, ShardedGossipWire},
+    gossip::sharded_gossip::{
+        store::AgentInfoSession, Initiate, ShardedGossipLocal, ShardedGossipWire,
+    },
     NodeCert,
 };
 use polestar::prelude::*;
 use proptest_derive::Arbitrary;
 
-use crate::block_on;
+use crate::{
+    block_on,
+    round_model::{map_result, RoundEvent, RoundFsm},
+};
 
-#[derive(Debug, Clone, Eq, PartialEq, Arbitrary)]
-pub enum GossipState {
-    Initiated,
-    Accepted,
-    AgentDiffReceived,
-    AgentsReceived,
-    OpDiffReceived,
-    OpsReceived,
-    Error,
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Arbitrary)]
-pub enum GossipEvent {
-    Initiate,
-    Accept,
-    AgentDiff,
-    Agents,
-    OpDiff,
-    Ops,
-    Close,
+#[derive(Debug, Clone, Eq, PartialEq, Arbitrary, derive_more::From)]
+pub struct GossipState {
+    rounds: HashMap<NodeCert, RoundFsm>,
+    initiate_tgt: Option<NodeCert>,
 }
 
 impl Fsm for GossipState {
     type Event = GossipEvent;
     type Fx = ();
 
-    fn transition(&mut self, event: Self::Event) {}
+    fn transition(&mut self, (node, event): Self::Event) {
+        if let Some(round) = self.rounds.get_mut(&node) {
+            round.transition(event);
+        }
+    }
 }
+
+pub type GossipEvent = (NodeCert, RoundEvent);
 
 impl Projection<GossipState> for KitsuneResult<ShardedGossipLocal> {
     type Event = (NodeCert, ShardedGossipWire);
@@ -53,26 +50,21 @@ impl Projection<GossipState> for KitsuneResult<ShardedGossipLocal> {
         }
     }
 
-    fn map_event(&self, (node, msg): Self::Event) -> GossipEvent {
-        match msg {
-            ShardedGossipWire::Initiate(initiate) => GossipEvent::Initiate,
-            ShardedGossipWire::Accept(accept) => GossipEvent::Accept,
-            ShardedGossipWire::Agents(agents) => GossipEvent::AgentDiff,
-            ShardedGossipWire::MissingAgents(missing_agents) => GossipEvent::Agents,
-            ShardedGossipWire::OpBloom(op_bloom) => GossipEvent::OpDiff,
-            ShardedGossipWire::OpRegions(op_regions) => GossipEvent::OpDiff,
-            ShardedGossipWire::MissingOpHashes(missing_op_hashes) => GossipEvent::Ops,
-            ShardedGossipWire::OpBatchReceived(op_batch_received) => todo!(),
-
-            ShardedGossipWire::Error(_)
-            | ShardedGossipWire::Busy(_)
-            | ShardedGossipWire::NoAgents(_)
-            | ShardedGossipWire::AlreadyInProgress(_) => GossipEvent::Close,
-        }
+    fn map_event(&self, (node, msg): Self::Event) -> Option<GossipEvent> {
+        crate::round_model::map_event(msg).map(|e| (node, e))
     }
 
-    fn map_state(&self) -> GossipState {
+    fn map_state(&self) -> Option<GossipState> {
         todo!()
+        // Some(map_result(self.map(|s| {
+        //     map_result(s.inner.share_mut(|s, _| {
+        //         Ok(s.round_map
+        //             .iter()
+        //             .map(|(k, v)| (k, map_state(v.clone())))
+        //             .collect()
+        //             .into())
+        //     }))
+        // })))
     }
 
     fn gen_event(&self, generator: &mut impl Generator, event: GossipEvent) -> Self::Event {

@@ -12,6 +12,15 @@ proptest-derive = "*"
 tokio = { version = "*", features = ["full"] }
 
 # kitsune_p2p = "*"
-kitsune_p2p = { path = "/home/michael/Holo/chain/crates/kitsune_p2p/kitsune_p2p" }
+kitsune_p2p = { path = "/home/michael/Holo/chain/crates/kitsune_p2p/kitsune_p2p", features = [
+  "fuzzing",
+] }
 
 [dev-dependencies]
+prettydiff = "*"
+
+kitsune_p2p_bin_data = { path = "/home/michael/Holo/chain/crates/kitsune_p2p/bin_data" }
+kitsune_p2p = { path = "/home/michael/Holo/chain/crates/kitsune_p2p/kitsune_p2p", features = [
+  "fuzzing",
+  "test_utils",
+] }

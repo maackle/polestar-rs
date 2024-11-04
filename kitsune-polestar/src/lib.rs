@@ -2,6 +2,7 @@
 #![allow(unused)]
 
 mod gossip_model;
+mod round_model;
 
 use proptest_derive::Arbitrary;
 use std::{
