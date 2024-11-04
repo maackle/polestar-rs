@@ -3,7 +3,7 @@ pub struct Id(String);
 
 impl Id {
     pub fn new() -> Self {
-        Self(nanoid::nanoid!())
+        Self(nanoid::nanoid!(5))
     }
 }
 

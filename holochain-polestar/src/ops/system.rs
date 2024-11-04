@@ -38,7 +38,7 @@ pub enum Thunk {
 
 pub type Node = ActorRw<NodeState>;
 
-#[derive(Clone, derive_more::From)]
+#[derive(Clone, derive_more::From, derive_more::Deref)]
 pub struct Peer(Node);
 
 pub trait NodeInterface {
@@ -89,6 +89,7 @@ pub fn step(node: Node, t: usize) {
                 match n.thunks.pop_front().unwrap().1 {
                     Thunk::FetchOp(hash, from) => {
                         if let Some(op) = from.fetch_from(hash.clone()) {
+                            tracing::trace!("node {:?}    fetched {:?}", n.id, hash);
                             n.vault.insert(
                                 hash,
                                 OpData {
@@ -99,7 +100,16 @@ pub fn step(node: Node, t: usize) {
                         }
                     }
                     Thunk::PublishOp(op, peer) => {
-                        peer.publish_to(node.clone().into(), OpHash::from(&op));
+                        let hash = OpHash::from(&op);
+                        peer.read(|p| {
+                            tracing::trace!(
+                                "node {:?}  published {:?}  to {:?}",
+                                n.id,
+                                hash,
+                                p.id.clone()
+                            )
+                        });
+                        peer.publish_to(node.clone().into(), hash);
                     }
                 }
             }
@@ -136,6 +146,14 @@ pub fn step(node: Node, t: usize) {
                 .map(|op| OpHash::from(&op.op))
                 .collect();
             for peer in n.peers.iter() {
+                peer.read(|p| {
+                    tracing::trace!(
+                        "node {:?}   gossiped {} ops to {:?}",
+                        n.id,
+                        ops.len(),
+                        p.id.clone()
+                    )
+                });
                 peer.gossip_to(node.clone().into(), ops.clone());
             }
         }
@@ -186,9 +204,14 @@ fn test_node() {
         nodes[0].write(|n| n.author(op.clone()));
     }
 
-    for t in 0..10000 {
+    for t in 0..2000 {
         for n in nodes.iter() {
             step(n.clone(), t);
+        }
+
+        if t % 100 == 0 && nodes.iter().all(|n| n.read(|n| n.vault.len()) == ops.len()) {
+            println!("consistency reached, t = {t}");
+            break;
         }
     }
 
