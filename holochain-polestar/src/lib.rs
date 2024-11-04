@@ -6,3 +6,5 @@ use std::collections::{HashMap, HashSet};
 
 mod holochain;
 pub use holochain::*;
+
+mod ops;

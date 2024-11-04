@@ -11,15 +11,28 @@ use crate::fsm::Fsm;
 /// It's intentionally not Cloneable, because we intend
 /// there to be only a single writer. There can be many readers,
 /// via the [`ActorRead`] wrapper.
+// TODO: revisit the question of cloneability
 #[derive(Default)]
 pub struct ActorRw<S>(Arc<RwLock<S>>);
 
-#[derive(Default, derive_more::From)]
+#[derive(Default, Clone, derive_more::From)]
 pub struct ActorRead<S>(ActorRw<S>);
 
-impl<S> Clone for ActorRead<S> {
+impl<S> Clone for ActorRw<S> {
     fn clone(&self) -> Self {
-        Self(ActorRw(self.0 .0.clone()))
+        Self(self.0.clone())
+    }
+}
+
+impl<S> From<S> for ActorRw<S> {
+    fn from(s: S) -> Self {
+        Self::new(s)
+    }
+}
+
+impl<S> From<S> for ActorRead<S> {
+    fn from(s: S) -> Self {
+        Self::new(s)
     }
 }
 

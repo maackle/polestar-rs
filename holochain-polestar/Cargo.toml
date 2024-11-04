@@ -7,8 +7,12 @@ edition = "2021"
 anyhow = "*"
 derive_more = "0.99"
 holo_hash = { version = "0.5.0-dev.1", features = ["fuzzing"] }
+holochain_types = { version = "0.5.0-dev.3" }
+nanoid = "*"
 polestar = { path = ".." }
 proptest = "*"
 proptest-derive = "*"
+tracing = "0.1"
+tracing-subscriber = "0.3"
 
 [dev-dependencies]
