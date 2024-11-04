@@ -144,7 +144,7 @@ mod tests {
     use proptest_derive::Arbitrary;
 
     #[derive(
-        Copy, Clone, Debug, PartialEq, Eq, Hash, FromPrimitive, ToPrimitive, derive_more::Display,
+        Copy, Clone, Debug, PartialEq, Eq, FromPrimitive, ToPrimitive, Hash, derive_more::Display,
     )]
     enum Cycle {
         A,
