@@ -7,18 +7,18 @@ use kitsune_p2p::{
         kitsune_p2p_types::{
             box_fut,
             config::KitsuneP2pTuningParams,
-            dependencies::futures::{self, channel::mpsc::Receiver},
-            tx2::tx2_utils::{PoolBuf, Share},
+            dependencies::futures::{self},
+            tx2::tx2_utils::Share,
             GossipType,
         },
     },
     event::KitsuneP2pEvent,
     gossip::sharded_gossip::{
-        store::AgentInfoSession, Agents, Initiate, ShardedGossipLocal, ShardedGossipLocalState,
+        store::AgentInfoSession, Initiate, ShardedGossipLocal, ShardedGossipLocalState,
         ShardedGossipWire,
     },
     metrics::MetricsSync,
-    HostApi, KitsuneSpace, MockKitsuneP2pEventHandler, NodeCert,
+    KitsuneSpace, MockKitsuneP2pEventHandler, NodeCert,
 };
 use polestar::prelude::*;
 use proptest::test_runner::TestRunner;

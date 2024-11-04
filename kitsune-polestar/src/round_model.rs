@@ -1,21 +1,23 @@
+use std::sync::Arc;
+
 use kitsune_p2p::{
-    dependencies::kitsune_p2p_types::KitsuneResult,
+    dependencies::kitsune_p2p_types::{GossipType, KitsuneResult},
     gossip::sharded_gossip::{store::AgentInfoSession, RoundState, ShardedGossipWire},
     NodeCert,
 };
-use polestar::prelude::*;
+use polestar::{fsm::Contextual, prelude::*};
 use proptest_derive::Arbitrary;
 
 use crate::block_on;
 
 #[derive(Debug, Clone, Eq, PartialEq, Arbitrary)]
-pub enum RoundFsm {
-    Initiated,
-    Accepted,
+pub enum RoundPhase {
+    Begin,
     AgentDiffReceived,
     AgentsReceived,
     OpDiffReceived,
     OpsReceived,
+    Finished,
     Error,
 }
 
@@ -30,14 +32,31 @@ pub enum RoundEvent {
     Close,
 }
 
-impl Fsm for RoundFsm {
-    type Event = RoundEvent;
+pub type RoundContext = GossipType;
+
+impl Fsm for RoundPhase {
+    type Event = (RoundEvent, Arc<RoundContext>);
     type Fx = ();
 
-    fn transition(&mut self, event: Self::Event) {
-        todo!()
+    fn transition(&mut self, (event, ctx): Self::Event) {
+        use GossipType as T;
+        use RoundEvent as E;
+        use RoundPhase as P;
+        polestar::util::update_replace(self, |s| {
+            let next = match (*ctx, s, event) {
+                (T::Recent, P::Begin, E::AgentDiff) => P::AgentDiffReceived,
+                (T::Historical, P::Begin, E::OpDiff) => P::OpDiffReceived,
+                (T::Recent, P::AgentDiffReceived, E::Agents) => P::AgentsReceived,
+                (T::Recent, P::AgentsReceived, E::OpDiff) => P::OpDiffReceived,
+                (_, P::OpDiffReceived, E::Ops) => P::OpsReceived,
+                _ => P::Error,
+            };
+            (next, ())
+        });
     }
 }
+
+pub type RoundFsm = Contextual<RoundPhase, RoundContext>;
 
 pub fn map_event(msg: ShardedGossipWire) -> Option<RoundEvent> {
     match msg {
@@ -57,13 +76,13 @@ pub fn map_event(msg: ShardedGossipWire) -> Option<RoundEvent> {
     }
 }
 
-pub fn map_state(state: RoundState) -> Option<RoundFsm> {
+pub fn map_state(state: RoundState) -> Option<RoundPhase> {
     todo!()
 }
 
-pub fn map_result(f: impl FnOnce() -> KitsuneResult<RoundFsm>) -> RoundFsm {
+pub fn map_result(f: impl FnOnce() -> KitsuneResult<RoundPhase>) -> RoundPhase {
     match f() {
         Ok(s) => s,
-        Err(e) => RoundFsm::Error,
+        Err(e) => RoundPhase::Error,
     }
 }

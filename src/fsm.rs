@@ -1,5 +1,7 @@
 use std::{marker::PhantomData, sync::Arc};
 
+use proptest_derive::Arbitrary;
+
 pub trait Fsm
 where
     Self: Sized,
@@ -25,9 +27,10 @@ where
 
 /// Wrapper around an FSM which carries a context that gets injected into each event.
 /// Useful for attaching some immutable context to the FSM which is not part of its own state.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Arbitrary)]
 pub struct Contextual<F: Fsm, C> {
     fsm: F,
+    // TODO: C: Clone
     context: Arc<C>,
 }
 
@@ -62,36 +65,4 @@ impl Fsm for bool {
     fn transition(&mut self, event: Self::Event) -> Self::Fx {
         *self = event;
     }
-}
-
-/// Convenience for updating state by returning an optional owned value
-pub fn maybe_update<S, E>(s: &mut S, f: impl FnOnce(&S) -> (Option<S>, E)) -> E
-where
-    S: Sized,
-{
-    let (next, fx) = f(s);
-    if let Some(next) = next {
-        *s = next;
-    }
-    fx
-}
-
-/// Convenience for updating state by returning an owned value
-pub fn update_replace<S, E>(s: &mut S, f: impl FnOnce(&S) -> (S, E)) -> E
-where
-    S: Sized + Clone,
-{
-    let (next, fx) = f(s);
-    *s = next;
-    fx
-}
-
-/// Convenience for updating state by returning an owned value
-pub fn update_copy<S, E>(s: &mut S, f: impl FnOnce(S) -> (S, E)) -> E
-where
-    S: Sized + Copy,
-{
-    let (next, fx) = f(*s);
-    *s = next;
-    fx
 }
