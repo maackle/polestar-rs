@@ -10,18 +10,18 @@ use proptest_derive::Arbitrary;
 
 use crate::block_on;
 
-#[derive(Debug, Clone, Eq, PartialEq, Arbitrary)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Arbitrary)]
 pub enum RoundPhase {
     Begin,
     AgentDiffReceived,
     AgentsReceived,
     OpDiffReceived,
-    OpsReceived,
     Finished,
+
     Error,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Arbitrary)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Arbitrary)]
 pub enum RoundEvent {
     Initiate,
     Accept,
@@ -48,7 +48,8 @@ impl Fsm for RoundPhase {
                 (T::Historical, P::Begin, E::OpDiff) => P::OpDiffReceived,
                 (T::Recent, P::AgentDiffReceived, E::Agents) => P::AgentsReceived,
                 (T::Recent, P::AgentsReceived, E::OpDiff) => P::OpDiffReceived,
-                (_, P::OpDiffReceived, E::Ops) => P::OpsReceived,
+                (_, P::OpDiffReceived, E::Ops) => P::Finished,
+
                 _ => P::Error,
             };
             (next, ())
@@ -85,4 +86,31 @@ pub fn map_result(f: impl FnOnce() -> KitsuneResult<RoundPhase>) -> RoundPhase {
         Ok(s) => s,
         Err(e) => RoundPhase::Error,
     }
+}
+
+#[test]
+fn diagram_round_state() {
+    use polestar::diagram::*;
+
+    tracing::subscriber::set_global_default(tracing_subscriber::FmtSubscriber::new()).unwrap();
+
+    let m = RoundFsm::new(RoundPhase::Begin, GossipType::Recent);
+    print_dot_state_diagram(
+        m,
+        vec![
+            RoundPhase::Error.context(GossipType::Recent),
+            RoundPhase::Finished.context(GossipType::Recent),
+        ],
+        1000,
+    );
+
+    let m = RoundFsm::new(RoundPhase::Begin, GossipType::Historical);
+    print_dot_state_diagram(
+        m,
+        vec![
+            RoundPhase::Error.context(GossipType::Historical),
+            RoundPhase::Finished.context(GossipType::Historical),
+        ],
+        1000,
+    );
 }

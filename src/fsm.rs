@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, sync::Arc};
+use std::sync::Arc;
 
 use proptest_derive::Arbitrary;
 
@@ -19,19 +19,22 @@ where
     }
 }
 
-// pub trait FsmExt: Fsm {
-//     fn context<C>(self, context: C) -> Contextual<Self, C>;
-// }
-
-// impl<T> FsmExt for T where T: Fsm {}
-
 /// Wrapper around an FSM which carries a context that gets injected into each event.
 /// Useful for attaching some immutable context to the FSM which is not part of its own state.
-#[derive(Debug, Clone, PartialEq, Eq, Arbitrary)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Arbitrary)]
 pub struct Contextual<F: Fsm, C> {
     fsm: F,
     // TODO: C: Clone
     context: Arc<C>,
+}
+
+impl<F, C> std::fmt::Debug for Contextual<F, C>
+where
+    F: Fsm + std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.fsm)
+    }
 }
 
 impl<F, C> Contextual<F, C>
