@@ -17,7 +17,7 @@ pub use fsm::Fsm;
 pub mod prelude {
     pub use crate::actor::{ActorFsm, ActorRead, ActorRw};
     pub use crate::fsm::{Contextual, Fsm, FsmResult};
-    pub use crate::fsm_wrappers::FsmCell;
+    pub use crate::fsm_wrappers::CellFsm;
     pub use crate::generate::Generator;
     pub use crate::projection::{Projection, ProjectionTests};
 

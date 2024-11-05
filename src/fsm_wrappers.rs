@@ -3,22 +3,59 @@ use proptest::prelude::{Arbitrary, BoxedStrategy, Strategy};
 use proptest_derive::Arbitrary;
 use std::{cell::RefCell, collections::HashMap};
 
+/// Use a CellFsm when you want to transition an FSM in-place, via [`CellFsm::transition_mut`].
+///
+/// After [`CellFsm::transition_mut`] produces an Error, subsequent calls will return None.
+/// Thus, it is expected that the cell will be dropped after producing an error.
+///
+/// ```
+/// use polestar::prelude::*;
+///
+/// struct Inner(u8);
+///
+/// impl Fsm for Inner {
+///     type Event = ();
+///     type Fx = ();
+///     type Error = Infallible;
+///
+///     fn transition(self, _: Self::Event) -> FsmResult<Self> {
+///         Ok((Self(self.0.wrapping_add(1)), ()))
+///     }
+/// }
+///
+/// struct Outer {
+///     inner: CellFsm<Inner>,
+/// }
+///
+/// impl Fsm for Outer {
+///     type Event = ();
+///     type Fx = ();
+///     type Error = Infallible;
+///
+///     fn transition(mut self, _: Self::Event) -> FsmResult<Self> {
+///         // This unwrap is safe because if Outer returns an error, the cell will be dropped
+///         // and never used again.
+///         self.inner.transition_mut(()).unwrap()?;
+///         Ok((self, ()))
+///     }
+/// }
+/// ```
 #[derive(Clone, derive_more::Deref)]
-pub struct FsmCell<S>(RefCell<Option<S>>);
+pub struct CellFsm<S>(RefCell<Option<S>>);
 
-impl<S> FsmCell<S> {
+impl<S> CellFsm<S> {
     pub fn new(s: S) -> Self {
         Self(RefCell::new(Some(s)))
     }
 }
 
-impl<S> From<S> for FsmCell<S> {
+impl<S> From<S> for CellFsm<S> {
     fn from(s: S) -> Self {
         Self::new(s)
     }
 }
 
-impl<S: Fsm> FsmCell<S> {
+impl<S: Fsm> CellFsm<S> {
     pub fn transition_mut(&mut self, event: S::Event) -> Option<Result<S::Fx, S::Error>> {
         match self.0.take()?.transition(event) {
             Err(e) => Some(Err(e)),
@@ -30,27 +67,27 @@ impl<S: Fsm> FsmCell<S> {
     }
 }
 
-impl<S: PartialEq> PartialEq for FsmCell<S> {
+impl<S: PartialEq> PartialEq for CellFsm<S> {
     fn eq(&self, other: &Self) -> bool {
         *self.0.borrow() == *other.0.borrow()
     }
 }
 
-impl<S: Eq> Eq for FsmCell<S> {}
+impl<S: Eq> Eq for CellFsm<S> {}
 
-impl<S: std::fmt::Debug> std::fmt::Debug for FsmCell<S> {
+impl<S: std::fmt::Debug> std::fmt::Debug for CellFsm<S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("FsmCell").field(&self.0.borrow()).finish()
     }
 }
 
-impl<S: std::hash::Hash> std::hash::Hash for FsmCell<S> {
+impl<S: std::hash::Hash> std::hash::Hash for CellFsm<S> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.0.borrow().hash(state)
     }
 }
 
-impl<S: Arbitrary + 'static> Arbitrary for FsmCell<S> {
+impl<S: Arbitrary + 'static> Arbitrary for CellFsm<S> {
     type Parameters = S::Parameters;
     type Strategy = BoxedStrategy<Self>;
 
