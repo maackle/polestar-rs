@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use anyhow::anyhow;
 use kitsune_p2p::{
     dependencies::kitsune_p2p_types::{KitsuneError, KitsuneResult},
     gossip::sharded_gossip::{
@@ -7,7 +8,7 @@ use kitsune_p2p::{
     },
     NodeCert,
 };
-use polestar::prelude::*;
+use polestar::{fsm_wrappers::FsmHashMap, prelude::*};
 use proptest_derive::Arbitrary;
 
 use crate::{
@@ -17,18 +18,20 @@ use crate::{
 
 #[derive(Debug, Clone, Eq, PartialEq, Arbitrary, derive_more::From)]
 pub struct GossipState {
-    rounds: HashMap<NodeCert, RoundFsm>,
+    rounds: FsmHashMap<NodeCert, RoundFsm>,
     initiate_tgt: Option<NodeCert>,
 }
 
-impl FsmMut for GossipState {
+impl Fsm for GossipState {
     type Event = GossipEvent;
     type Fx = ();
+    type Error = anyhow::Error;
 
-    fn transition(&mut self, (node, event): Self::Event) {
-        if let Some(round) = self.rounds.get_mut(&node) {
-            round.transition(event);
-        }
+    fn transition(mut self, (node, event): Self::Event) -> FsmResult<Self> {
+        self.rounds
+            .transition_mut(node.clone(), event)
+            .ok_or(anyhow!("no round for {node:?}"))??;
+        Ok((self, ()))
     }
 }
 

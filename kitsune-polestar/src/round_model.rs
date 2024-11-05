@@ -34,29 +34,29 @@ pub enum RoundEvent {
 
 pub type RoundContext = GossipType;
 
-impl FsmMut for RoundPhase {
+impl Fsm for RoundPhase {
     type Event = (RoundEvent, Arc<RoundContext>);
     type Fx = ();
+    type Error = Infallible;
 
-    fn transition(&mut self, (event, ctx): Self::Event) {
+    fn transition(mut self, (event, ctx): Self::Event) -> FsmResult<Self> {
         use GossipType as T;
         use RoundEvent as E;
         use RoundPhase as P;
-        polestar::util::update_replace(self, |s| {
-            let next = match (*ctx, s, event) {
-                (T::Recent, P::Begin, E::AgentDiff) => P::AgentDiffReceived,
-                (T::Historical, P::Begin, E::OpDiff) => P::OpDiffReceived,
-                (T::Recent, P::AgentDiffReceived, E::Agents) => P::AgentsReceived,
-                (T::Recent, P::AgentsReceived, E::OpDiff) => P::OpDiffReceived,
-                (_, P::OpDiffReceived, E::Ops) => P::Finished,
 
-                // This might not be right
-                (_, _, E::Close) => P::Finished,
+        let next = match (*ctx, self, event) {
+            (T::Recent, P::Begin, E::AgentDiff) => P::AgentDiffReceived,
+            (T::Historical, P::Begin, E::OpDiff) => P::OpDiffReceived,
+            (T::Recent, P::AgentDiffReceived, E::Agents) => P::AgentsReceived,
+            (T::Recent, P::AgentsReceived, E::OpDiff) => P::OpDiffReceived,
+            (_, P::OpDiffReceived, E::Ops) => P::Finished,
 
-                _ => P::Error,
-            };
-            (next, ())
-        });
+            // This might not be right
+            (_, _, E::Close) => P::Finished,
+
+            _ => P::Error,
+        };
+        Ok((next, ()))
     }
 }
 

@@ -3,22 +3,22 @@
 // - there probably needs to be a special proptest strategy for pulling from the existing list of nodes
 // - this model might not even be a diagrammable state machine, maybe it needs to be further abstracted into something visually comprehensible
 
-use polestar::{diagram::print_dot_state_diagram, fsm::FsmCell, prelude::*};
+use polestar::{diagram::print_dot_state_diagram, prelude::*};
 use proptest_derive::Arbitrary;
 
 use super::*;
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct NodeOp {
     node: NodeId,
-    model: FsmCell<NodeOpModel>,
+    model: ActorFsm<NodeOpModel>,
 }
 
 impl NodeOp {
     pub fn new(node: NodeId) -> Self {
         Self {
             node,
-            model: NodeOpModel::Pending,
+            model: NodeOpModel::Pending.into(),
         }
     }
 }
@@ -42,29 +42,27 @@ pub enum NodeOpEvent {
     Send(NodeId),
 }
 
-impl FsmMut for NodeOpModel {
+impl Fsm for NodeOpModel {
     type Event = NodeOpEvent;
     type Fx = ();
-
-    fn transition(&mut self, t: Self::Event) {
+    type Error = Infallible;
+    fn transition(mut self, t: Self::Event) -> FsmResult<Self> {
         use NodeOpEvent as E;
         use NodeOpModel as S;
-        polestar::util::update_replace(self, |s| {
-            let next = match (s, t) {
-                (S::Rejected, _) => S::Rejected,
-                (S::Pending, E::Validate) => S::Validated,
-                (S::Pending, E::Reject) => S::Rejected,
-                (S::Validated, E::Integrate) => S::Integrated,
-                (S::Validated, E::Send(op)) => S::Sent(vec![NodeOp::new(op).into()]),
-                (S::Sent(ops), E::Send(op)) => {
-                    let mut ops = ops.clone();
-                    ops.push(NodeOp::new(op).into());
-                    S::Sent(ops)
-                }
-                _ => S::Error,
-            };
-            (next, ())
-        });
+        let next = match (self, t) {
+            (S::Rejected, _) => S::Rejected,
+            (S::Pending, E::Validate) => S::Validated,
+            (S::Pending, E::Reject) => S::Rejected,
+            (S::Validated, E::Integrate) => S::Integrated,
+            (S::Validated, E::Send(op)) => S::Sent(vec![NodeOp::new(op).into()]),
+            (S::Sent(ops), E::Send(op)) => {
+                let mut ops = ops.clone();
+                ops.push(NodeOp::new(op).into());
+                S::Sent(ops)
+            }
+            _ => S::Error,
+        };
+        Ok((next, ()))
     }
 }
 
@@ -73,8 +71,8 @@ impl Fsm for NodeOp {
     type Fx = ();
     type Error = Infallible;
     fn transition(mut self, t: Self::Event) -> FsmResult<Self> {
-        let fx = self.model.transition_mut(t).unwrap();
-        Ok((self, fx))
+        let () = self.model.transition_mut(t).unwrap()?;
+        Ok((self, ()))
     }
 }
 

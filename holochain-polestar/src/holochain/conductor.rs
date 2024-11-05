@@ -12,8 +12,8 @@ pub enum ConductorEvent {
 
 #[derive(Default, Clone)]
 pub struct ConductorState {
-    apps: polestar::actor::ActorRw<Option<AppStore>>,
-    cells: polestar::actor::ActorRw<Option<CellStore>>,
+    apps: polestar::actor::ActorFsm<AppStore>,
+    cells: polestar::actor::ActorFsm<CellStore>,
 }
 
 impl Fsm for ConductorState {

@@ -109,19 +109,47 @@ impl<S: Fsm + Clone> ActorRw<S> {
     }
 }
 
-impl<S: Fsm> Fsm for ActorRw<Option<S>> {
+#[derive(Default, Debug, PartialEq, Eq, Hash, derive_more::Deref)]
+pub struct ActorFsm<S>(ActorRw<Option<S>>);
+
+impl<S> Clone for ActorFsm<S> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl<S> From<S> for ActorFsm<S> {
+    fn from(s: S) -> Self {
+        Self(ActorRw::new(Some(s)))
+    }
+}
+
+impl<S: Fsm> Fsm for ActorFsm<S> {
     type Event = S::Event;
     type Fx = S::Fx;
     type Error = S::Error;
 
     fn transition(self, event: Self::Event) -> FsmResult<Self> {
         let fx = {
-            let mut lock = self.0.write();
+            let mut lock = self.0 .0.write();
             let state = std::mem::take(&mut *lock).unwrap();
             let (state, fx) = state.transition(event)?;
             *lock = Some(state);
             fx
         };
         Ok((self, fx))
+    }
+}
+
+impl<S: Fsm> ActorFsm<S> {
+    pub fn transition_mut(&mut self, event: S::Event) -> Option<Result<S::Fx, S::Error>> {
+        let mut lock = self.0 .0.write();
+        match lock.take()?.transition(event) {
+            Err(e) => Some(Err(e)),
+            Ok((state, fx)) => {
+                *lock = Some(state);
+                Some(Ok(fx))
+            }
+        }
     }
 }

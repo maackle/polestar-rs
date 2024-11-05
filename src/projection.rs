@@ -1,6 +1,6 @@
 use core::fmt::Debug;
 
-use crate::prelude::*;
+use crate::{prelude::*, util::first};
 use proptest::prelude::*;
 
 /// A Projection takes a system which may or may not an FSM, and maps it onto
@@ -16,7 +16,7 @@ use proptest::prelude::*;
 ///
 pub trait Projection<M>
 where
-    M: FsmMut + Arbitrary,
+    M: Fsm + Arbitrary,
     M::Event: Arbitrary,
 {
     type Event;
@@ -35,8 +35,9 @@ pub trait ProjectionTests<M>: Sized + Projection<M>
 where
     Self: Clone + Debug,
     Self::Event: Clone + Debug,
-    M: FsmMut + Clone + Debug + Eq + Arbitrary,
+    M: Fsm + Clone + Debug + Eq + Arbitrary,
     M::Event: Clone + Debug + Eq + Arbitrary,
+    M::Error: Eq,
 {
     fn test_invariants(self, runner: &mut impl Generator, event: Self::Event) {
         if let (Some(state), Some(transition)) = (self.map_state(), self.map_event(event.clone())) {
@@ -71,15 +72,16 @@ where
         let left = {
             let mut state = self.clone();
             state.apply(event.clone());
-            state.map_state()
+            state.map_state().map(Ok)
         };
         let right = {
-            let mut s = self.map_state();
+            let s = self.map_state();
             let e = self.map_event(event);
-            if let (Some(s), Some(e)) = (s.as_mut(), e) {
-                let _ = M::transition(s, e);
+            if let (Some(s), Some(e)) = (s, e) {
+                Some(M::transition(s, e).map(first))
+            } else {
+                None
             }
-            s
         };
         assert_eq!(
             left, right,
@@ -107,7 +109,8 @@ where
     T: Projection<M>,
     Self: Clone + Debug,
     Self::Event: Clone + Debug,
-    M: FsmMut + Clone + Debug + Eq + Arbitrary,
+    M: Fsm + Clone + Debug + Eq + Arbitrary,
     M::Event: Clone + Debug + Eq + Arbitrary,
+    M::Error: Eq,
 {
 }

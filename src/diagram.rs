@@ -12,7 +12,7 @@ use std::{
 use petgraph::graph::DiGraph;
 use proptest::prelude::Arbitrary;
 
-use crate::Fsm;
+use crate::prelude::*;
 
 const MAX_WALKS: usize = 1000000;
 
@@ -164,9 +164,10 @@ mod tests {
         type Fx = ();
         type Error = Infallible;
 
-        fn transition(&mut self, turn: Turn) -> Result<(Self, Self::Fx), Self::Error> {
+        fn transition(mut self, turn: Turn) -> Result<(Self, Self::Fx), Self::Error> {
             let n = turn.to_i8().unwrap();
-            *self = Cycle::from_i8((self.to_i8().unwrap() + n).rem_euclid(4)).unwrap()
+            self = Cycle::from_i8((self.to_i8().unwrap() + n).rem_euclid(4)).unwrap();
+            Ok((self, ()))
         }
     }
 

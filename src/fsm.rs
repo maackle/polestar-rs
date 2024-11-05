@@ -1,23 +1,6 @@
-use std::{cell::RefCell, convert::Infallible, sync::Arc};
+use std::{convert::Infallible, sync::Arc};
 
 use proptest_derive::Arbitrary;
-
-pub trait FsmMut
-where
-    Self: Sized,
-{
-    type Event;
-    type Fx;
-
-    fn transition(&mut self, event: Self::Event) -> Self::Fx;
-
-    fn context<C>(self, context: C) -> Contextual<Self, C> {
-        Contextual {
-            fsm: self,
-            context: Arc::new(context),
-        }
-    }
-}
 
 pub trait Fsm
 where
@@ -44,29 +27,15 @@ where
     //     self.transition_mut(event).map(|(fsm, _)| fsm)
     // }
 
-    // fn context<C>(self, context: C) -> Contextual<Self, C> {
-    //     Contextual {
-    //         fsm: self,
-    //         context: Arc::new(context),
-    //     }
-    // }
+    fn context<C>(self, context: C) -> Contextual<Self, C> {
+        Contextual {
+            fsm: self,
+            context: Arc::new(context),
+        }
+    }
 }
 
 pub type FsmResult<S: Fsm> = Result<(S, S::Fx), S::Error>;
-
-impl<S> Fsm for S
-where
-    S: FsmMut,
-{
-    type Event = S::Event;
-    type Fx = S::Fx;
-    type Error = Infallible;
-
-    fn transition(mut self, event: Self::Event) -> FsmResult<Self> {
-        let fx = FsmMut::transition(&mut self, event);
-        Ok((self, fx))
-    }
-}
 
 // pub trait FsmMut {
 //     type Event;

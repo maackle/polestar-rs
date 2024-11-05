@@ -87,11 +87,12 @@ enum HygrometerFsm {
     Humid,
 }
 
-impl FsmMut for Thermostat {
+impl Fsm for Thermostat {
     type Event = Temp;
     type Fx = ();
+    type Error = Infallible;
 
-    fn transition(&mut self, temp: Self::Event) {
+    fn transition(mut self, temp: Self::Event) -> Result<(Self, Self::Fx), Self::Error> {
         if temp < self.setting.lo() {
             self.state = ThermostatState::Heating;
         } else if temp > self.setting.hi() {
@@ -99,6 +100,7 @@ impl FsmMut for Thermostat {
         } else {
             self.state = ThermostatState::Idle;
         }
+        Ok((self, ()))
     }
 }
 
@@ -142,12 +144,11 @@ impl Projection<Thermostat> for Instrument {
     }
 
     fn map_state(&self) -> Option<Thermostat> {
-        let mut s = Thermostat {
+        let s = Thermostat {
             setting: self.setting,
             state: ThermostatState::Idle,
         };
-        s.transition(self.current.temp);
-        Some(s)
+        Some(s.transition_(self.current.temp).unwrap())
     }
 
     fn gen_event(&self, g: &mut impl Generator, temp: Temp) -> InstrumentReading {
