@@ -13,7 +13,7 @@ pub struct NodeState {
     agents: Vec<Agent>,
     vault: BTreeMap<OpHash, OpData>,
     cache: HashMap<OpHash, Op>,
-    fetchpool: VecDeque<(OpHash, Option<Peer>)>,
+    fetchpool: VecDeque<(OpHash, Option<Peer>, FetchDestination)>,
     peers: Vec<Peer>,
     thunks: VecDeque<(usize, Thunk)>,
 }
@@ -33,8 +33,13 @@ impl NodeState {
 }
 
 pub enum Thunk {
-    FetchOp(OpHash, Peer),
+    FetchOp(OpHash, Peer, FetchDestination),
     PublishOp(Op, Peer),
+}
+
+pub enum FetchDestination {
+    Vault,
+    Cache,
 }
 
 pub type Node = ActorRw<NodeState>;
@@ -50,13 +55,18 @@ pub trait NodeInterface {
 
 impl Peer {
     fn publish_to(&self, from: Peer, op: OpHash) {
-        self.0.write(|n| n.fetchpool.push_back((op, Some(from))));
+        self.0.write(|n| {
+            n.fetchpool
+                .push_back((op, Some(from), FetchDestination::Vault))
+        });
     }
 
     fn gossip_to(&self, from: Peer, ops: Vec<OpHash>) {
         self.0.write(|n| {
-            n.fetchpool
-                .extend(ops.into_iter().map(|op| (op, Some(from.clone()))));
+            n.fetchpool.extend(
+                ops.into_iter()
+                    .map(|op| (op, Some(from.clone()), FetchDestination::Vault)),
+            );
         });
     }
 
@@ -97,16 +107,23 @@ pub fn step(node: Node, t: usize) {
         if let Some((tt, _)) = n.thunks.front() {
             if *tt <= t {
                 match n.thunks.pop_front().unwrap().1 {
-                    Thunk::FetchOp(hash, from) => {
+                    Thunk::FetchOp(hash, from, destination) => {
                         if let Some(op) = from.fetch_from(hash.clone()) {
                             tracing::trace!("node {:?}    fetched {:?}", n.id, hash);
-                            n.vault.insert(
-                                hash,
-                                OpData {
-                                    op,
-                                    state: OpState::Pending(OpOrigin::Fetched),
-                                },
-                            );
+                            match destination {
+                                FetchDestination::Vault => {
+                                    n.vault.insert(
+                                        hash,
+                                        OpData {
+                                            op,
+                                            state: OpState::Pending(OpOrigin::Fetched),
+                                        },
+                                    );
+                                }
+                                FetchDestination::Cache => {
+                                    n.cache.insert(hash, op);
+                                }
+                            }
                         }
                     }
                     Thunk::PublishOp(op, peer) => {
@@ -127,12 +144,13 @@ pub fn step(node: Node, t: usize) {
 
         // handle some fetchpool item
         for _ in 0..10 {
-            if let Some((op, from)) = n.fetchpool.pop_front() {
+            if let Some((op, from, destination)) = n.fetchpool.pop_front() {
                 // If no "from" specified, pick a random peer
                 let peer = from.unwrap_or_else(|| {
                     n.peers[rand::thread_rng().gen_range(0, n.peers.len())].clone()
                 });
-                n.thunks.push_back((t + 10, Thunk::FetchOp(op, peer)));
+                n.thunks
+                    .push_back((t + 10, Thunk::FetchOp(op, peer, destination)));
             } else {
                 break;
             }
@@ -146,8 +164,10 @@ pub fn step(node: Node, t: usize) {
                     to_validate.push(op.op.clone());
                 }
                 OpState::MissingDeps(deps) => {
-                    n.fetchpool
-                        .extend(deps.iter().map(|dep| (dep.clone(), None)));
+                    n.fetchpool.extend(
+                        deps.iter()
+                            .map(|dep| (dep.clone(), None, FetchDestination::Cache)),
+                    );
                 }
                 OpState::Validated => {
                     op.state = OpState::Integrated;

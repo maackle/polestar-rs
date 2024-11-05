@@ -1,8 +1,9 @@
 // Adapted from https://github.com/holochain/holochain/blob/ded3a663c9065d998d9f20d2a821836335467a4b/crates/stef/src/share.rs#L0-L1
 
-use std::sync::Arc;
+use std::{fmt::Debug, sync::Arc};
 
 use parking_lot::RwLock;
+use proptest::prelude::{Arbitrary, BoxedStrategy, Strategy};
 
 use crate::fsm::Fsm;
 
@@ -15,12 +16,41 @@ use crate::fsm::Fsm;
 #[derive(Default)]
 pub struct ActorRw<S>(Arc<RwLock<S>>);
 
-#[derive(Default, Clone, derive_more::From)]
+#[derive(Default, Clone, PartialEq, Eq, Hash, derive_more::From)]
 pub struct ActorRead<S>(ActorRw<S>);
 
 impl<S> Clone for ActorRw<S> {
     fn clone(&self) -> Self {
         Self(self.0.clone())
+    }
+}
+
+impl<S> PartialEq for ActorRw<S> {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl<S> Eq for ActorRw<S> {}
+
+impl<S: Debug> Debug for ActorRw<S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.read(|s| f.debug_tuple("ActorRw").field(s).finish())
+    }
+}
+
+impl<S: std::hash::Hash> std::hash::Hash for ActorRw<S> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.read(|s| s.hash(state))
+    }
+}
+
+impl<S: Arbitrary + 'static> Arbitrary for ActorRw<S> {
+    type Parameters = S::Parameters;
+    type Strategy = BoxedStrategy<Self>;
+
+    fn arbitrary_with(p: Self::Parameters) -> Self::Strategy {
+        S::arbitrary_with(p).prop_map(Self::new).boxed()
     }
 }
 
@@ -104,11 +134,5 @@ impl<S: Fsm> Fsm for ActorRw<S> {
 
     fn transition(&mut self, t: Self::Event) -> Self::Fx {
         ActorRw::transition(self, t)
-    }
-}
-
-impl<T: Fsm + std::fmt::Debug> std::fmt::Debug for ActorRw<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.read(|s| f.debug_tuple("Share").field(s).finish())
     }
 }
