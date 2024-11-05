@@ -62,7 +62,7 @@ where
 
     'outer: loop {
         let mut prev = ix;
-        let steps = take_a_walk(m.clone(), &stop);
+        let steps = take_a_walk(m.clone(), &stop).expect("TODO handle error");
         total_steps += steps.len();
         for (edge, node) in steps {
             let ix = if let Some(ix) = node_indices.get(&node) {
@@ -113,7 +113,7 @@ impl<M: Eq + Hash> From<Vec<M>> for StopCondition<M> {
     }
 }
 
-fn take_a_walk<M>(mut m: M, stop: &StopCondition<M>) -> Vec<(M::Event, M)>
+fn take_a_walk<M>(mut m: M, stop: &StopCondition<M>) -> Result<Vec<(M::Event, M)>, M::Error>
 where
     M: Fsm + Clone + Hash + Eq,
     M::Event: Arbitrary + Clone,
@@ -130,10 +130,10 @@ where
             .new_tree(&mut runner)
             .unwrap()
             .current();
-        m.transition(event.clone());
+        (m, _) = m.transition(event.clone())?;
         steps.push((event, m.clone()));
     }
-    steps
+    Ok(steps)
 }
 
 #[cfg(test)]
@@ -162,8 +162,9 @@ mod tests {
     impl Fsm for Cycle {
         type Event = Turn;
         type Fx = ();
+        type Error = Infallible;
 
-        fn transition(&mut self, turn: Turn) {
+        fn transition(&mut self, turn: Turn) -> Result<(Self, Self::Fx), Self::Error> {
             let n = turn.to_i8().unwrap();
             *self = Cycle::from_i8((self.to_i8().unwrap() + n).rem_euclid(4)).unwrap()
         }

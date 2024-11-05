@@ -1,4 +1,6 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, convert::Infallible};
+
+use polestar::fsm::FsmResult;
 
 use super::*;
 
@@ -16,15 +18,19 @@ pub struct CellStoreFx;
 
 impl polestar::Fsm for CellStore {
     type Event = CellStoreEvent;
-    type Fx = anyhow::Result<CellStoreFx>;
+    type Fx = CellStoreFx;
+    type Error = anyhow::Error;
 
-    fn transition(&mut self, e: Self::Event) -> Self::Fx {
-        match e {
+    fn transition(mut self, e: Self::Event) -> FsmResult<Self> {
+        let _fx = match e {
             CellStoreEvent::CellEvent(id, e) => {
-                self.0
-                    .get_mut(&id)
+                let (state, fx) = self
+                    .0
+                    .remove(&id)
                     .ok_or(anyhow!("cell not found: {id:?}"))?
-                    .transition(e);
+                    .transition(e)?;
+                self.0.insert(id, state);
+                fx
             }
             CellStoreEvent::AddCell(id) => {
                 self.0.insert(id, CellFsm::default());
@@ -32,7 +38,7 @@ impl polestar::Fsm for CellStore {
             CellStoreEvent::RemoveCell(id) => {
                 self.0.remove(&id);
             }
-        }
-        Ok(CellStoreFx)
+        };
+        Ok((self, CellStoreFx))
     }
 }

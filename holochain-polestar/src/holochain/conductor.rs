@@ -1,6 +1,8 @@
 use super::*;
 use crate::*;
 
+use polestar::prelude::*;
+
 #[derive(Debug, derive_more::From)]
 pub enum ConductorEvent {
     Admin(AdminEvent),
@@ -8,26 +10,27 @@ pub enum ConductorEvent {
     // Cell(CellId, CellEvent),
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ConductorState {
-    apps: polestar::actor::ActorRw<AppStore>,
-    cells: polestar::actor::ActorRw<CellStore>,
+    apps: polestar::actor::ActorRw<Option<AppStore>>,
+    cells: polestar::actor::ActorRw<Option<CellStore>>,
 }
 
-impl polestar::Fsm for ConductorState {
+impl Fsm for ConductorState {
     type Event = ConductorEvent;
     type Fx = ();
+    type Error = anyhow::Error;
 
-    fn transition(&mut self, event: Self::Event) -> Self::Fx {
-        match event {
+    fn transition(mut self, event: Self::Event) -> FsmResult<Self> {
+        let (_, _fx) = match event {
             ConductorEvent::Admin(e) => {
                 match e {
                     AdminEvent::InstallApp(payload) => {
                         // TODO: how to glue together this substate transition with the global one that caused it?
-                        self.apps.transition(AppStoreEvent::InstallApp(
+                        self.apps.clone().transition(AppStoreEvent::InstallApp(
                             payload.app_id,
                             AppContext::new(payload.agent_key, payload.manifest),
-                        ));
+                        ))?
                     }
                     _ => {
                         todo!()
@@ -35,12 +38,16 @@ impl polestar::Fsm for ConductorState {
                 }
                 // self.apps.transition(e);
             }
-            ConductorEvent::App(id, e) => {
-                self.apps.transition(AppStoreEvent::AppEvent(id, e));
-            } // ConductorEvent::Cell(id, e) => {
-              //     self.cells.transition(CellStoreEvent::CellEvent(id, e));
-              // }
-        }
+            ConductorEvent::App(id, e) => self
+                .apps
+                .clone()
+                .transition(AppStoreEvent::AppEvent(id, e))?,
+            // ConductorEvent::Cell(id, e) => {
+            //     self.cells.transition(CellStoreEvent::CellEvent(id, e));
+            // }
+        };
+        todo!("handle fx");
+        Ok((self, ()))
     }
 }
 

@@ -16,7 +16,7 @@ use proptest::prelude::*;
 ///
 pub trait Projection<M>
 where
-    M: Fsm + Arbitrary,
+    M: FsmMut + Arbitrary,
     M::Event: Arbitrary,
 {
     type Event;
@@ -35,7 +35,7 @@ pub trait ProjectionTests<M>: Sized + Projection<M>
 where
     Self: Clone + Debug,
     Self::Event: Clone + Debug,
-    M: Fsm + Clone + Debug + Eq + Arbitrary,
+    M: FsmMut + Clone + Debug + Eq + Arbitrary,
     M::Event: Clone + Debug + Eq + Arbitrary,
 {
     fn test_invariants(self, runner: &mut impl Generator, event: Self::Event) {
@@ -93,11 +93,8 @@ where
         state: M,
         event: M::Event,
     ) {
-        let left: Self = {
-            let mut state = state.clone();
-            let _ = state.transition(event.clone());
-            self.gen_state(runner, state)
-        };
+        let left: Self =
+            { self.gen_state(runner, state.clone().transition(event.clone()).unwrap().0) };
         let mut right = self.gen_state(runner, state);
         right.apply(self.gen_event(runner, event));
         assert_eq!(left.map_state(), right.map_state(), "transition_commutes_with_generation failed:    map_state(gen_state(_, transition(state, transition))) != map_state(apply(gen_state(_, state), gen_event(_, transition)))")
@@ -110,7 +107,7 @@ where
     T: Projection<M>,
     Self: Clone + Debug,
     Self::Event: Clone + Debug,
-    M: Fsm + Clone + Debug + Eq + Arbitrary,
+    M: FsmMut + Clone + Debug + Eq + Arbitrary,
     M::Event: Clone + Debug + Eq + Arbitrary,
 {
 }

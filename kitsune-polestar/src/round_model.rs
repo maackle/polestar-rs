@@ -34,7 +34,7 @@ pub enum RoundEvent {
 
 pub type RoundContext = GossipType;
 
-impl Fsm for RoundPhase {
+impl FsmMut for RoundPhase {
     type Event = (RoundEvent, Arc<RoundContext>);
     type Fx = ();
 

@@ -5,7 +5,7 @@ use std::{fmt::Debug, sync::Arc};
 use parking_lot::RwLock;
 use proptest::prelude::{Arbitrary, BoxedStrategy, Strategy};
 
-use crate::fsm::Fsm;
+use crate::{fsm::FsmResult, Fsm};
 
 /// Wrap a Fsm in a mutex for shared access.
 ///
@@ -86,8 +86,7 @@ impl<S> ActorRw<S> {
 
     /// Acquire read-only access to the shared state.
     pub fn read<R>(&self, f: impl FnOnce(&S) -> R) -> R {
-        let g = self.0.read();
-        f(&g)
+        f(&*self.0.read())
     }
 
     /// Acquire write access to the shared state.
@@ -98,25 +97,7 @@ impl<S> ActorRw<S> {
     /// there is less chance that someone will use this for direct
     /// mutable access?
     pub fn write<R>(&self, f: impl FnOnce(&mut S) -> R) -> R {
-        f(&mut self.0.write())
-    }
-}
-
-// TODO: even this probably isn't ideal. The actual transition should be applied
-// only to the top level state, and may trickle down to this sub-state. With the
-// proper "lenses", the substate event can be lifted to the whole-system event.
-impl<S: Fsm> ActorRw<S> {
-    /// Acquire write access to the shared state to perform a mutation.
-    pub fn transition(&self, t: S::Event) -> S::Fx {
-        self.transition_with(t, |_| ()).1
-    }
-
-    /// Acquire write access to the shared state to perform a mutation,
-    /// and do a read on the modified state within the same atomic mutex acquisition.
-    pub fn transition_with<R>(&self, t: S::Event, f: impl FnOnce(&S) -> R) -> (R, S::Fx) {
-        let mut g = self.0.write();
-        let eff = g.transition(t);
-        (f(&g), eff)
+        f(&mut *self.0.write())
     }
 }
 
@@ -128,11 +109,19 @@ impl<S: Fsm + Clone> ActorRw<S> {
     }
 }
 
-impl<S: Fsm> Fsm for ActorRw<S> {
+impl<S: Fsm> Fsm for ActorRw<Option<S>> {
     type Event = S::Event;
     type Fx = S::Fx;
+    type Error = S::Error;
 
-    fn transition(&mut self, t: Self::Event) -> Self::Fx {
-        ActorRw::transition(self, t)
+    fn transition(self, event: Self::Event) -> FsmResult<Self> {
+        let fx = {
+            let mut lock = self.0.write();
+            let state = std::mem::take(&mut *lock).unwrap();
+            let (state, fx) = state.transition(event)?;
+            *lock = Some(state);
+            fx
+        };
+        Ok((self, fx))
     }
 }

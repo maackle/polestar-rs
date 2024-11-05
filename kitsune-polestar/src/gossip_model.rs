@@ -21,7 +21,7 @@ pub struct GossipState {
     initiate_tgt: Option<NodeCert>,
 }
 
-impl Fsm for GossipState {
+impl FsmMut for GossipState {
     type Event = GossipEvent;
     type Fx = ();
 

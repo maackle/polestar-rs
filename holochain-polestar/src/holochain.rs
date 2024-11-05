@@ -16,6 +16,7 @@ use conductor::*;
 use holo_hash::{AgentPubKey as AgentKey, *};
 
 use anyhow::anyhow;
+use polestar::prelude::*;
 
 #[derive(Debug, derive_more::From)]
 pub enum HolochainEvent {
@@ -23,7 +24,7 @@ pub enum HolochainEvent {
     Conductor(ConductorEvent),
 }
 
-#[derive(Default)]
+#[derive(Default, derive_more::From)]
 pub enum HolochainState {
     #[default]
     Uninitialized,
@@ -32,23 +33,20 @@ pub enum HolochainState {
 
 impl polestar::Fsm for HolochainState {
     type Event = HolochainEvent;
-    type Fx = anyhow::Result<()>;
+    type Fx = ();
+    type Error = anyhow::Error;
 
-    fn transition(&mut self, event: Self::Event) -> Self::Fx {
-        match event {
-            HolochainEvent::Init => {
-                *self = HolochainState::ConductorInitialized(ConductorState::default());
-            }
+    fn transition(mut self, event: Self::Event) -> FsmResult<Self> {
+        self = match event {
+            HolochainEvent::Init => HolochainState::ConductorInitialized(ConductorState::default()),
             HolochainEvent::Conductor(e) => match self {
-                HolochainState::ConductorInitialized(ref mut conductor) => {
-                    conductor.transition(e);
-                }
+                HolochainState::ConductorInitialized(conductor) => conductor.transition_(e)?.into(),
                 HolochainState::Uninitialized => {
                     anyhow::bail!("Conductor not initialized");
                 }
             },
-        }
-        Ok(())
+        };
+        Ok((self, ()))
     }
 }
 
@@ -85,16 +83,17 @@ mod tests {
         let manifest = g.generate().unwrap();
         let mut h = HolochainState::default();
 
-        h.transition(HolochainEvent::Init).unwrap();
+        let h = h.transition_(HolochainEvent::Init).unwrap();
 
-        h.transition(
-            ConductorEvent::Admin(AdminEvent::InstallApp(InstallAppPayload {
-                app_id: "test".to_string(),
-                agent_key,
-                manifest,
-            }))
-            .into(),
-        )
-        .unwrap();
+        let h = h
+            .transition_(
+                ConductorEvent::Admin(AdminEvent::InstallApp(InstallAppPayload {
+                    app_id: "test".to_string(),
+                    agent_key,
+                    manifest,
+                }))
+                .into(),
+            )
+            .unwrap();
     }
 }

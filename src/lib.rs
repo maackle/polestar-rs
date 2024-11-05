@@ -4,6 +4,7 @@ pub mod actor;
 pub mod fsm;
 pub mod generate;
 // pub mod lens;
+pub mod fsm_cell;
 pub mod projection;
 pub mod util;
 
@@ -14,7 +15,9 @@ pub use fsm::Fsm;
 
 pub mod prelude {
     pub use crate::actor::{ActorRead, ActorRw};
-    pub use crate::fsm::{Contextual, Fsm};
+    pub use crate::fsm::{Contextual, Fsm, FsmCell, FsmMut, FsmResult};
     pub use crate::generate::Generator;
     pub use crate::projection::{Projection, ProjectionTests};
+
+    pub use std::convert::Infallible;
 }

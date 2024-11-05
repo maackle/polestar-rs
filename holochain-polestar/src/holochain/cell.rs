@@ -1,3 +1,7 @@
+use std::convert::Infallible;
+
+use polestar::fsm::FsmResult;
+
 use crate::*;
 
 pub enum CellEvent {
@@ -13,8 +17,9 @@ pub enum CellState {
 impl polestar::Fsm for CellState {
     type Event = CellEvent;
     type Fx = ();
+    type Error = Infallible;
 
-    fn transition(&mut self, _: Self::Event) -> Self::Fx {
+    fn transition(mut self, _: Self::Event) -> FsmResult<Self> {
         todo!()
     }
 }

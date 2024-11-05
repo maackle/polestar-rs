@@ -87,7 +87,7 @@ enum HygrometerFsm {
     Humid,
 }
 
-impl Fsm for Thermostat {
+impl FsmMut for Thermostat {
     type Event = Temp;
     type Fx = ();
 

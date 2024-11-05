@@ -10,9 +10,13 @@ use crate::*;
 
 impl polestar::Fsm for AppState {
     type Event = (AppEvent, Arc<AppContext>);
-    type Fx = anyhow::Result<Option<AppFx>>;
+    type Fx = Option<AppFx>;
+    type Error = anyhow::Error;
 
-    fn transition(&mut self, (event, context): Self::Event) -> Self::Fx {
+    fn transition(
+        mut self,
+        (event, context): Self::Event,
+    ) -> Result<(Self, Self::Fx), Self::Error> {
         match event {
             AppEvent::Enable => {
                 self.status = AppStatus::Running;
@@ -42,7 +46,7 @@ impl polestar::Fsm for AppState {
                     .transition(false);
             }
         }
-        Ok(Some(AppFx::AdjustCells))
+        Ok((self, Some(AppFx::AdjustCells)))
     }
 }
 
@@ -58,6 +62,7 @@ pub enum AppEvent {
     // EnableApp,
 }
 
+#[derive(Debug)]
 pub enum AppFx {
     AdjustCells,
 }

@@ -3,15 +3,15 @@
 // - there probably needs to be a special proptest strategy for pulling from the existing list of nodes
 // - this model might not even be a diagrammable state machine, maybe it needs to be further abstracted into something visually comprehensible
 
-use polestar::{actor::ActorRw, diagram::print_dot_state_diagram, Fsm};
+use polestar::{diagram::print_dot_state_diagram, fsm::FsmCell, prelude::*};
 use proptest_derive::Arbitrary;
 
 use super::*;
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub struct NodeOp {
     node: NodeId,
-    model: NodeOpModel,
+    model: FsmCell<NodeOpModel>,
 }
 
 impl NodeOp {
@@ -42,7 +42,7 @@ pub enum NodeOpEvent {
     Send(NodeId),
 }
 
-impl Fsm for NodeOpModel {
+impl FsmMut for NodeOpModel {
     type Event = NodeOpEvent;
     type Fx = ();
 
@@ -71,9 +71,10 @@ impl Fsm for NodeOpModel {
 impl Fsm for NodeOp {
     type Event = NodeOpEvent;
     type Fx = ();
-
-    fn transition(&mut self, t: Self::Event) {
-        self.model.transition(t);
+    type Error = Infallible;
+    fn transition(mut self, t: Self::Event) -> FsmResult<Self> {
+        let fx = self.model.transition_mut(t).unwrap();
+        Ok((self, fx))
     }
 }
 
