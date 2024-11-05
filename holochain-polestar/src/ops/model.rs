@@ -23,8 +23,9 @@ impl NodeOp {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Default, Debug, PartialEq, Eq, Hash)]
 pub enum NodeOpPhase {
+    #[default]
     Pending,
     Validated,
     Rejected,
@@ -75,6 +76,5 @@ impl Fsm for NodeOp {
 fn test_diagram() {
     tracing::subscriber::set_global_default(tracing_subscriber::FmtSubscriber::new()).unwrap();
 
-    let node = NodeOp::new(Id::new().into());
-    print_dot_state_diagram(node, 5, 30);
+    print_dot_state_diagram(NodeOpPhase::default(), 5, 30);
 }

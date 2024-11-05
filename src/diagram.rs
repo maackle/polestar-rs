@@ -59,12 +59,14 @@ where
 
     let mut walks = 0;
     let mut total_steps = 0;
+    let mut num_errors = 0;
 
     'outer: loop {
         let mut prev = ix;
-        let (steps, error) = take_a_walk(m.clone(), &stop);
-        if let Some(error) = error {
-            tracing::warn!("error encountered: {:?}", error);
+        let (steps, errors) = take_a_walk(m.clone(), &stop);
+        num_errors += errors.len();
+        if !errors.is_empty() {
+            tracing::debug!("errors: {:#?}", errors);
         }
         total_steps += steps.len();
         for (edge, node) in steps {
@@ -92,9 +94,10 @@ where
     }
 
     tracing::info!(
-        "constructed state diagram in {total_steps} total steps over {walks} walks. nodes={}, edges={}",
+        "constructed state diagram in {total_steps} total steps over {walks} walks. nodes={}, edges={}, errors={}",
         graph.node_count(),
-        graph.edge_count()
+        graph.edge_count(),
+        num_errors
     );
 
     graph
@@ -116,7 +119,8 @@ impl<M: Eq + Hash> From<Vec<M>> for StopCondition<M> {
     }
 }
 
-fn take_a_walk<M>(mut m: M, stop: &StopCondition<M>) -> (Vec<(M::Event, M)>, Option<M::Error>)
+#[allow(clippy::type_complexity)]
+fn take_a_walk<M>(mut m: M, stop: &StopCondition<M>) -> (Vec<(M::Event, M)>, Vec<M::Error>)
 where
     M: Fsm + Clone + Hash + Eq,
     M::Event: Arbitrary + Clone,
@@ -124,24 +128,31 @@ where
     use proptest::strategy::{Strategy, ValueTree};
     use proptest::test_runner::TestRunner;
     let mut runner = TestRunner::default();
-    let mut steps = vec![];
+    let mut transitions = vec![];
+    let mut num_steps = 0;
+    let mut errors = vec![];
     while match stop {
-        StopCondition::Steps { steps: n, .. } => steps.len() < *n,
+        StopCondition::Steps { steps: n, .. } => num_steps < *n,
         StopCondition::Terminals(terminals) => !terminals.contains(&m),
     } {
         let event: M::Event = M::Event::arbitrary()
             .new_tree(&mut runner)
             .unwrap()
             .current();
-        m = match m.transition(event.clone()).map(first) {
-            Ok(s) => s,
+
+        match m.clone().transition(event.clone()).map(first) {
+            Ok(mm) => {
+                m = mm;
+                transitions.push((event, m.clone()));
+            }
             Err(err) => {
-                return (steps, Some(err));
+                // TODO: would be better to exhaustively try each event in turn in the error case, so that if all events lead to error, we can halt early.
+                errors.push(err);
             }
         };
-        steps.push((event, m.clone()));
+        num_steps += 1;
     }
-    (steps, None)
+    (transitions, errors)
 }
 
 #[cfg(test)]
