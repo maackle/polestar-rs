@@ -17,8 +17,6 @@ pub enum RoundPhase {
     AgentsReceived,
     OpDiffReceived,
     Finished,
-
-    Error,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Arbitrary)]
@@ -37,7 +35,7 @@ pub type RoundContext = GossipType;
 impl Fsm for RoundPhase {
     type Event = (RoundEvent, Arc<RoundContext>);
     type Fx = ();
-    type Error = Infallible;
+    type Error = anyhow::Error;
 
     fn transition(mut self, (event, ctx): Self::Event) -> FsmResult<Self> {
         use GossipType as T;
@@ -54,7 +52,7 @@ impl Fsm for RoundPhase {
             // This might not be right
             (_, _, E::Close) => P::Finished,
 
-            _ => P::Error,
+            _ => return Err(anyhow::anyhow!("invalid transition")),
         };
         Ok((next, ()))
     }
@@ -84,13 +82,6 @@ pub fn map_state(state: RoundState) -> Option<RoundPhase> {
     todo!()
 }
 
-pub fn map_result(f: impl FnOnce() -> KitsuneResult<RoundPhase>) -> RoundPhase {
-    match f() {
-        Ok(s) => s,
-        Err(e) => RoundPhase::Error,
-    }
-}
-
 #[test]
 fn diagram_round_state() {
     use polestar::diagram::*;
@@ -99,19 +90,13 @@ fn diagram_round_state() {
 
     print_dot_state_diagram(
         RoundPhase::Begin.context(GossipType::Recent),
-        vec![
-            RoundPhase::Error.context(GossipType::Recent),
-            RoundPhase::Finished.context(GossipType::Recent),
-        ],
+        vec![RoundPhase::Finished.context(GossipType::Recent)],
         1000,
     );
 
     print_dot_state_diagram(
         RoundPhase::Begin.context(GossipType::Historical),
-        vec![
-            RoundPhase::Error.context(GossipType::Historical),
-            RoundPhase::Finished.context(GossipType::Historical),
-        ],
+        vec![RoundPhase::Finished.context(GossipType::Historical)],
         1000,
     );
 }

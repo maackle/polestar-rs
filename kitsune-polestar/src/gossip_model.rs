@@ -13,7 +13,7 @@ use proptest_derive::Arbitrary;
 
 use crate::{
     block_on,
-    round_model::{map_result, RoundEvent, RoundFsm},
+    round_model::{RoundEvent, RoundFsm},
 };
 
 #[derive(Debug, Clone, Eq, PartialEq, Arbitrary, derive_more::From)]

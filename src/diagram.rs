@@ -63,13 +63,13 @@ where
 
     'outer: loop {
         let mut prev = ix;
-        let (steps, errors) = take_a_walk(m.clone(), &stop);
+        let (transitions, errors, num_steps) = take_a_walk(m.clone(), &stop);
         num_errors += errors.len();
         if !errors.is_empty() {
             tracing::debug!("errors: {:#?}", errors);
         }
-        total_steps += steps.len();
-        for (edge, node) in steps {
+        total_steps += num_steps;
+        for (edge, node) in transitions {
             let ix = if let Some(ix) = node_indices.get(&node) {
                 *ix
             } else {
@@ -94,10 +94,9 @@ where
     }
 
     tracing::info!(
-        "constructed state diagram in {total_steps} total steps over {walks} walks. nodes={}, edges={}, errors={}",
+        "constructed state diagram in {total_steps} total steps ({num_errors} errors) over {walks} walks. nodes={}, edges={}",
         graph.node_count(),
         graph.edge_count(),
-        num_errors
     );
 
     graph
@@ -120,7 +119,7 @@ impl<M: Eq + Hash> From<Vec<M>> for StopCondition<M> {
 }
 
 #[allow(clippy::type_complexity)]
-fn take_a_walk<M>(mut m: M, stop: &StopCondition<M>) -> (Vec<(M::Event, M)>, Vec<M::Error>)
+fn take_a_walk<M>(mut m: M, stop: &StopCondition<M>) -> (Vec<(M::Event, M)>, Vec<M::Error>, usize)
 where
     M: Fsm + Clone + Hash + Eq,
     M::Event: Arbitrary + Clone,
@@ -152,7 +151,7 @@ where
         };
         num_steps += 1;
     }
-    (transitions, errors)
+    (transitions, errors, num_steps)
 }
 
 #[cfg(test)]
