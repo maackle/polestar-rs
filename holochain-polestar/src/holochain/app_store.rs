@@ -1,11 +1,11 @@
 use std::{collections::HashMap, convert::Infallible};
 
-use polestar::fsm::FsmResult;
+use polestar::{fsm::FsmResult, fsm_wrappers::FsmHashMap};
 
 use super::*;
 
 #[derive(Default)]
-pub struct AppStore(HashMap<AppId, AppFsm>);
+pub struct AppStore(FsmHashMap<AppId, AppFsm>);
 
 pub enum AppStoreEvent {
     AppEvent(AppId, AppEvent),
@@ -27,12 +27,10 @@ impl polestar::Fsm for AppStore {
     fn transition(mut self, e: Self::Event) -> FsmResult<Self> {
         let fx = match e {
             AppStoreEvent::AppEvent(id, e) => {
-                let (state, fx) = self
+                let fx = self
                     .0
-                    .remove(&id)
-                    .ok_or(anyhow!("app not found: {id}"))?
-                    .transition(e)?;
-                self.0.insert(id.clone(), state);
+                    .transition_mut(id.clone(), e)
+                    .ok_or(anyhow!("app not found: {id}"))??;
                 fx.map(|fx| (id, fx).into())
             }
             AppStoreEvent::InstallApp(id, context) => {

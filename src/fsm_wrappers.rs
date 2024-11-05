@@ -77,3 +77,9 @@ impl<K: Eq + std::hash::Hash, V: Fsm> FsmHashMap<K, V> {
         }
     }
 }
+
+impl<K: Eq + std::hash::Hash, V: Fsm> Default for FsmHashMap<K, V> {
+    fn default() -> Self {
+        Self(HashMap::default())
+    }
+}

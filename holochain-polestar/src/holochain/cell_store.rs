@@ -1,11 +1,11 @@
 use std::{collections::HashMap, convert::Infallible};
 
-use polestar::fsm::FsmResult;
+use polestar::{fsm::FsmResult, fsm_wrappers::FsmHashMap};
 
 use super::*;
 
 #[derive(Default)]
-pub struct CellStore(HashMap<CellId, CellFsm>);
+pub struct CellStore(FsmHashMap<CellId, CellFsm>);
 
 pub enum CellStoreEvent {
     CellEvent(CellId, CellEvent),
@@ -22,15 +22,12 @@ impl polestar::Fsm for CellStore {
     type Error = anyhow::Error;
 
     fn transition(mut self, e: Self::Event) -> FsmResult<Self> {
-        let _fx = match e {
+        let () = match e {
             CellStoreEvent::CellEvent(id, e) => {
-                let (state, fx) = self
+                let () = self
                     .0
-                    .remove(&id)
-                    .ok_or(anyhow!("cell not found: {id:?}"))?
-                    .transition(e)?;
-                self.0.insert(id, state);
-                fx
+                    .transition_mut(id.clone(), e)
+                    .ok_or(anyhow!("cell not found: {id:?}"))??;
             }
             CellStoreEvent::AddCell(id) => {
                 self.0.insert(id, CellFsm::default());
