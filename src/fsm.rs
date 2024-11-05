@@ -1,7 +1,9 @@
+mod btreemap;
 mod context;
 mod hashmap;
 mod refcell;
 
+pub use btreemap::*;
 pub use context::*;
 pub use hashmap::*;
 pub use refcell::*;
@@ -44,5 +46,24 @@ impl Fsm for bool {
 
     fn transition(self, event: Self::Event) -> FsmResult<Self> {
         Ok((event, ()))
+    }
+}
+
+impl<T> Fsm for Option<T>
+where
+    T: Fsm,
+{
+    type Event = T::Event;
+    type Fx = T::Fx;
+    type Error = Option<T::Error>;
+
+    fn transition(self, event: Self::Event) -> FsmResult<Self> {
+        match self {
+            Some(t) => t
+                .transition(event)
+                .map(|(t, fx)| (Some(t), fx))
+                .map_err(Some),
+            None => Err(None),
+        }
     }
 }

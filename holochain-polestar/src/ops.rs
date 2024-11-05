@@ -4,12 +4,29 @@ use nanoid::nanoid;
 use proptest::prelude::{BoxedStrategy, Strategy};
 use proptest_derive::Arbitrary;
 
+static UNIQ: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Id(Arc<str>);
 
 impl Id {
     pub fn new() -> Self {
-        Self(nanoid!(5).into())
+        Self::from_int(UNIQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+    }
+
+    pub fn from_int(mut x: u32) -> Self {
+        let mut s = String::new();
+        while x > 0 {
+            s.push(std::char::from_digit((x % 26) + 10 - 1, 36).unwrap());
+            x /= 26;
+        }
+        Self(s.to_ascii_uppercase().into())
+    }
+}
+
+impl std::fmt::Display for Id {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -18,10 +35,8 @@ impl proptest::prelude::Arbitrary for Id {
     type Strategy = BoxedStrategy<Self>;
 
     fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
-        proptest::string::string_regex("[a-zA-Z0-9]{5}")
-            .unwrap()
-            .prop_map(|s| Self(s.into()))
-            .boxed()
+        let hi = UNIQ.load(std::sync::atomic::Ordering::Relaxed).max(2);
+        (1..hi).prop_map(Self::from_int).boxed()
     }
 }
 
