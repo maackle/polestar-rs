@@ -19,7 +19,7 @@ pub enum NodeOpPhase {
     Integrated,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Arbitrary)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Arbitrary, derive_more::Display)]
 pub enum NodeOpEvent {
     Validate,
     Reject,
@@ -48,7 +48,7 @@ impl Fsm for NodeOpPhase {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct NetworkOp {
     nodes: FsmBTreeMap<NodeId, Option<NodeOpPhase>>,
 }
@@ -64,22 +64,43 @@ impl NetworkOp {
 }
 
 impl Fsm for NetworkOp {
-    type Event = (NodeId, NodeOpEvent);
+    type Event = NetworkOpEvent;
     type Fx = ();
     type Error = String;
 
-    fn transition(mut self, (node, event): Self::Event) -> FsmResult<Self> {
+    fn transition(mut self, NetworkOpEvent(node_id, event): Self::Event) -> FsmResult<Self> {
         if let NodeOpEvent::Send(id) = &event {
+            if node_id == *id {
+                return Err("cannot send op to self".to_string());
+            }
             let mut node = self.nodes.get_mut(id).unwrap();
             if node.is_none() {
                 *node = Some(NodeOpPhase::Pending);
             }
         }
         self.nodes
-            .transition_mut(node.clone(), event)
-            .ok_or_else(|| format!("no node {:?}", node))?
+            .transition_mut(node_id.clone(), event)
+            .ok_or_else(|| format!("no node {:?}", node_id))?
             .map_err(|e| format!("{:?}", e))?;
         Ok((self, ()))
+    }
+}
+
+impl std::fmt::Debug for NetworkOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (id, n) in self.nodes.iter() {
+            writeln!(f, "{}: {:?}", id, n)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Hash, Arbitrary)]
+pub struct NetworkOpEvent(NodeId, NodeOpEvent);
+
+impl std::fmt::Debug for NetworkOpEvent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}({})", self.1, self.0)
     }
 }
 
@@ -87,7 +108,7 @@ impl Fsm for NetworkOp {
 fn test_diagram() {
     tracing::subscriber::set_global_default(tracing_subscriber::FmtSubscriber::new()).unwrap();
 
-    print_dot_state_diagram(NodeOpPhase::default(), 5, 30);
+    // print_dot_state_diagram(NodeOpPhase::default(), 5, 30);
 
     print_dot_state_diagram(NetworkOp::new_single_op(2), 5000, 30);
 }

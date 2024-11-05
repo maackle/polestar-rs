@@ -51,6 +51,7 @@ impl proptest::prelude::Arbitrary for Id {
     Arbitrary,
     derive_more::From,
     derive_more::Deref,
+    derive_more::Display,
 )]
 pub struct NodeId(Id);
 
@@ -65,6 +66,7 @@ pub struct NodeId(Id);
     Arbitrary,
     derive_more::From,
     derive_more::Deref,
+    derive_more::Display,
 )]
 pub struct Agent(Id);
 
@@ -80,7 +82,19 @@ impl Op {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Arbitrary, derive_more::From)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Arbitrary,
+    derive_more::From,
+    derive_more::Deref,
+    derive_more::Display,
+)]
 pub struct OpHash(Id);
 
 impl From<&Op> for OpHash {
