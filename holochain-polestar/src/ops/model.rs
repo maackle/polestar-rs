@@ -11,25 +11,25 @@ use super::*;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct NodeOp {
     node: NodeId,
-    model: ActorFsm<NodeOpModel>,
+    model: FsmCell<NodeOpPhase>,
 }
 
 impl NodeOp {
     pub fn new(node: NodeId) -> Self {
         Self {
             node,
-            model: NodeOpModel::Pending.into(),
+            model: NodeOpPhase::Pending.into(),
         }
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum NodeOpModel {
+pub enum NodeOpPhase {
     Pending,
     Validated,
     Rejected,
     Integrated,
-    Sent(Vec<ActorRw<NodeOp>>),
+    Sent(Vec<NodeId>),
 
     Error,
 }
@@ -42,23 +42,23 @@ pub enum NodeOpEvent {
     Send(NodeId),
 }
 
-impl Fsm for NodeOpModel {
+impl Fsm for NodeOpPhase {
     type Event = NodeOpEvent;
     type Fx = ();
     type Error = Infallible;
+
     fn transition(mut self, t: Self::Event) -> FsmResult<Self> {
         use NodeOpEvent as E;
-        use NodeOpModel as S;
+        use NodeOpPhase as S;
         let next = match (self, t) {
             (S::Rejected, _) => S::Rejected,
             (S::Pending, E::Validate) => S::Validated,
             (S::Pending, E::Reject) => S::Rejected,
             (S::Validated, E::Integrate) => S::Integrated,
-            (S::Validated, E::Send(op)) => S::Sent(vec![NodeOp::new(op).into()]),
-            (S::Sent(ops), E::Send(op)) => {
-                let mut ops = ops.clone();
-                ops.push(NodeOp::new(op).into());
-                S::Sent(ops)
+            (S::Validated, E::Send(id)) => S::Sent(vec![id]),
+            (S::Sent(mut ids), E::Send(id)) => {
+                ids.push(id);
+                S::Sent(ids)
             }
             _ => S::Error,
         };
@@ -70,6 +70,7 @@ impl Fsm for NodeOp {
     type Event = NodeOpEvent;
     type Fx = ();
     type Error = Infallible;
+
     fn transition(mut self, t: Self::Event) -> FsmResult<Self> {
         let () = self.model.transition_mut(t).unwrap()?;
         Ok((self, ()))

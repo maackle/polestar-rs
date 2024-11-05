@@ -3,11 +3,18 @@ use proptest::prelude::{Arbitrary, BoxedStrategy, Strategy};
 use proptest_derive::Arbitrary;
 use std::{cell::RefCell, collections::HashMap};
 
+#[derive(Clone, derive_more::Deref)]
 pub struct FsmCell<S>(RefCell<Option<S>>);
 
 impl<S> FsmCell<S> {
     pub fn new(s: S) -> Self {
         Self(RefCell::new(Some(s)))
+    }
+}
+
+impl<S> From<S> for FsmCell<S> {
+    fn from(s: S) -> Self {
+        Self::new(s)
     }
 }
 
