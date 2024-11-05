@@ -5,7 +5,7 @@ use kitsune_p2p::{
     gossip::sharded_gossip::{store::AgentInfoSession, RoundState, ShardedGossipWire},
     NodeCert,
 };
-use polestar::{fsm::Contextual, prelude::*};
+use polestar::{fsm::FsmContext, prelude::*};
 use proptest_derive::Arbitrary;
 
 use crate::block_on;
@@ -58,7 +58,7 @@ impl Fsm for RoundPhase {
     }
 }
 
-pub type RoundFsm = Contextual<RoundPhase, RoundContext>;
+pub type RoundFsm = FsmContext<RoundPhase, RoundContext>;
 
 pub fn map_event(msg: ShardedGossipWire) -> Option<RoundEvent> {
     match msg {

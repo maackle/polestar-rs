@@ -1,6 +1,6 @@
 use std::{collections::HashMap, convert::Infallible};
 
-use polestar::{fsm::FsmResult, fsm_wrappers::FsmHashMap};
+use polestar::prelude::*;
 
 use super::*;
 

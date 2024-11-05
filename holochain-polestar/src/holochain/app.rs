@@ -131,7 +131,7 @@ pub struct AppManifest {
     roles: HashMap<RoleName, DnaHash>,
 }
 
-pub type AppFsm = polestar::fsm::Contextual<AppState, AppContext>;
+pub type AppFsm = polestar::fsm::FsmContext<AppState, AppContext>;
 
 #[derive(Debug)]
 pub struct InstallAppPayload {

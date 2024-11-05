@@ -1,7 +1,6 @@
 use crate::Fsm;
 use proptest::prelude::{Arbitrary, BoxedStrategy, Strategy};
-use proptest_derive::Arbitrary;
-use std::{cell::RefCell, collections::HashMap};
+use std::cell::RefCell;
 
 /// Use a CellFsm when you want to transition an FSM in-place, via [`CellFsm::transition_mut`].
 ///
@@ -41,21 +40,21 @@ use std::{cell::RefCell, collections::HashMap};
 /// }
 /// ```
 #[derive(Clone, derive_more::Deref)]
-pub struct CellFsm<S>(RefCell<Option<S>>);
+pub struct FsmRefCell<S>(RefCell<Option<S>>);
 
-impl<S> CellFsm<S> {
+impl<S> FsmRefCell<S> {
     pub fn new(s: S) -> Self {
         Self(RefCell::new(Some(s)))
     }
 }
 
-impl<S> From<S> for CellFsm<S> {
+impl<S> From<S> for FsmRefCell<S> {
     fn from(s: S) -> Self {
         Self::new(s)
     }
 }
 
-impl<S: Fsm> CellFsm<S> {
+impl<S: Fsm> FsmRefCell<S> {
     pub fn transition_mut(&mut self, event: S::Event) -> Option<Result<S::Fx, S::Error>> {
         match self.0.take()?.transition(event) {
             Err(e) => Some(Err(e)),
@@ -67,63 +66,31 @@ impl<S: Fsm> CellFsm<S> {
     }
 }
 
-impl<S: PartialEq> PartialEq for CellFsm<S> {
+impl<S: PartialEq> PartialEq for FsmRefCell<S> {
     fn eq(&self, other: &Self) -> bool {
         *self.0.borrow() == *other.0.borrow()
     }
 }
 
-impl<S: Eq> Eq for CellFsm<S> {}
+impl<S: Eq> Eq for FsmRefCell<S> {}
 
-impl<S: std::fmt::Debug> std::fmt::Debug for CellFsm<S> {
+impl<S: std::fmt::Debug> std::fmt::Debug for FsmRefCell<S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("FsmCell").field(&self.0.borrow()).finish()
     }
 }
 
-impl<S: std::hash::Hash> std::hash::Hash for CellFsm<S> {
+impl<S: std::hash::Hash> std::hash::Hash for FsmRefCell<S> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.0.borrow().hash(state)
     }
 }
 
-impl<S: Arbitrary + 'static> Arbitrary for CellFsm<S> {
+impl<S: Arbitrary + 'static> Arbitrary for FsmRefCell<S> {
     type Parameters = S::Parameters;
     type Strategy = BoxedStrategy<Self>;
 
     fn arbitrary_with(p: Self::Parameters) -> Self::Strategy {
         S::arbitrary_with(p).prop_map(Self::new).boxed()
-    }
-}
-
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Arbitrary,
-    derive_more::Deref,
-    derive_more::DerefMut,
-    derive_more::From,
-    derive_more::Into,
-)]
-pub struct FsmHashMap<K: Eq + std::hash::Hash, V: Fsm>(HashMap<K, V>);
-
-impl<K: Eq + std::hash::Hash, V: Fsm> FsmHashMap<K, V> {
-    pub fn transition_mut(&mut self, k: K, event: V::Event) -> Option<Result<V::Fx, V::Error>> {
-        let r = self.0.remove(&k)?.transition(event);
-        match r {
-            Ok((state, fx)) => {
-                self.0.insert(k, state);
-                Some(Ok(fx))
-            }
-            Err(e) => Some(Err(e)),
-        }
-    }
-}
-
-impl<K: Eq + std::hash::Hash, V: Fsm> Default for FsmHashMap<K, V> {
-    fn default() -> Self {
-        Self(HashMap::default())
     }
 }

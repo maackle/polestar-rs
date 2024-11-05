@@ -8,7 +8,7 @@ use kitsune_p2p::{
     },
     NodeCert,
 };
-use polestar::{fsm_wrappers::FsmHashMap, prelude::*};
+use polestar::prelude::*;
 use proptest_derive::Arbitrary;
 
 use crate::{

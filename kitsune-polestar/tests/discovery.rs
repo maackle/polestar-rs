@@ -104,7 +104,7 @@ async fn make_gossip(gen: &mut impl Generator, gossip_type: GossipType) -> Shard
     let sender = build_event_handler(mock).await;
     let host_api = kitsune_p2p::HostStub::new().legacy(sender);
 
-    let gossip = ShardedGossipLocal {
+    ShardedGossipLocal {
         tuning_params,
         space: Arc::new(space),
         host_api,
@@ -112,8 +112,7 @@ async fn make_gossip(gen: &mut impl Generator, gossip_type: GossipType) -> Shard
         gossip_type,
         closing: AtomicBool::new(false),
         fetch_pool,
-    };
-    gossip
+    }
 }
 
 async fn build_event_handler(

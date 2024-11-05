@@ -11,7 +11,7 @@ use super::*;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct NodeOp {
     node: NodeId,
-    model: CellFsm<NodeOpPhase>,
+    model: FsmRefCell<NodeOpPhase>,
 }
 
 impl NodeOp {
