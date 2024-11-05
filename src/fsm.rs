@@ -20,6 +20,48 @@ where
     }
 }
 
+pub trait FsmFx
+where
+    Self: Sized,
+{
+    type Event;
+    type Fx;
+
+    fn transition(self, event: Self::Event) -> (Self, Self::Fx);
+
+    // fn context<C>(self, context: C) -> Contextual<Self, C> {
+    //     Contextual {
+    //         fsm: self,
+    //         context: Arc::new(context),
+    //     }
+    // }
+}
+
+impl<F> FsmFx for F
+where
+    F: Fsm,
+{
+    type Event = F::Event;
+    type Fx = F::Fx;
+
+    fn transition(mut self, event: Self::Event) -> (Self, Self::Fx) {
+        let fx = Fsm::transition(&mut self, event);
+        (self, fx)
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Arbitrary, derive_more::From)]
+pub struct FsmO<F>(F);
+
+impl<F> FsmO<F>
+where
+    F: FsmFx<Fx = ()>,
+{
+    pub fn transition(self, event: F::Event) -> Self {
+        F::transition(self.0, event).0.into()
+    }
+}
+
 /// Wrapper around an FSM which carries a context that gets injected into each event.
 /// Useful for attaching some immutable context to the FSM which is not part of its own state.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Arbitrary)]
@@ -70,3 +112,12 @@ impl Fsm for bool {
         *self = event;
     }
 }
+
+// impl FsmFx for bool {
+//     type Event = bool;
+//     type Fx = ();
+
+//     fn transition(self, event: Self::Event) -> (Self, Self::Fx) {
+//         (event, ())
+//     }
+// }

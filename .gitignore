@@ -8,3 +8,7 @@ pods/service-connections
 target/
 Cargo.lock
 .vscode/
+
+*.dot
+*.log
+

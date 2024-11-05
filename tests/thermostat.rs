@@ -102,6 +102,22 @@ impl Fsm for Thermostat {
     }
 }
 
+// impl FsmFx for Thermostat {
+//     type Event = Temp;
+//     type Fx = ();
+
+//     fn transition(mut self, temp: Self::Event) -> (Self, Self::Fx) {
+//         if temp < self.setting.lo() {
+//             self.state = ThermostatState::Heating;
+//         } else if temp > self.setting.hi() {
+//             self.state = ThermostatState::Cooling;
+//         } else {
+//             self.state = ThermostatState::Idle;
+//         }
+//         (self, ())
+//     }
+// }
+
 impl Projection<Thermostat> for Instrument {
     type Event = InstrumentReading;
 
