@@ -29,9 +29,6 @@ pub enum NodeOpPhase {
     Validated,
     Rejected,
     Integrated,
-    Sent(Vec<NodeId>),
-
-    Error,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Arbitrary)]
@@ -39,28 +36,25 @@ pub enum NodeOpEvent {
     Validate,
     Reject,
     Integrate,
-    Send(NodeId),
+    Send,
 }
 
 impl Fsm for NodeOpPhase {
     type Event = NodeOpEvent;
     type Fx = ();
-    type Error = Infallible;
+    type Error = String;
 
     fn transition(mut self, t: Self::Event) -> FsmResult<Self> {
         use NodeOpEvent as E;
         use NodeOpPhase as S;
         let next = match (self, t) {
-            (S::Rejected, _) => S::Rejected,
             (S::Pending, E::Validate) => S::Validated,
             (S::Pending, E::Reject) => S::Rejected,
             (S::Validated, E::Integrate) => S::Integrated,
-            (S::Validated, E::Send(id)) => S::Sent(vec![id]),
-            (S::Sent(mut ids), E::Send(id)) => {
-                ids.push(id);
-                S::Sent(ids)
-            }
-            _ => S::Error,
+            (S::Integrated, E::Send) => S::Integrated,
+
+            (S::Rejected, _) => return Err("cannot transition rejected op".to_string()),
+            _ => return Err("invalid transition".to_string()),
         };
         Ok((next, ()))
     }
@@ -69,7 +63,7 @@ impl Fsm for NodeOpPhase {
 impl Fsm for NodeOp {
     type Event = NodeOpEvent;
     type Fx = ();
-    type Error = Infallible;
+    type Error = String;
 
     fn transition(mut self, t: Self::Event) -> FsmResult<Self> {
         let () = self.model.transition_mut(t).unwrap()?;
@@ -82,5 +76,5 @@ fn test_diagram() {
     tracing::subscriber::set_global_default(tracing_subscriber::FmtSubscriber::new()).unwrap();
 
     let node = NodeOp::new(Id::new().into());
-    print_dot_state_diagram(node, 5, 10);
+    print_dot_state_diagram(node, 5, 30);
 }

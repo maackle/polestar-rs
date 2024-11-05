@@ -12,7 +12,7 @@ use std::{
 use petgraph::graph::DiGraph;
 use proptest::prelude::Arbitrary;
 
-use crate::prelude::*;
+use crate::{prelude::*, util::first};
 
 const MAX_WALKS: usize = 1000000;
 
@@ -62,7 +62,10 @@ where
 
     'outer: loop {
         let mut prev = ix;
-        let steps = take_a_walk(m.clone(), &stop).expect("TODO handle error");
+        let (steps, error) = take_a_walk(m.clone(), &stop);
+        if let Some(error) = error {
+            tracing::warn!("error encountered: {:?}", error);
+        }
         total_steps += steps.len();
         for (edge, node) in steps {
             let ix = if let Some(ix) = node_indices.get(&node) {
@@ -113,7 +116,7 @@ impl<M: Eq + Hash> From<Vec<M>> for StopCondition<M> {
     }
 }
 
-fn take_a_walk<M>(mut m: M, stop: &StopCondition<M>) -> Result<Vec<(M::Event, M)>, M::Error>
+fn take_a_walk<M>(mut m: M, stop: &StopCondition<M>) -> (Vec<(M::Event, M)>, Option<M::Error>)
 where
     M: Fsm + Clone + Hash + Eq,
     M::Event: Arbitrary + Clone,
@@ -130,10 +133,15 @@ where
             .new_tree(&mut runner)
             .unwrap()
             .current();
-        (m, _) = m.transition(event.clone())?;
+        m = match m.transition(event.clone()).map(first) {
+            Ok(s) => s,
+            Err(err) => {
+                return (steps, Some(err));
+            }
+        };
         steps.push((event, m.clone()));
     }
-    Ok(steps)
+    (steps, None)
 }
 
 #[cfg(test)]
