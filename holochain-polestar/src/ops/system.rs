@@ -103,6 +103,10 @@ impl Node {
             }
         });
     }
+
+    pub fn get_op(&self, hash: &OpHash) -> Option<OpData> {
+        self.read(|n| n.vault.get(hash).cloned())
+    }
 }
 
 impl NodeState {
@@ -175,7 +179,7 @@ impl Peer {
 pub fn step(node: Node, t: usize) {
     node.clone().state.write(|n| {
         // handle some fetchpool item
-        for _ in 0..10 {
+        for _ in 0..1 {
             if let Some((hash, from, destination)) = n.fetchpool.pop_front() {
                 // If no "from" specified, pick a random peer
                 let peer = from.unwrap_or_else(|| {
@@ -261,8 +265,8 @@ pub fn step(node: Node, t: usize) {
 
 #[derive(Clone, Debug)]
 pub struct OpData {
-    op: Op,
-    state: OpState,
+    pub op: Op,
+    pub state: OpState,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]

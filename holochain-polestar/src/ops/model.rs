@@ -124,7 +124,7 @@ impl std::fmt::Debug for NetworkOp {
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Arbitrary)]
-pub struct NetworkOpEvent(NodeId, NodeOpEvent);
+pub struct NetworkOpEvent(pub NodeId, pub NodeOpEvent);
 
 impl std::fmt::Debug for NetworkOpEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

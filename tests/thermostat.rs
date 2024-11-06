@@ -121,21 +121,22 @@ impl Fsm for Thermostat {
 // }
 
 impl Projection<Thermostat> for Instrument {
+    type System = Self;
     type Event = InstrumentReading;
 
-    fn apply(&mut self, event: Self::Event) {
-        self.current = event;
-        if self.min.temp > event.temp {
-            self.min.temp = event.temp;
+    fn apply(&self, system: &mut Self, event: Self::Event) {
+        system.current = event;
+        if system.min.temp > event.temp {
+            system.min.temp = event.temp;
         }
-        if self.max.temp < event.temp {
-            self.max.temp = event.temp;
+        if system.max.temp < event.temp {
+            system.max.temp = event.temp;
         }
-        if self.min.hum > event.hum {
-            self.min.hum = event.hum;
+        if system.min.hum > event.hum {
+            system.min.hum = event.hum;
         }
-        if self.max.hum < event.hum {
-            self.max.hum = event.hum;
+        if system.max.hum < event.hum {
+            system.max.hum = event.hum;
         }
     }
 
@@ -143,12 +144,12 @@ impl Projection<Thermostat> for Instrument {
         Some(event.temp)
     }
 
-    fn map_state(&self) -> Option<Thermostat> {
+    fn map_state(&self, system: &Self) -> Option<Thermostat> {
         let s = Thermostat {
-            setting: self.setting,
+            setting: system.setting,
             state: ThermostatState::Idle,
         };
-        Some(s.transition_(self.current.temp).unwrap())
+        Some(s.transition_(system.current.temp).unwrap())
     }
 
     fn gen_event(&self, g: &mut impl Generator, temp: Temp) -> InstrumentReading {
@@ -178,7 +179,7 @@ proptest! {
     #[test]
     fn test_thermostat(mut instrument: Instrument, event: InstrumentReading) {
         let mut r = TestRunner::default();
-        instrument.clone().test_invariants(&mut r, event);
+        instrument.clone().test_invariants(&mut r, instrument,event);
         // instrument = instrument.apply(event);
     }
 }
