@@ -96,7 +96,7 @@ impl<S> ActorRw<S> {
     /// be mandated that effects have to be handled internally, so that
     /// there is less chance that someone will use this for direct
     /// mutable access?
-    pub fn write<R>(&self, f: impl FnOnce(&mut S) -> R) -> R {
+    pub fn write<R>(&mut self, f: impl FnOnce(&mut S) -> R) -> R {
         f(&mut *self.0.write())
     }
 }

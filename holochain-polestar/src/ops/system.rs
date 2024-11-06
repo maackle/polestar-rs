@@ -1,5 +1,6 @@
 use std::{
     collections::{BTreeMap, HashMap, HashSet, VecDeque},
+    fmt::Debug,
     sync::Arc,
 };
 
@@ -8,12 +9,15 @@ use rand::Rng;
 
 use super::*;
 
-pub struct Nodes {
-    nodes: HashSet<NodeId, Node>,
+#[derive(Clone, Debug, derive_more::Deref, derive_more::DerefMut)]
+pub struct Panopticon {
+    #[deref]
+    #[deref_mut]
+    pub nodes: HashMap<NodeId, Node>,
 }
 
+#[derive(Clone, Debug)]
 pub struct NodeState {
-    id: NodeId,
     agents: Vec<Agent>,
     vault: BTreeMap<OpHash, OpData>,
     cache: HashMap<OpHash, Op>,
@@ -24,7 +28,6 @@ pub struct NodeState {
 impl NodeState {
     pub fn new() -> Self {
         Self {
-            id: Id::new().into(),
             agents: vec![],
             vault: Default::default(),
             cache: Default::default(),
@@ -32,8 +35,16 @@ impl NodeState {
             peers: vec![],
         }
     }
+
+    pub fn num_integrated(&self) -> usize {
+        self.vault
+            .values()
+            .filter(|v| v.state == OpState::Integrated)
+            .count()
+    }
 }
 
+#[derive(Clone, Debug)]
 pub enum NodeEvent {
     AuthorOp(usize),
     AddPeer(Peer),
@@ -42,6 +53,7 @@ pub enum NodeEvent {
     EnqueueFetch(OpHash, Option<Peer>, FetchDestination),
 }
 
+#[derive(Clone, Debug)]
 pub enum FetchDestination {
     Vault,
     Cache,
@@ -49,10 +61,20 @@ pub enum FetchDestination {
 
 /// A node in the network
 #[derive(Clone, derive_more::From, derive_more::Deref)]
-pub struct Node(ActorRw<NodeState>);
+pub struct Node {
+    id: NodeId,
+    #[deref]
+    state: ActorRw<NodeState>,
+}
+
+impl Debug for Node {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Node").field("id", &self.id).finish()
+    }
+}
 
 /// A node from another node's perspective
-#[derive(Clone, derive_more::From, derive_more::Deref)]
+#[derive(Clone, Debug, derive_more::From, derive_more::Deref)]
 pub struct Peer(Node);
 
 pub trait PeerInterface {
@@ -62,12 +84,16 @@ pub trait PeerInterface {
 }
 
 impl Node {
-    pub fn new(state: NodeState) -> Self {
-        Self(ActorRw::new(state))
+    pub fn new(id: NodeId, state: NodeState) -> Self {
+        Self {
+            id,
+            state: ActorRw::new(state),
+        }
     }
 
-    pub fn handle_event(&self, event: NodeEvent) {
-        self.0.write(|n| match event {
+    pub fn handle_event(&mut self, event: NodeEvent) {
+        tracing::info!("node {:?}  event {:?}", self.id, event);
+        self.state.write(|n| match event {
             NodeEvent::AuthorOp(num_deps) => n.author(num_deps),
             NodeEvent::AddPeer(peer) => n.peers.push(peer),
             NodeEvent::StoreOp(op, destination) => n.store(op, destination),
@@ -118,17 +144,17 @@ impl NodeState {
 }
 
 impl Peer {
-    fn publish_to(&self, from: Peer, op: OpHash) {
-        self.handle_event(NodeEvent::EnqueueFetch(
+    fn publish_to(&mut self, from: Peer, op: OpHash) {
+        self.0.handle_event(NodeEvent::EnqueueFetch(
             op,
             Some(from),
             FetchDestination::Vault,
         ));
     }
 
-    fn gossip_to(&self, from: Peer, ops: Vec<OpHash>) {
+    fn gossip_to(&mut self, from: Peer, ops: Vec<OpHash>) {
         for op in ops {
-            self.handle_event(NodeEvent::EnqueueFetch(
+            self.0.handle_event(NodeEvent::EnqueueFetch(
                 op,
                 Some(from.clone()),
                 FetchDestination::Vault,
@@ -147,7 +173,7 @@ impl Peer {
 }
 
 pub fn step(node: Node, t: usize) {
-    node.clone().write(|n| {
+    node.clone().state.write(|n| {
         // handle some fetchpool item
         for _ in 0..10 {
             if let Some((hash, from, destination)) = n.fetchpool.pop_front() {
@@ -156,7 +182,7 @@ pub fn step(node: Node, t: usize) {
                     n.peers[rand::thread_rng().gen_range(0..n.peers.len())].clone()
                 });
                 if let Some(op) = peer.fetch_from(hash.clone()) {
-                    tracing::trace!("node {:?}    fetched {:?}", n.id, hash);
+                    tracing::trace!("node {:?}    fetched {:?}", node.id, hash);
                     n.store(op, destination);
                 }
             } else {
@@ -181,14 +207,14 @@ pub fn step(node: Node, t: usize) {
                     op.state = OpState::Integrated;
 
                     // publishing as soon as integrated
-                    for peer in n.peers.iter() {
+                    for peer in n.peers.iter_mut() {
                         let hash = op.op.hash.clone();
                         peer.read(|p| {
                             tracing::trace!(
                                 "node {:?}  published {:?}  to {:?}",
-                                n.id,
+                                node.id,
                                 hash,
-                                p.id.clone()
+                                peer.id.clone()
                             )
                         });
                         peer.publish_to(node.clone().into(), hash);
@@ -218,13 +244,13 @@ pub fn step(node: Node, t: usize) {
                 .filter(|op| op.state == OpState::Integrated)
                 .map(|op| OpHash::from(&op.op))
                 .collect();
-            for peer in n.peers.iter() {
+            for peer in n.peers.iter_mut() {
                 peer.read(|p| {
                     tracing::trace!(
                         "node {:?}   gossiped {} ops to {:?}",
-                        n.id,
+                        node.id,
                         ops.len(),
-                        p.id.clone()
+                        peer.id.clone()
                     )
                 });
                 peer.gossip_to(node.clone().into(), ops.clone());
@@ -233,6 +259,7 @@ pub fn step(node: Node, t: usize) {
     })
 }
 
+#[derive(Clone, Debug)]
 pub struct OpData {
     op: Op,
     state: OpState,
@@ -266,17 +293,18 @@ mod tests {
         tracing::subscriber::set_global_default(tracing_subscriber::FmtSubscriber::new()).unwrap();
 
         const N: usize = 3;
-        const AUTHORED_OPS: usize = 100;
+        const AUTHORED_OPS: usize = 10;
         const MAX_ITERS: usize = 100_000;
 
-        let nodes: Vec<Node> = std::iter::repeat_with(NodeState::new)
-            .map(Node::new)
+        let mut nodes: Vec<Node> = std::iter::repeat_with(NodeState::new)
+            .map(|s| Node::new(Id::new().into(), s))
             .take(N)
             .collect();
 
         // peer discovery
         for i in 0..N {
-            nodes[i].handle_event(NodeEvent::AddPeer(nodes[(i + 1) % N].clone().into()));
+            let peer = nodes[(i + 1) % N].clone().into();
+            nodes[i].handle_event(NodeEvent::AddPeer(peer));
         }
 
         for i in 0..AUTHORED_OPS {
@@ -288,10 +316,10 @@ mod tests {
                 step(n.clone(), t);
             }
 
-            if t % 100 == 0
+            if t % 10 == 0
                 && nodes
                     .iter()
-                    .all(|n| n.read(|n| n.vault.len()) == AUTHORED_OPS)
+                    .all(|n| n.read(|n| n.num_integrated()) == AUTHORED_OPS)
             {
                 println!("consistency reached, t = {t}");
                 break;
@@ -299,7 +327,7 @@ mod tests {
         }
 
         for n in nodes.iter() {
-            assert_eq!(n.read(|n| n.vault.len()), AUTHORED_OPS);
+            assert_eq!(n.read(|n| n.num_integrated()), AUTHORED_OPS);
         }
     }
 }

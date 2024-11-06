@@ -1,12 +1,12 @@
 use polestar::prelude::*;
 
-use super::{model, system};
+use super::{model, system, NodeId};
 
-impl Projection<model::NetworkOp> for system::Nodes {
-    type Event = model::NetworkOpEvent;
+impl Projection<model::NetworkOp> for system::Panopticon {
+    type Event = (NodeId, system::NodeEvent);
 
-    fn apply(&mut self, event: Self::Event) {
-        todo!()
+    fn apply(&mut self, (id, event): Self::Event) {
+        self.get_mut(&id).unwrap().handle_event(event);
     }
 
     fn map_state(&self) -> Option<model::NetworkOp> {
