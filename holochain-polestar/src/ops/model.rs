@@ -5,6 +5,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+use itertools::Itertools;
 use polestar::{
     diagram::{print_dot_state_diagram, StopCondition},
     fsm::FsmBTreeMap,
@@ -45,6 +46,7 @@ impl Fsm for NodeOpPhase {
             (S::Validated, E::Integrate) => S::Integrated,
             (S::Integrated, E::Send(_)) => S::Integrated,
 
+            (S::Integrated, _) => return Err("terminal".to_string()),
             (S::Rejected, _) => return Err("cannot transition rejected op".to_string()),
             _ => return Err("invalid transition".to_string()),
         };
@@ -52,28 +54,23 @@ impl Fsm for NodeOpPhase {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash, derive_more::Deref)]
 pub struct NetworkOp {
     nodes: FsmBTreeMap<NodeId, Option<NodeOpPhase>>,
 }
 
 impl NetworkOp {
-    pub fn new_single_op(num: usize) -> Self {
-        let mut nodes: BTreeMap<NodeId, _> = (0..num).map(|_| (Id::new().into(), None)).collect();
-        *nodes.iter_mut().next().unwrap().1 = Some(NodeOpPhase::Pending);
+    pub fn new(nodes: BTreeMap<NodeId, Option<NodeOpPhase>>) -> Self {
         Self {
             nodes: FsmBTreeMap::from(nodes),
         }
     }
 
-    pub fn terminal(&self) -> Self {
+    pub fn new_single_op(num: usize) -> Self {
+        let mut nodes: BTreeMap<NodeId, _> = (0..num).map(|_| (Id::new().into(), None)).collect();
+        *nodes.iter_mut().next().unwrap().1 = Some(NodeOpPhase::Pending);
         Self {
-            nodes: FsmBTreeMap::from(
-                self.nodes
-                    .iter()
-                    .map(|(id, _)| (id.clone(), Some(NodeOpPhase::Integrated)))
-                    .collect::<BTreeMap<_, _>>(),
-            ),
+            nodes: FsmBTreeMap::from(nodes),
         }
     }
 }
@@ -130,7 +127,7 @@ fn test_diagram() {
 
     // print_dot_state_diagram(NodeOpPhase::default(), 5, 30);
     let initial = NetworkOp::new_single_op(3);
-    let terminal = initial.terminal();
-    // print_dot_state_diagram(initial, StopCondition::Terminals([terminal].into()), 30);
-    print_dot_state_diagram(initial, 5000, 30);
+
+    // TODO allow for strategy params
+    print_dot_state_diagram(initial, 10_000, 100);
 }

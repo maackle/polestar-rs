@@ -6,6 +6,7 @@
 
 use std::{
     collections::{HashMap, HashSet},
+    fmt::Debug,
     hash::Hash,
 };
 
@@ -18,8 +19,8 @@ const MAX_WALKS: usize = 1000000;
 
 pub fn print_dot_state_diagram<M>(m: M, stop: impl Into<StopCondition<M>>, min_walks: usize)
 where
-    M: Fsm + Clone + Eq + std::fmt::Debug + std::hash::Hash,
-    M::Event: Arbitrary + Clone + Eq + std::fmt::Debug + std::hash::Hash,
+    M: Fsm + Clone + Eq + Debug + Hash,
+    M::Event: Arbitrary + Clone + Eq + Debug + Hash,
 {
     println!("{}", to_dot(state_diagram(m, stop, min_walks)));
 }
@@ -41,8 +42,8 @@ pub fn state_diagram<M>(
     min_walks: usize,
 ) -> DiGraph<M, M::Event>
 where
-    M: Fsm + Clone + Eq + std::hash::Hash + std::fmt::Debug,
-    M::Event: Arbitrary + Clone + Eq + std::hash::Hash,
+    M: Fsm + Clone + Eq + Hash + Debug,
+    M::Event: Arbitrary + Clone + Eq + Hash,
 {
     let stop = stop.into();
 
@@ -108,7 +109,7 @@ pub enum StopCondition<M: Eq + Hash> {
     /// Stop after a given number of steps
     Steps { steps: usize },
     /// Stop after reaching any of the given terminals.
-    /// Also, walks will continue past the max_walks until all terminals are reached.
+    /// Also, walks will continue past the min_walks until all terminals are reached.
     Terminals(HashSet<M>),
 }
 
@@ -121,7 +122,7 @@ impl<M: Eq + Hash> From<Vec<M>> for StopCondition<M> {
 #[allow(clippy::type_complexity)]
 fn take_a_walk<M>(mut m: M, stop: &StopCondition<M>) -> (Vec<(M::Event, M)>, Vec<M::Error>, usize)
 where
-    M: Fsm + Clone + Hash + Eq,
+    M: Fsm + Debug + Clone + Hash + Eq,
     M::Event: Arbitrary + Clone,
 {
     use proptest::strategy::{Strategy, ValueTree};

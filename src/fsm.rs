@@ -35,6 +35,10 @@ where
             context: Arc::new(context),
         }
     }
+
+    fn terminals(&self) -> Vec<Self> {
+        vec![]
+    }
 }
 
 pub type FsmResult<S: Fsm> = Result<(S, S::Fx), S::Error>;

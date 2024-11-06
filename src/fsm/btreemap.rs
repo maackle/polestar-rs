@@ -9,10 +9,12 @@ use std::collections::BTreeMap;
     Eq,
     Hash,
     Arbitrary,
+    derive_more::Constructor,
     derive_more::Deref,
     derive_more::DerefMut,
     derive_more::From,
     derive_more::Into,
+    derive_more::IntoIterator,
 )]
 pub struct FsmBTreeMap<K: Ord, V>(BTreeMap<K, V>);
 
