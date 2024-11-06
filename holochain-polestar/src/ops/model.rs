@@ -5,7 +5,11 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use polestar::{diagram::print_dot_state_diagram, fsm::FsmBTreeMap, prelude::*};
+use polestar::{
+    diagram::{print_dot_state_diagram, StopCondition},
+    fsm::FsmBTreeMap,
+    prelude::*,
+};
 use proptest_derive::Arbitrary;
 
 use super::*;
@@ -61,6 +65,17 @@ impl NetworkOp {
             nodes: FsmBTreeMap::from(nodes),
         }
     }
+
+    pub fn terminal(&self) -> Self {
+        Self {
+            nodes: FsmBTreeMap::from(
+                self.nodes
+                    .iter()
+                    .map(|(id, _)| (id.clone(), Some(NodeOpPhase::Integrated)))
+                    .collect::<BTreeMap<_, _>>(),
+            ),
+        }
+    }
 }
 
 impl Fsm for NetworkOp {
@@ -74,8 +89,9 @@ impl Fsm for NetworkOp {
                 return Err("cannot send op to self".to_string());
             }
             let mut node = self.nodes.get_mut(id).unwrap();
-            if node.is_none() {
-                *node = Some(NodeOpPhase::Pending);
+            match node {
+                Some(_) => return Err("don't send op twice".to_string()),
+                None => *node = Some(NodeOpPhase::Pending),
             }
         }
         self.nodes
@@ -100,15 +116,21 @@ pub struct NetworkOpEvent(NodeId, NodeOpEvent);
 
 impl std::fmt::Debug for NetworkOpEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}({})", self.1, self.0)
+        match &self.1 {
+            NodeOpEvent::Send(id) => write!(f, "Send({}↦{})", self.0, id),
+            _ => write!(f, "{:?}({})", self.1, self.0),
+        }
     }
 }
 
 #[test]
+#[ignore = "diagram"]
 fn test_diagram() {
     tracing::subscriber::set_global_default(tracing_subscriber::FmtSubscriber::new()).unwrap();
 
     // print_dot_state_diagram(NodeOpPhase::default(), 5, 30);
-
-    print_dot_state_diagram(NetworkOp::new_single_op(2), 5000, 30);
+    let initial = NetworkOp::new_single_op(3);
+    let terminal = initial.terminal();
+    // print_dot_state_diagram(initial, StopCondition::Terminals([terminal].into()), 30);
+    print_dot_state_diagram(initial, 5000, 30);
 }
