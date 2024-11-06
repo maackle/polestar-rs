@@ -36,9 +36,10 @@ impl NodeState {
 
 pub enum NodeEvent {
     AuthorOp(usize),
+    AddPeer(Peer),
     StoreOp(Op, FetchDestination),
     SetOpState(OpHash, OpState),
-    EnqueueFetch(OpHash, Peer, FetchDestination),
+    EnqueueFetch(OpHash, Option<Peer>, FetchDestination),
 }
 
 pub enum FetchDestination {
@@ -66,39 +67,20 @@ impl Node {
     }
 
     pub fn handle_event(&self, event: NodeEvent) {
-        self.0.write(|n| todo!());
-    }
-}
-
-impl Peer {
-    fn publish_to(&self, from: Peer, op: OpHash) {
-        self.0.write(|n| {
-            n.fetchpool
-                .push_back((op, Some(from), FetchDestination::Vault))
+        self.0.write(|n| match event {
+            NodeEvent::AuthorOp(num_deps) => n.author(num_deps),
+            NodeEvent::AddPeer(peer) => n.peers.push(peer),
+            NodeEvent::StoreOp(op, destination) => n.store(op, destination),
+            NodeEvent::SetOpState(hash, state) => n.vault.get_mut(&hash).unwrap().state = state,
+            NodeEvent::EnqueueFetch(hash, peer, destination) => {
+                n.fetchpool.push_back((hash, peer, destination));
+            }
         });
-    }
-
-    fn gossip_to(&self, from: Peer, ops: Vec<OpHash>) {
-        self.0.write(|n| {
-            n.fetchpool.extend(
-                ops.into_iter()
-                    .map(|op| (op, Some(from.clone()), FetchDestination::Vault)),
-            );
-        });
-    }
-
-    fn fetch_from(&self, op: OpHash) -> Option<Op> {
-        self.0.read(|n| {
-            n.vault
-                .get(&op)
-                .filter(|op_data| op_data.state == OpState::Integrated)
-                .map(|op_data| op_data.op.clone())
-        })
     }
 }
 
 impl NodeState {
-    pub fn author(&mut self, num_deps: usize) {
+    fn author(&mut self, num_deps: usize) {
         let hash: OpHash = Id::new().into();
         let deps: Vec<OpHash> = self
             .vault
@@ -117,7 +99,7 @@ impl NodeState {
         );
     }
 
-    pub fn store(&mut self, op: Op, destination: FetchDestination) {
+    fn store(&mut self, op: Op, destination: FetchDestination) {
         match destination {
             FetchDestination::Vault => {
                 self.vault.insert(
@@ -132,6 +114,35 @@ impl NodeState {
                 self.cache.insert(op.hash.clone(), op);
             }
         }
+    }
+}
+
+impl Peer {
+    fn publish_to(&self, from: Peer, op: OpHash) {
+        self.handle_event(NodeEvent::EnqueueFetch(
+            op,
+            Some(from),
+            FetchDestination::Vault,
+        ));
+    }
+
+    fn gossip_to(&self, from: Peer, ops: Vec<OpHash>) {
+        for op in ops {
+            self.handle_event(NodeEvent::EnqueueFetch(
+                op,
+                Some(from.clone()),
+                FetchDestination::Vault,
+            ));
+        }
+    }
+
+    fn fetch_from(&self, op: OpHash) -> Option<Op> {
+        self.0.read(|n| {
+            n.vault
+                .get(&op)
+                .filter(|op_data| op_data.state == OpState::Integrated)
+                .map(|op_data| op_data.op.clone())
+        })
     }
 }
 
@@ -242,46 +253,53 @@ pub enum OpOrigin {
     Fetched,
 }
 
-#[test]
-fn test_node() {
-    tracing::subscriber::set_global_default(tracing_subscriber::FmtSubscriber::new()).unwrap();
+#[cfg(test)]
+mod tests {
 
-    const N: usize = 3;
-    const AUTHORED_OPS: usize = 100;
-    const MAX_ITERS: usize = 100_000;
+    use rand::Rng;
+    use system::{Node, NodeEvent, NodeState};
 
-    let nodes: Vec<Node> = std::iter::repeat_with(NodeState::new)
-        .map(Node::new)
-        .take(N)
-        .collect();
+    use super::*;
 
-    // peer discovery
-    for i in 0..N {
-        nodes[i].write(|n| {
-            n.peers.push(nodes[(i + 1) % N].clone().into());
-        });
-    }
+    #[test]
+    fn test_node() {
+        tracing::subscriber::set_global_default(tracing_subscriber::FmtSubscriber::new()).unwrap();
 
-    for i in 0..AUTHORED_OPS {
-        nodes[0].write(|n| n.author(rand::thread_rng().gen_range(0..i + 1)));
-    }
+        const N: usize = 3;
+        const AUTHORED_OPS: usize = 100;
+        const MAX_ITERS: usize = 100_000;
 
-    for t in 0..MAX_ITERS {
+        let nodes: Vec<Node> = std::iter::repeat_with(NodeState::new)
+            .map(Node::new)
+            .take(N)
+            .collect();
+
+        // peer discovery
+        for i in 0..N {
+            nodes[i].handle_event(NodeEvent::AddPeer(nodes[(i + 1) % N].clone().into()));
+        }
+
+        for i in 0..AUTHORED_OPS {
+            nodes[0].handle_event(NodeEvent::AuthorOp(rand::thread_rng().gen_range(0..i + 1)));
+        }
+
+        for t in 0..MAX_ITERS {
+            for n in nodes.iter() {
+                step(n.clone(), t);
+            }
+
+            if t % 100 == 0
+                && nodes
+                    .iter()
+                    .all(|n| n.read(|n| n.vault.len()) == AUTHORED_OPS)
+            {
+                println!("consistency reached, t = {t}");
+                break;
+            }
+        }
+
         for n in nodes.iter() {
-            step(n.clone(), t);
+            assert_eq!(n.read(|n| n.vault.len()), AUTHORED_OPS);
         }
-
-        if t % 100 == 0
-            && nodes
-                .iter()
-                .all(|n| n.read(|n| n.vault.len()) == AUTHORED_OPS)
-        {
-            println!("consistency reached, t = {t}");
-            break;
-        }
-    }
-
-    for n in nodes.iter() {
-        assert_eq!(n.read(|n| n.vault.len()), AUTHORED_OPS);
     }
 }
