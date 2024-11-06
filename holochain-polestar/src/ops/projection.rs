@@ -4,10 +4,10 @@ use polestar::{fsm::FsmBTreeMap, prelude::*};
 
 use crate::ops::model::NetworkOpEvent;
 
-use super::{model, system, Id, NodeId, OpHash};
+use super::{model, system, Id, NodeId, Op, OpHash};
 
 struct NetworkOpProjection {
-    op_hash: OpHash,
+    op: Op,
 }
 
 impl Projection<model::NetworkOp> for NetworkOpProjection {
@@ -25,7 +25,7 @@ impl Projection<model::NetworkOp> for NetworkOpProjection {
             system
                 .iter()
                 .map(|(id, node)| {
-                    let phase = node.get_op(&self.op_hash).map(|o| match o.state {
+                    let phase = node.get_op(&self.op.hash).map(|o| match o.state {
                         S::Pending(_) => M::Pending,
                         S::Validated => M::Validated,
                         S::MissingDeps(_) => todo!(),
@@ -56,48 +56,105 @@ impl Projection<model::NetworkOp> for NetworkOpProjection {
     }
 
     fn gen_state(&self, generator: &mut impl Generator, state: model::NetworkOp) -> Self::System {
-        unimplemented!("generation not yet implemented for this projection")
+        // TODO: set up peers
+        state
+            .iter()
+            .map(|(id, phase)| {
+                let mut node = system::NodeState::new();
+                if let Some(phase) = phase {
+                    let state = match phase {
+                        // OpOrigin is arbitrary
+                        model::NodeOpPhase::Pending => {
+                            system::OpState::Pending(system::OpOrigin::Fetched)
+                        }
+                        model::NodeOpPhase::Validated => system::OpState::Validated,
+                        model::NodeOpPhase::Rejected => system::OpState::Rejected("reason".into()),
+                        model::NodeOpPhase::Integrated => system::OpState::Integrated,
+                    };
+                    node.vault.insert(
+                        self.op.hash.clone(),
+                        system::OpData {
+                            op: self.op.clone(),
+                            state,
+                        },
+                    );
+                }
+                (id.clone(), system::Node::new(id.clone(), node))
+            })
+            .collect()
     }
 
     fn gen_event(
         &self,
-        generator: &mut impl Generator,
-        event: model::NetworkOpEvent,
+        _generator: &mut impl Generator,
+        model::NetworkOpEvent(id, event): model::NetworkOpEvent,
     ) -> Self::Event {
-        unimplemented!("generation not yet implemented for this projection")
+        use model::NodeOpEvent as M;
+        match event {
+            M::Validate => (
+                id,
+                system::NodeEvent::SetOpState(self.op.hash.clone(), system::OpState::Validated),
+            ),
+            M::Reject => (
+                id,
+                system::NodeEvent::SetOpState(
+                    self.op.hash.clone(),
+                    system::OpState::Rejected("reason".into()),
+                ),
+            ),
+            M::Integrate => (
+                id,
+                system::NodeEvent::SetOpState(self.op.hash.clone(), system::OpState::Integrated),
+            ),
+            M::Send(id) => (
+                id.clone(),
+                system::NodeEvent::SendOp(self.op.hash.clone(), id),
+            ),
+        }
     }
 }
 
-#[test]
-fn test_invariants() {
+fn initial_state(num: usize) -> (HashMap<NodeId, system::Node>, Op) {
     let mut gen = proptest::test_runner::TestRunner::default();
 
-    let mut system = {
-        let mut nodes: HashMap<NodeId, system::Node> =
-            std::iter::repeat_with(system::NodeState::new)
-                .map(|s| {
-                    let id: NodeId = Id::new().into();
-                    (id.clone(), system::Node::new(id, s))
-                })
-                .take(3)
-                .collect();
+    let mut system: HashMap<NodeId, system::Node> = std::iter::repeat_with(system::NodeState::new)
+        .map(|s| {
+            let id: NodeId = Id::new().into();
+            (id.clone(), system::Node::new(id, s))
+        })
+        .take(num)
+        .collect();
 
-        system.iter_mut().next().map(|(_, n)| {
+    let (_, op) = system
+        .iter_mut()
+        .next()
+        .map(|(id, n)| {
             for i in 0..5 {
                 n.handle_event(system::NodeEvent::AuthorOp(0));
             }
-        });
-    };
 
-    let op_hash = system[0].read(|n| n.vault.iter().next().unwrap().0.clone());
-    let projection = NetworkOpProjection { op_hash };
+            (
+                id.clone(),
+                n.read(|n| n.vault.iter().next().unwrap().1.op.clone()),
+            )
+        })
+        .unwrap();
 
-    projection.test_invariants(
-        &mut gen,
-        system,
-        (
-            NodeId::new(),
-            system::NodeEvent::SetOpState(OpHash::new(), system::OpState::Pending(NodeId::new())),
-        ),
-    );
+    (system, op)
+}
+
+proptest::proptest! {
+    #[test]
+    fn test_invariants(id in 1..=3u32, event: model::NodeOpEvent) {
+        let mut gen = proptest::test_runner::TestRunner::default();
+        let (system, op) = initial_state(3);
+        let projection = NetworkOpProjection { op };
+        let id: NodeId = Id::from_int(id).into();
+        let event = projection.gen_event(&mut gen, NetworkOpEvent(id.clone(), event));
+        projection.test_invariants(
+            &mut gen,
+            system,
+            event,
+        );
+    }
 }

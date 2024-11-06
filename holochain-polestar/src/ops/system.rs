@@ -47,9 +47,10 @@ impl NodeState {
 #[derive(Clone, Debug)]
 pub enum NodeEvent {
     AuthorOp(usize),
-    AddPeer(Peer),
     StoreOp(Op, FetchDestination),
+    SendOp(OpHash, NodeId),
     SetOpState(OpHash, OpState),
+    AddPeer(Peer),
     EnqueueFetch(OpHash, Option<Peer>, FetchDestination),
 }
 
@@ -100,6 +101,9 @@ impl Node {
             NodeEvent::SetOpState(hash, state) => n.vault.get_mut(&hash).unwrap().state = state,
             NodeEvent::EnqueueFetch(hash, peer, destination) => {
                 n.fetchpool.push_back((hash, peer, destination));
+            }
+            NodeEvent::SendOp(hash, peer) => {
+                // noop
             }
         });
     }
