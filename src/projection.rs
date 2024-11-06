@@ -16,7 +16,7 @@ use proptest::prelude::*;
 ///
 pub trait Projection<M>
 where
-    M: Fsm + Arbitrary,
+    M: Fsm,
     M::Event: Arbitrary,
 {
     type Event;

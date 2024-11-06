@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap, VecDeque},
+    collections::{BTreeMap, HashMap, HashSet, VecDeque},
     sync::Arc,
 };
 
@@ -7,6 +7,10 @@ use polestar::actor::ActorRw;
 use rand::Rng;
 
 use super::*;
+
+pub struct Nodes {
+    nodes: HashSet<NodeId, Node>,
+}
 
 pub struct NodeState {
     id: NodeId,
@@ -30,6 +34,15 @@ impl NodeState {
             thunks: VecDeque::new(),
         }
     }
+}
+
+pub enum NodeEvent {
+    AuthorOp(usize),
+    StoreOp(Op, FetchDestination),
+    ValidateOp(OpHash),
+    RejectOp(OpHash),
+    IntegrateOp(OpHash),
+    SendOp(OpHash),
 }
 
 pub enum Thunk {
@@ -147,7 +160,7 @@ pub fn step(node: Node, t: usize) {
             if let Some((op, from, destination)) = n.fetchpool.pop_front() {
                 // If no "from" specified, pick a random peer
                 let peer = from.unwrap_or_else(|| {
-                    n.peers[rand::thread_rng().gen_range(0, n.peers.len())].clone()
+                    n.peers[rand::thread_rng().gen_range(0..n.peers.len())].clone()
                 });
                 n.thunks
                     .push_back((t + 10, Thunk::FetchOp(op, peer, destination)));
@@ -257,7 +270,7 @@ fn test_node() {
     }
 
     for i in 0..AUTHORED_OPS {
-        nodes[0].write(|n| n.author(rand::thread_rng().gen_range(0, i + 1)));
+        nodes[0].write(|n| n.author(rand::thread_rng().gen_range(0..i + 1)));
     }
 
     for t in 0..MAX_ITERS {
