@@ -19,6 +19,7 @@ pub struct NodeState {
     cache: HashMap<OpHash, Op>,
     fetchpool: VecDeque<(OpHash, Option<Peer>, FetchDestination)>,
     peers: Vec<Peer>,
+    thunks: VecDeque<(usize, Thunk)>,
 }
 
 impl NodeState {
@@ -30,6 +31,7 @@ impl NodeState {
             cache: Default::default(),
             fetchpool: VecDeque::new(),
             peers: vec![],
+            thunks: VecDeque::new(),
         }
     }
 }
@@ -37,8 +39,15 @@ impl NodeState {
 pub enum NodeEvent {
     AuthorOp(usize),
     StoreOp(Op, FetchDestination),
-    SetOpState(OpHash, OpState),
-    EnqueueFetch(OpHash, Peer, FetchDestination),
+    ValidateOp(OpHash),
+    RejectOp(OpHash),
+    IntegrateOp(OpHash),
+    SendOp(OpHash),
+}
+
+pub enum Thunk {
+    FetchOp(OpHash, Peer, FetchDestination),
+    PublishOp(Op, Peer),
 }
 
 pub enum FetchDestination {
@@ -46,28 +55,15 @@ pub enum FetchDestination {
     Cache,
 }
 
-/// A node in the network
-#[derive(Clone, derive_more::From, derive_more::Deref)]
-pub struct Node(ActorRw<NodeState>);
+pub type Node = ActorRw<NodeState>;
 
-/// A node from another node's perspective
 #[derive(Clone, derive_more::From, derive_more::Deref)]
 pub struct Peer(Node);
 
-pub trait PeerInterface {
+pub trait NodeInterface {
     fn publish_to(&mut self, from: Peer, op: OpHash);
     fn gossip_to(&mut self, from: Peer, ops: Vec<OpHash>);
     fn fetch_from(&self, op: OpHash) -> Option<Op>;
-}
-
-impl Node {
-    pub fn new(state: NodeState) -> Self {
-        Self(ActorRw::new(state))
-    }
-
-    pub fn handle_event(&self, event: NodeEvent) {
-        self.0.write(|n| todo!());
-    }
 }
 
 impl Peer {
@@ -116,38 +112,58 @@ impl NodeState {
             },
         );
     }
-
-    pub fn store(&mut self, op: Op, destination: FetchDestination) {
-        match destination {
-            FetchDestination::Vault => {
-                self.vault.insert(
-                    op.hash.clone(),
-                    OpData {
-                        op,
-                        state: OpState::Pending(OpOrigin::Fetched),
-                    },
-                );
-            }
-            FetchDestination::Cache => {
-                self.cache.insert(op.hash.clone(), op);
-            }
-        }
-    }
 }
 
 pub fn step(node: Node, t: usize) {
     node.clone().write(|n| {
+        // run one thunk
+        if let Some((tt, _)) = n.thunks.front() {
+            if *tt <= t {
+                match n.thunks.pop_front().unwrap().1 {
+                    Thunk::FetchOp(hash, from, destination) => {
+                        if let Some(op) = from.fetch_from(hash.clone()) {
+                            tracing::trace!("node {:?}    fetched {:?}", n.id, hash);
+                            match destination {
+                                FetchDestination::Vault => {
+                                    n.vault.insert(
+                                        hash,
+                                        OpData {
+                                            op,
+                                            state: OpState::Pending(OpOrigin::Fetched),
+                                        },
+                                    );
+                                }
+                                FetchDestination::Cache => {
+                                    n.cache.insert(hash, op);
+                                }
+                            }
+                        }
+                    }
+                    Thunk::PublishOp(op, peer) => {
+                        let hash = OpHash::from(&op);
+                        peer.read(|p| {
+                            tracing::trace!(
+                                "node {:?}  published {:?}  to {:?}",
+                                n.id,
+                                hash,
+                                p.id.clone()
+                            )
+                        });
+                        peer.publish_to(node.clone().into(), hash);
+                    }
+                }
+            }
+        }
+
         // handle some fetchpool item
         for _ in 0..10 {
-            if let Some((hash, from, destination)) = n.fetchpool.pop_front() {
+            if let Some((op, from, destination)) = n.fetchpool.pop_front() {
                 // If no "from" specified, pick a random peer
                 let peer = from.unwrap_or_else(|| {
                     n.peers[rand::thread_rng().gen_range(0..n.peers.len())].clone()
                 });
-                if let Some(op) = peer.fetch_from(hash.clone()) {
-                    tracing::trace!("node {:?}    fetched {:?}", n.id, hash);
-                    n.store(op, destination);
-                }
+                n.thunks
+                    .push_back((t + 10, Thunk::FetchOp(op, peer, destination)));
             } else {
                 break;
             }
@@ -168,19 +184,10 @@ pub fn step(node: Node, t: usize) {
                 }
                 OpState::Validated => {
                     op.state = OpState::Integrated;
-
-                    // publishing as soon as integrated
+                    // schedule publishing as soon as integrated
                     for peer in n.peers.iter() {
-                        let hash = op.op.hash.clone();
-                        peer.read(|p| {
-                            tracing::trace!(
-                                "node {:?}  published {:?}  to {:?}",
-                                n.id,
-                                hash,
-                                p.id.clone()
-                            )
-                        });
-                        peer.publish_to(node.clone().into(), hash);
+                        n.thunks
+                            .push_back((t + 10, Thunk::PublishOp(op.op.clone(), peer.clone())));
                     }
                 }
                 _ => {}
@@ -251,7 +258,7 @@ fn test_node() {
     const MAX_ITERS: usize = 100_000;
 
     let nodes: Vec<Node> = std::iter::repeat_with(NodeState::new)
-        .map(Node::new)
+        .map(Into::into)
         .take(N)
         .collect();
 
