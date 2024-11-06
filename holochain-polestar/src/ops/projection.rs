@@ -15,7 +15,9 @@ impl Projection<model::NetworkOp> for NetworkOpProjection {
     type Event = (NodeId, system::NodeEvent);
 
     fn apply(&self, system: &mut Self::System, (id, event): Self::Event) {
-        system.get_mut(&id).unwrap().handle_event(event);
+        if let Some(node) = system.get_mut(&id) {
+            node.handle_event(event);
+        }
     }
 
     fn map_state(&self, system: &Self::System) -> Option<model::NetworkOp> {
@@ -114,15 +116,17 @@ impl Projection<model::NetworkOp> for NetworkOpProjection {
     }
 }
 
-fn initial_state(num: usize) -> (HashMap<NodeId, system::Node>, Op) {
+fn initial_state(ids: &[NodeId]) -> (HashMap<NodeId, system::Node>, Op) {
     let mut gen = proptest::test_runner::TestRunner::default();
 
-    let mut system: HashMap<NodeId, system::Node> = std::iter::repeat_with(system::NodeState::new)
-        .map(|s| {
-            let id: NodeId = Id::new().into();
-            (id.clone(), system::Node::new(id, s))
+    let mut system: HashMap<NodeId, system::Node> = ids
+        .iter()
+        .map(|id| {
+            (
+                id.clone(),
+                system::Node::new(id.clone(), system::NodeState::new()),
+            )
         })
-        .take(num)
         .collect();
 
     let (_, op) = system
@@ -143,18 +147,24 @@ fn initial_state(num: usize) -> (HashMap<NodeId, system::Node>, Op) {
     (system, op)
 }
 
-proptest::proptest! {
-    #[test]
-    fn test_invariants(id in 1..=3u32, event: model::NodeOpEvent) {
-        let mut gen = proptest::test_runner::TestRunner::default();
-        let (system, op) = initial_state(3);
-        let projection = NetworkOpProjection { op };
-        let id: NodeId = Id::from_int(id).into();
-        let event = projection.gen_event(&mut gen, NetworkOpEvent(id.clone(), event));
-        projection.test_invariants(
-            &mut gen,
-            system,
-            event,
-        );
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest::proptest! {
+        #[test]
+        fn test_invariants(event: model::NodeOpEvent) {
+            let ids: Vec<_> = std::iter::repeat_with(Id::new).map(NodeId::from).take(3).collect();
+            let mut gen = proptest::test_runner::TestRunner::default();
+            let (system, op) = initial_state(&ids);
+            let projection = NetworkOpProjection { op };
+            let event = projection.gen_event(&mut gen, NetworkOpEvent(ids[0].clone(), event));
+            projection.test_invariants(
+                &mut gen,
+                system,
+                event,
+            );
+        }
     }
 }

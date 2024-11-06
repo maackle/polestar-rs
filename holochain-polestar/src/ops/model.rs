@@ -48,7 +48,7 @@ impl Fsm for NodeOpPhase {
 
             (S::Integrated, _) => return Err(None),
             (S::Rejected, _) => return Err(None),
-            _ => return Err(Some("invalid transition".to_string())),
+            p => return Err(Some(format!("invalid transition {:?}", p))),
         };
         Ok((next, ()))
     }

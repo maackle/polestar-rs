@@ -9,13 +9,6 @@ use rand::Rng;
 
 use super::*;
 
-#[derive(Clone, Debug, derive_more::Deref, derive_more::DerefMut)]
-pub struct Panopticon {
-    #[deref]
-    #[deref_mut]
-    pub nodes: HashMap<NodeId, Node>,
-}
-
 #[derive(Clone, Debug)]
 pub struct NodeState {
     pub agents: Vec<Agent>,
@@ -61,18 +54,18 @@ pub enum FetchDestination {
 }
 
 /// A node in the network
-#[derive(Clone, derive_more::From, derive_more::Deref)]
+#[derive(Clone, Debug, derive_more::From, derive_more::Deref)]
 pub struct Node {
     id: NodeId,
     #[deref]
     state: ActorRw<NodeState>,
 }
 
-impl Debug for Node {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Node").field("id", &self.id).finish()
-    }
-}
+// impl Debug for Node {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         f.debug_struct("Node").field("id", &self.id).finish()
+//     }
+// }
 
 /// A node from another node's perspective
 #[derive(Clone, Debug, derive_more::From, derive_more::Deref)]
@@ -98,7 +91,21 @@ impl Node {
             NodeEvent::AuthorOp(num_deps) => n.author(num_deps),
             NodeEvent::AddPeer(peer) => n.peers.push(peer),
             NodeEvent::StoreOp(op, destination) => n.store(op, destination),
-            NodeEvent::SetOpState(hash, state) => n.vault.get_mut(&hash).unwrap().state = state,
+            NodeEvent::SetOpState(hash, state) => {
+                if let Some(op) = n.vault.get_mut(&hash) {
+                    use OpState::*;
+                    let valid = matches!(
+                        (&op.state, &state),
+                        (Pending(_), Validated)
+                            | (Pending(_), Rejected(_))
+                            | (Validated, Integrated)
+                            | (MissingDeps(_), Validated)
+                    );
+                    if valid {
+                        op.state = state
+                    };
+                };
+            }
             NodeEvent::EnqueueFetch(hash, peer, destination) => {
                 n.fetchpool.push_back((hash, peer, destination));
             }

@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc f3ac6c4744b248669fde81b4415c129a69c166193416e1fe020af1ca9826c1dd # shrinks to id = 1, event = Validate
+cc 85372168629b2f31ec9fbc465ba477ae6e6efe5cb8bf08f747d8ac7a5512448d # shrinks to id = 1, event = Validate

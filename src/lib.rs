@@ -5,8 +5,10 @@ pub mod actor;
 pub mod fsm;
 pub mod generate;
 // pub mod lens;
-pub mod projection;
 pub mod util;
+
+#[cfg(feature = "testing")]
+pub mod projection;
 
 #[cfg(feature = "diagrams")]
 pub mod diagram;

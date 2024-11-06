@@ -75,38 +75,62 @@ where
         )
     }
 
-    fn transition_commutes_with_mapping(&self, system: Self::System, event: Self::Event) {
-        let left = {
-            let mut state = system.clone();
-            self.apply(&mut state, event.clone());
-            self.map_state(&state).map(Ok)
+    fn transition_commutes_with_mapping(&self, x: Self::System, event: Self::Event) {
+        let x_m = self.map_state(&x);
+
+        let x_a = {
+            let mut x = x.clone();
+            self.apply(&mut x, event.clone());
+            x
         };
-        let right = {
-            let s = self.map_state(&system);
+
+        let x_am = self.map_state(&x_a);
+
+        let x_ma = {
             let e = self.map_event(event);
-            if let (Some(s), Some(e)) = (s, e) {
-                Some(Model::transition(s, e).map(first))
+            if let (Some(x_m), Some(e)) = (x_m, e) {
+                // if error, return original state
+                Some(x_m.clone().transition(e).map(first).unwrap_or(x_m))
             } else {
                 None
             }
         };
+
         assert_eq!(
-            left, right,
-            "transition_commutes_with_mapping failed:    map_state(apply(x, event)) != transition(map_state(x), map_event(event))"
+            x_am,
+            x_ma,
+            "transition_commutes_with_mapping failed:\n{}",
+            prettydiff::diff_lines(&format!("{:#?}", x_am), &format!("{:#?}", x_ma))
         )
     }
 
     fn transition_commutes_with_generation(
         self,
         runner: &mut impl Generator,
-        state: Model,
+        x: Model,
         event: Model::Event,
     ) {
-        let left: Self::System =
-            { self.gen_state(runner, state.clone().transition(event.clone()).unwrap().0) };
-        let mut right = self.gen_state(runner, state);
-        self.apply(&mut right, self.gen_event(runner, event));
-        assert_eq!(self.map_state(&left), self.map_state(&right), "transition_commutes_with_generation failed:    map_state(gen_state(_, transition(state, transition))) != map_state(apply(gen_state(_, state), gen_event(_, transition)))")
+        // if error, return original state
+        let x_t = x
+            .clone()
+            .transition(event.clone())
+            .map(first)
+            .unwrap_or_else(|_| x.clone());
+
+        let x_tg: Self::System = self.gen_state(runner, x_t);
+
+        let x_g = self.gen_state(runner, x);
+        let mut x_gt = x_g.clone();
+        self.apply(&mut x_gt, self.gen_event(runner, event));
+
+        let x_tgm = self.map_state(&x_tg);
+        let x_gtm = self.map_state(&x_gt);
+        assert_eq!(
+            x_tgm,
+            x_gtm,
+            "transition_commutes_with_generation failed:\n{}",
+            prettydiff::diff_lines(&format!("{:#?}", x_tgm), &format!("{:#?}", x_gtm))
+        )
     }
 }
 
