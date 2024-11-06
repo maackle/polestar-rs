@@ -18,11 +18,11 @@ pub struct Panopticon {
 
 #[derive(Clone, Debug)]
 pub struct NodeState {
-    agents: Vec<Agent>,
-    vault: BTreeMap<OpHash, OpData>,
-    cache: HashMap<OpHash, Op>,
-    fetchpool: VecDeque<(OpHash, Option<Peer>, FetchDestination)>,
-    peers: Vec<Peer>,
+    pub agents: Vec<Agent>,
+    pub vault: BTreeMap<OpHash, OpData>,
+    pub cache: HashMap<OpHash, Op>,
+    pub fetchpool: VecDeque<(OpHash, Option<Peer>, FetchDestination)>,
+    pub peers: Vec<Peer>,
 }
 
 impl NodeState {

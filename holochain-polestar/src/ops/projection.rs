@@ -4,7 +4,7 @@ use polestar::{fsm::FsmBTreeMap, prelude::*};
 
 use crate::ops::model::NetworkOpEvent;
 
-use super::{model, system, NodeId, OpHash};
+use super::{model, system, Id, NodeId, OpHash};
 
 struct NetworkOpProjection {
     op_hash: OpHash,
@@ -19,18 +19,18 @@ impl Projection<model::NetworkOp> for NetworkOpProjection {
     }
 
     fn map_state(&self, system: &Self::System) -> Option<model::NetworkOp> {
-        use model::NodeOpPhase as P;
+        use model::NodeOpPhase as M;
         use system::OpState as S;
         Some(model::NetworkOp::new(
             system
                 .iter()
                 .map(|(id, node)| {
                     let phase = node.get_op(&self.op_hash).map(|o| match o.state {
-                        S::Pending(_) => P::Pending,
-                        S::Validated => P::Validated,
+                        S::Pending(_) => M::Pending,
+                        S::Validated => M::Validated,
                         S::MissingDeps(_) => todo!(),
-                        S::Rejected(_) => P::Rejected,
-                        S::Integrated => P::Integrated,
+                        S::Rejected(_) => M::Rejected,
+                        S::Integrated => M::Integrated,
                     });
                     (id.clone(), phase)
                 })
@@ -39,16 +39,16 @@ impl Projection<model::NetworkOp> for NetworkOpProjection {
     }
 
     fn map_event(&self, (id, event): Self::Event) -> Option<model::NetworkOpEvent> {
-        use model::NodeOpEvent as N;
-        use system::NodeEvent as E;
-        use system::OpState as S;
+        use model::NodeOpEvent as M;
+        use system::NodeEvent as S;
+        use system::OpState as O;
         let n = match event {
-            E::SetOpState(op, state) => match state {
-                S::Rejected(_) => Some(N::Reject),
-                S::Validated => Some(N::Validate),
-                S::Integrated => Some(N::Integrate),
-                S::Pending(op_origin) => unreachable!(),
-                S::MissingDeps(vec) => unreachable!(),
+            S::SetOpState(op, state) => match state {
+                O::Rejected(_) => Some(M::Reject),
+                O::Validated => Some(M::Validate),
+                O::Integrated => Some(M::Integrate),
+                O::Pending(op_origin) => unreachable!(),
+                O::MissingDeps(vec) => unreachable!(),
             },
             _ => None,
         }?;
@@ -66,4 +66,38 @@ impl Projection<model::NetworkOp> for NetworkOpProjection {
     ) -> Self::Event {
         unimplemented!("generation not yet implemented for this projection")
     }
+}
+
+#[test]
+fn test_invariants() {
+    let mut gen = proptest::test_runner::TestRunner::default();
+
+    let mut system = {
+        let mut nodes: HashMap<NodeId, system::Node> =
+            std::iter::repeat_with(system::NodeState::new)
+                .map(|s| {
+                    let id: NodeId = Id::new().into();
+                    (id.clone(), system::Node::new(id, s))
+                })
+                .take(3)
+                .collect();
+
+        system.iter_mut().next().map(|(_, n)| {
+            for i in 0..5 {
+                n.handle_event(system::NodeEvent::AuthorOp(0));
+            }
+        });
+    };
+
+    let op_hash = system[0].read(|n| n.vault.iter().next().unwrap().0.clone());
+    let projection = NetworkOpProjection { op_hash };
+
+    projection.test_invariants(
+        &mut gen,
+        system,
+        (
+            NodeId::new(),
+            system::NodeEvent::SetOpState(OpHash::new(), system::OpState::Pending(NodeId::new())),
+        ),
+    );
 }

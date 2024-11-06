@@ -17,7 +17,6 @@ use proptest::prelude::*;
 pub trait Projection<Model>
 where
     Model: Fsm,
-    Model::Event: Arbitrary,
 {
     type System: Clone;
     type Event;
@@ -34,10 +33,10 @@ where
 // #[cfg(feature = "testing")]
 pub trait ProjectionTests<Model>: Sized + Projection<Model>
 where
-    Self: Clone + Debug,
+    Self::System: Clone + Debug,
     Self::Event: Clone + Debug,
-    Model: Fsm + Clone + Debug + Eq + Arbitrary,
-    Model::Event: Clone + Debug + Eq + Arbitrary,
+    Model: Fsm + Clone + Debug + Eq,
+    Model::Event: Clone + Debug + Eq,
     Model::Error: Eq,
 {
     fn test_invariants(
@@ -51,7 +50,7 @@ where
         {
             self.map_state_is_a_retraction(runner, state.clone());
             self.map_event_is_a_retraction(runner, transition.clone());
-            self.clone().transition_commutes_with_mapping(system, event);
+            self.transition_commutes_with_mapping(system, event);
             self.transition_commutes_with_generation(runner, state, transition);
         }
         // TODO: all other cases ok?
@@ -115,10 +114,10 @@ where
 impl<M, T> ProjectionTests<M> for T
 where
     T: Projection<M>,
-    Self: Clone + Debug,
+    Self::System: Clone + Debug,
     Self::Event: Clone + Debug,
-    M: Fsm + Clone + Debug + Eq + Arbitrary,
-    M::Event: Clone + Debug + Eq + Arbitrary,
+    M: Fsm + Clone + Debug + Eq,
+    M::Event: Clone + Debug + Eq,
     M::Error: Eq,
 {
 }
