@@ -8,7 +8,7 @@ use kitsune_p2p::{
     },
     NodeCert,
 };
-use polestar::prelude::*;
+use polestar::{diagram::NoTerminal, prelude::*};
 use proptest_derive::Arbitrary;
 
 use crate::{
@@ -25,12 +25,13 @@ pub struct GossipState {
 impl Fsm for GossipState {
     type Event = GossipEvent;
     type Fx = ();
-    type Error = anyhow::Error;
+    type Error = NoTerminal<anyhow::Error>;
 
     fn transition(mut self, (node, event): Self::Event) -> FsmResult<Self> {
         self.rounds
             .transition_mut(node.clone(), event)
-            .ok_or(anyhow!("no round for {node:?}"))??;
+            .ok_or(anyhow!("no round for {node:?}"))?
+            .map_err(|o| o.unwrap_or(anyhow!("terminal")))?;
         Ok((self, ()))
     }
 }

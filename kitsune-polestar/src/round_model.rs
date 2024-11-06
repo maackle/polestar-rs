@@ -35,7 +35,7 @@ pub type RoundContext = GossipType;
 impl Fsm for RoundPhase {
     type Event = (RoundEvent, Arc<RoundContext>);
     type Fx = ();
-    type Error = anyhow::Error;
+    type Error = Option<anyhow::Error>;
 
     fn transition(mut self, (event, ctx): Self::Event) -> FsmResult<Self> {
         use GossipType as T;
@@ -48,11 +48,12 @@ impl Fsm for RoundPhase {
             (T::Recent, P::AgentDiffReceived, E::Agents) => P::AgentsReceived,
             (T::Recent, P::AgentsReceived, E::OpDiff) => P::OpDiffReceived,
             (_, P::OpDiffReceived, E::Ops) => P::Finished,
+            (_, P::Finished, _) => return Err(None),
 
             // This might not be right
             (_, _, E::Close) => P::Finished,
 
-            _ => return Err(anyhow::anyhow!("invalid transition")),
+            _ => return Err(Some(anyhow::anyhow!("invalid transition"))),
         };
         Ok((next, ()))
     }
@@ -83,6 +84,7 @@ pub fn map_state(state: RoundState) -> Option<RoundPhase> {
 }
 
 #[test]
+#[ignore = "diagram"]
 fn diagram_round_state() {
     use polestar::diagram::*;
 

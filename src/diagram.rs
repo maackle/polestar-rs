@@ -4,6 +4,9 @@
 // TODO: Walks don't have to be totally random. We can generate all possible Events and BFS the state tree.
 // TODO: more documentation and context
 
+mod is_terminal;
+pub use is_terminal::*;
+
 use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
@@ -21,6 +24,7 @@ pub fn print_dot_state_diagram<M>(m: M, stop: impl Into<StopCondition<M>>, min_w
 where
     M: Fsm + Clone + Eq + Debug + Hash,
     M::Event: Arbitrary + Clone + Eq + Debug + Hash,
+    M::Error: IsTerminal,
 {
     println!("{}", to_dot(state_diagram(m, stop, min_walks)));
 }
@@ -44,6 +48,7 @@ pub fn state_diagram<M>(
 where
     M: Fsm + Clone + Eq + Hash + Debug,
     M::Event: Arbitrary + Clone + Eq + Hash,
+    M::Error: IsTerminal,
 {
     let stop = stop.into();
 
@@ -61,11 +66,13 @@ where
     let mut walks = 0;
     let mut total_steps = 0;
     let mut num_errors = 0;
+    let mut num_terminations = 0;
 
     'outer: loop {
         let mut prev = ix;
-        let (transitions, errors, num_steps) = take_a_walk(m.clone(), &stop);
+        let (transitions, errors, num_steps, terminated) = take_a_walk(m.clone(), &stop);
         num_errors += errors.len();
+        num_terminations += terminated as usize;
         if !errors.is_empty() {
             tracing::debug!("errors: {:#?}", errors);
         }
@@ -95,7 +102,7 @@ where
     }
 
     tracing::info!(
-        "constructed state diagram in {total_steps} total steps ({num_errors} errors) over {walks} walks. nodes={}, edges={}",
+        "constructed state diagram in {total_steps} total steps ({num_errors} errors, {num_terminations} terminations) over {walks} walks. nodes={}, edges={}",
         graph.node_count(),
         graph.edge_count(),
     );
@@ -120,10 +127,14 @@ impl<M: Eq + Hash> From<Vec<M>> for StopCondition<M> {
 }
 
 #[allow(clippy::type_complexity)]
-fn take_a_walk<M>(mut m: M, stop: &StopCondition<M>) -> (Vec<(M::Event, M)>, Vec<M::Error>, usize)
+fn take_a_walk<M>(
+    mut m: M,
+    stop: &StopCondition<M>,
+) -> (Vec<(M::Event, M)>, Vec<M::Error>, usize, bool)
 where
     M: Fsm + Debug + Clone + Hash + Eq,
     M::Event: Arbitrary + Clone,
+    M::Error: IsTerminal,
 {
     use proptest::strategy::{Strategy, ValueTree};
     use proptest::test_runner::TestRunner;
@@ -131,10 +142,12 @@ where
     let mut transitions = vec![];
     let mut num_steps = 0;
     let mut errors = vec![];
+    let mut terminated = false;
     while match stop {
         StopCondition::Steps { steps: n, .. } => num_steps < *n,
         StopCondition::Terminals(terminals) => !terminals.contains(&m),
     } {
+        num_steps += 1;
         let event: M::Event = M::Event::arbitrary()
             .new_tree(&mut runner)
             .unwrap()
@@ -146,13 +159,17 @@ where
                 transitions.push((event, m.clone()));
             }
             Err(err) => {
-                // TODO: would be better to exhaustively try each event in turn in the error case, so that if all events lead to error, we can halt early.
-                errors.push(err);
+                if err.is_terminal() {
+                    terminated = true;
+                    break;
+                } else {
+                    // TODO: would be better to exhaustively try each event in turn in the error case, so that if all events lead to error, we can halt early.
+                    errors.push(err);
+                }
             }
         };
-        num_steps += 1;
     }
-    (transitions, errors, num_steps)
+    (transitions, errors, num_steps, terminated)
 }
 
 #[cfg(test)]

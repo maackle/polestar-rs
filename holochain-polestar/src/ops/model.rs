@@ -35,7 +35,7 @@ pub enum NodeOpEvent {
 impl Fsm for NodeOpPhase {
     type Event = NodeOpEvent;
     type Fx = ();
-    type Error = String;
+    type Error = Option<String>;
 
     fn transition(mut self, t: Self::Event) -> FsmResult<Self> {
         use NodeOpEvent as E;
@@ -46,9 +46,9 @@ impl Fsm for NodeOpPhase {
             (S::Validated, E::Integrate) => S::Integrated,
             (S::Integrated, E::Send(_)) => S::Integrated,
 
-            (S::Integrated, _) => return Err("terminal".to_string()),
-            (S::Rejected, _) => return Err("cannot transition rejected op".to_string()),
-            _ => return Err("invalid transition".to_string()),
+            (S::Integrated, _) => return Err(None),
+            (S::Rejected, _) => return Err(None),
+            _ => return Err(Some("invalid transition".to_string())),
         };
         Ok((next, ()))
     }
@@ -78,16 +78,31 @@ impl NetworkOp {
 impl Fsm for NetworkOp {
     type Event = NetworkOpEvent;
     type Fx = ();
-    type Error = String;
+    type Error = Option<String>;
 
     fn transition(mut self, NetworkOpEvent(node_id, event): Self::Event) -> FsmResult<Self> {
+        {
+            if 
+                // all integrated
+                self.values()
+                    .all(|n| matches!(n, Some(NodeOpPhase::Integrated)))
+                    || 
+                    // only rejected
+                    self
+                        .values()
+                        .all(|n| matches!(n, None | Some(NodeOpPhase::Rejected)))
+             {
+                return Err(None)
+            }
+        }
+
         if let NodeOpEvent::Send(id) = &event {
             if node_id == *id {
-                return Err("cannot send op to self".to_string());
+                return Err(Some("cannot send op to self".to_string()));
             }
             let mut node = self.nodes.get_mut(id).unwrap();
             match node {
-                Some(_) => return Err("don't send op twice".to_string()),
+                Some(_) => return Err(Some("don't send op twice".to_string())),
                 None => *node = Some(NodeOpPhase::Pending),
             }
         }
@@ -129,5 +144,5 @@ fn test_diagram() {
     let initial = NetworkOp::new_single_op(3);
 
     // TODO allow for strategy params
-    print_dot_state_diagram(initial, 10_000, 100);
+    print_dot_state_diagram(initial, 1_000, 300);
 }
