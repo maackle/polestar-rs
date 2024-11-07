@@ -120,7 +120,7 @@ impl Fsm for Thermostat {
 //     }
 // }
 
-impl Projection<Thermostat> for Instrument {
+impl ProjectionDown<Thermostat> for Instrument {
     type System = Self;
     type Event = InstrumentReading;
 

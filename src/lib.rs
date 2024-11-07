@@ -19,7 +19,9 @@ pub mod prelude {
     pub use crate::actor::{ActorFsm, ActorRead, ActorRw};
     pub use crate::fsm::{Fsm, FsmContext, FsmHashMap, FsmRefCell, FsmResult};
     pub use crate::generate::Generator;
-    pub use crate::projection::{Projection, ProjectionTests};
+    pub use crate::projection::{
+        ProjectionDown, ProjectionDownTests, ProjectionUp, ProjectionUpTests,
+    };
 
     pub use std::convert::Infallible;
 }

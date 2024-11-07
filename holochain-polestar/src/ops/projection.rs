@@ -10,7 +10,7 @@ struct NetworkOpProjection {
     op: Op,
 }
 
-impl Projection<model::NetworkOp> for NetworkOpProjection {
+impl ProjectionDown<model::NetworkOp> for NetworkOpProjection {
     type System = HashMap<NodeId, system::Node>;
     type Event = (NodeId, system::NodeEvent);
 
@@ -56,7 +56,9 @@ impl Projection<model::NetworkOp> for NetworkOpProjection {
         }?;
         Some(NetworkOpEvent(id, n))
     }
+}
 
+impl ProjectionUp<model::NetworkOp> for NetworkOpProjection {
     fn gen_state(&self, generator: &mut impl Generator, state: model::NetworkOp) -> Self::System {
         // TODO: set up peers
         state
@@ -160,7 +162,7 @@ mod tests {
             let (system, op) = initial_state(&ids);
             let projection = NetworkOpProjection { op };
             let event = projection.gen_event(&mut gen, NetworkOpEvent(ids[0].clone(), event));
-            projection.test_invariants(
+            projection.test_all_invariants(
                 &mut gen,
                 system,
                 event,

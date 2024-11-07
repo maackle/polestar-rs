@@ -8,12 +8,10 @@ use crate::{prelude::*, util::first};
 ///
 /// Invariants:
 ///
-/// - map_state(gen_state(_, state)) == state
-/// - map_event(gen_event(_, transition)) == transition
+/// commutativity for down projection:
 /// - map_state(apply(x, event)) == transition(map_state(x), map_event(event))
-/// - map_state(gen_state(_, transition(state, transition))) == map_state(apply(gen_state(_, state), gen_event(_, transition)))
 ///
-pub trait Projection<Model>
+pub trait ProjectionDown<Model>
 where
     Model: Fsm,
 {
@@ -21,16 +19,29 @@ where
     type Event;
 
     fn apply(&self, system: &mut Self::System, event: Self::Event);
-
     fn map_state(&self, system: &Self::System) -> Option<Model>;
     fn map_event(&self, event: Self::Event) -> Option<Model::Event>;
+}
 
+/// Invariants:
+///
+/// retractions:
+/// - map_state(gen_state(_, state)) == state
+/// - map_event(gen_event(_, transition)) == transition
+///
+/// commutativity for up projection:
+/// - transition(state, transition) == map_state(apply(gen_state(_, state), gen_event(_, transition)))
+///
+pub trait ProjectionUp<Model>: ProjectionDown<Model>
+where
+    Model: Fsm,
+{
     fn gen_state(&self, generator: &mut impl Generator, state: Model) -> Self::System;
     fn gen_event(&self, generator: &mut impl Generator, event: Model::Event) -> Self::Event;
 }
 
 #[cfg(feature = "testing")]
-pub trait ProjectionTests<Model>: Sized + Projection<Model>
+pub trait ProjectionDownTests<Model>: Sized + ProjectionDown<Model>
 where
     Self::System: Clone + Debug,
     Self::Event: Clone + Debug,
@@ -38,7 +49,46 @@ where
     Model::Event: Clone + Debug + Eq,
     Model::Error: Eq,
 {
-    fn test_invariants(
+    fn test_commutativity(&self, x: Self::System, event: Self::Event) {
+        let x_m = self.map_state(&x);
+
+        let x_a = {
+            let mut x = x.clone();
+            self.apply(&mut x, event.clone());
+            x
+        };
+
+        let x_am = self.map_state(&x_a);
+
+        let x_ma = {
+            let e = self.map_event(event);
+            if let (Some(x_m), Some(e)) = (x_m, e) {
+                // if error, return original state
+                Some(x_m.clone().transition(e).map(first).unwrap_or(x_m))
+            } else {
+                None
+            }
+        };
+
+        assert_eq!(
+            x_am,
+            x_ma,
+            "transition_commutes_with_mapping failed:\n{}",
+            prettydiff::diff_lines(&format!("{:#?}", x_am), &format!("{:#?}", x_ma))
+        )
+    }
+}
+
+#[cfg(feature = "testing")]
+pub trait ProjectionUpTests<Model>: Sized + ProjectionUp<Model>
+where
+    Self::System: Clone + Debug,
+    Self::Event: Clone + Debug,
+    Model: Fsm + Clone + Debug + Eq,
+    Model::Event: Clone + Debug + Eq,
+    Model::Error: Eq,
+{
+    fn test_all_invariants(
         self,
         runner: &mut impl Generator,
         system: Self::System,
@@ -49,7 +99,7 @@ where
         {
             self.map_state_is_a_retraction(runner, state.clone());
             self.map_event_is_a_retraction(runner, transition.clone());
-            self.transition_commutes_with_mapping(system, event);
+            self.test_commutativity(system, event);
             self.transition_commutes_with_generation(runner, state, transition);
         }
         // TODO: all other cases ok?
@@ -79,35 +129,6 @@ where
                 &format!("{:#?}", Some(&event)),
                 &format!("{:#?}", roundtrip.as_ref())
             )
-        )
-    }
-
-    fn transition_commutes_with_mapping(&self, x: Self::System, event: Self::Event) {
-        let x_m = self.map_state(&x);
-
-        let x_a = {
-            let mut x = x.clone();
-            self.apply(&mut x, event.clone());
-            x
-        };
-
-        let x_am = self.map_state(&x_a);
-
-        let x_ma = {
-            let e = self.map_event(event);
-            if let (Some(x_m), Some(e)) = (x_m, e) {
-                // if error, return original state
-                Some(x_m.clone().transition(e).map(first).unwrap_or(x_m))
-            } else {
-                None
-            }
-        };
-
-        assert_eq!(
-            x_am,
-            x_ma,
-            "transition_commutes_with_mapping failed:\n{}",
-            prettydiff::diff_lines(&format!("{:#?}", x_am), &format!("{:#?}", x_ma))
         )
     }
 
@@ -141,10 +162,22 @@ where
     }
 }
 
-// #[cfg(feature = "testing")]
-impl<M, T> ProjectionTests<M> for T
+#[cfg(feature = "testing")]
+impl<M, T> ProjectionDownTests<M> for T
 where
-    T: Projection<M>,
+    T: ProjectionDown<M>,
+    Self::System: Clone + Debug,
+    Self::Event: Clone + Debug,
+    M: Fsm + Clone + Debug + Eq,
+    M::Event: Clone + Debug + Eq,
+    M::Error: Eq,
+{
+}
+
+#[cfg(feature = "testing")]
+impl<M, T> ProjectionUpTests<M> for T
+where
+    T: ProjectionUp<M>,
     Self::System: Clone + Debug,
     Self::Event: Clone + Debug,
     M: Fsm + Clone + Debug + Eq,
