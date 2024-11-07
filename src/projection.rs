@@ -1,7 +1,6 @@
 use core::fmt::Debug;
 
 use crate::{prelude::*, util::first};
-use proptest::prelude::*;
 
 /// A Projection takes a system which may or may not an FSM, and maps it onto
 /// an FSM. This is useful for reaping the benefits of FSMs in systems which
@@ -30,7 +29,7 @@ where
     fn gen_event(&self, generator: &mut impl Generator, event: Model::Event) -> Self::Event;
 }
 
-// #[cfg(feature = "testing")]
+#[cfg(feature = "testing")]
 pub trait ProjectionTests<Model>: Sized + Projection<Model>
 where
     Self::System: Clone + Debug,
@@ -60,18 +59,26 @@ where
         let generated = self.gen_state(runner, state.clone());
         let roundtrip = self.map_state(&generated);
         assert_eq!(
-            Some(state),
-            roundtrip,
-            "map_state_is_a_retraction failed:    state != map_state(gen_state(_, state))"
+            Some(&state),
+            roundtrip.as_ref(),
+            "map_state_is_a_retraction failed:\n{}",
+            prettydiff::diff_lines(
+                &format!("{:#?}", Some(&state)),
+                &format!("{:#?}", roundtrip)
+            )
         )
     }
 
     fn map_event_is_a_retraction(&self, runner: &mut impl Generator, event: Model::Event) {
         let roundtrip = self.map_event(self.gen_event(runner, event.clone()));
         assert_eq!(
-            Some(event),
-            roundtrip,
-            "map_event_is_a_retraction failed:   transition != map_event(gen_event(_, transition))"
+            Some(&event),
+            roundtrip.as_ref(),
+            "map_event_is_a_retraction failed:\n{}",
+            prettydiff::diff_lines(
+                &format!("{:#?}", Some(&event)),
+                &format!("{:#?}", roundtrip.as_ref())
+            )
         )
     }
 
