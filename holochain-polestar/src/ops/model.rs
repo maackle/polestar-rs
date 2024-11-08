@@ -66,7 +66,7 @@ impl Fsm for NodeOpPhase {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, derive_more::Deref)]
+#[derive(Clone, Default, PartialEq, Eq, Hash, derive_more::Deref)]
 pub struct NetworkOp {
     nodes: FsmBTreeMap<NodeId, NodeOpPhase>,
 }
@@ -117,6 +117,12 @@ impl Fsm for NetworkOp {
             }
         }
 
+        if let NodeOpEvent::Store = event {
+            if self.nodes.values().any(|n| !matches!(n, NodeOpPhase::None)) {
+                return Err(Some("this model only handles one Store".to_string()));
+            }
+        }
+
         self.nodes
             .transition_mut(node_id.clone(), event)
             .ok_or_else(|| format!("no node {:?}", node_id))?
@@ -150,11 +156,12 @@ impl std::fmt::Debug for NetworkOpEvent {
 #[ignore = "diagram"]
 fn test_diagram() {
     tracing::subscriber::set_global_default(tracing_subscriber::FmtSubscriber::new()).unwrap();
+    
+    let num = 3;
 
-    // print_dot_state_diagram(NodeOpPhase::default(), 5, 30);
-    let ids = (0..2).map(|i| Id::new().into()).collect_vec();
+    let ids = (0..num).map(|i| Id::new().into()).collect_vec();
     let (initial, ()) = NetworkOp::new_empty(&ids).transition(NetworkOpEvent(ids[0].clone(), NodeOpEvent::Store)).unwrap();
 
     // TODO allow for strategy params
-    print_dot_state_diagram(initial, &DiagramConfig { steps: 1_000, walks: 300, ignore_loopbacks: true });
+    print_dot_state_diagram(initial, &DiagramConfig { steps: 300, walks: 100, ignore_loopbacks: true });
 }
