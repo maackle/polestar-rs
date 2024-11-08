@@ -37,8 +37,11 @@ where
         }
     }
 
-    fn terminals(&self) -> Vec<Self> {
-        vec![]
+    /// Designates this state as a terminal state.
+    ///
+    /// This is an optional hint, useful for generating diagrams from FSMs.
+    fn is_terminal(&self) -> bool {
+        false
     }
 }
 
@@ -52,23 +55,8 @@ impl Fsm for bool {
     fn transition(self, event: Self::Event) -> FsmResult<Self> {
         Ok((event, ()))
     }
-}
 
-impl<T> Fsm for Option<T>
-where
-    T: Fsm,
-{
-    type Event = T::Event;
-    type Fx = T::Fx;
-    type Error = Option<T::Error>;
-
-    fn transition(self, event: Self::Event) -> FsmResult<Self> {
-        match self {
-            Some(t) => t
-                .transition(event)
-                .map(|(t, fx)| (Some(t), fx))
-                .map_err(Some),
-            None => Err(None),
-        }
+    fn is_terminal(&self) -> bool {
+        false
     }
 }

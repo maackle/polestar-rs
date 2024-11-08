@@ -4,9 +4,6 @@
 // TODO: Walks don't have to be totally random. We can generate all possible Events and BFS the state tree.
 // TODO: more documentation and context
 
-mod is_terminal;
-pub use is_terminal::*;
-
 use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
@@ -20,11 +17,20 @@ use crate::{prelude::*, util::first};
 
 const MAX_WALKS: usize = 1000000;
 
-pub fn print_dot_state_diagram<M>(m: M, stop: impl Into<StopCondition<M>>, min_walks: usize)
-where
+#[derive(Debug, Clone)]
+pub struct DiagramConfig {
+    collapse_duplicate_edges: bool,
+    ignore_loopbacks: bool,
+}
+
+pub fn print_dot_state_diagram<M>(
+    m: M,
+    config: &DiagramConfig,
+    stop: impl Into<StopCondition<M>>,
+    min_walks: usize,
+) where
     M: Fsm + Clone + Eq + Debug + Hash,
     M::Event: Arbitrary + Clone + Eq + Debug + Hash,
-    M::Error: IsTerminal,
 {
     println!("{}", to_dot(state_diagram(m, stop, min_walks)));
 }
@@ -42,13 +48,13 @@ where
 // TODO: stop early if graph is saturated (by random walking over node and edge space first).
 pub fn state_diagram<M>(
     m: M,
+    config: &DiagramConfig,
     stop: impl Into<StopCondition<M>>,
     min_walks: usize,
 ) -> DiGraph<M, M::Event>
 where
     M: Fsm + Clone + Eq + Hash + Debug,
     M::Event: Arbitrary + Clone + Eq + Hash,
-    M::Error: IsTerminal,
 {
     let stop = stop.into();
 
@@ -134,7 +140,6 @@ fn take_a_walk<M>(
 where
     M: Fsm + Debug + Clone + Hash + Eq,
     M::Event: Arbitrary + Clone,
-    M::Error: IsTerminal,
 {
     use proptest::strategy::{Strategy, ValueTree};
     use proptest::test_runner::TestRunner;
@@ -157,15 +162,14 @@ where
             Ok(mm) => {
                 m = mm;
                 transitions.push((event, m.clone()));
-            }
-            Err(err) => {
-                if err.is_terminal() {
+                if m.is_terminal() {
                     terminated = true;
                     break;
-                } else {
-                    // TODO: would be better to exhaustively try each event in turn in the error case, so that if all events lead to error, we can halt early.
-                    errors.push(err);
                 }
+            }
+            Err(err) => {
+                // TODO: would be better to exhaustively try each event in turn in the error case, so that if all events lead to error, we can halt early.
+                errors.push(err);
             }
         };
     }
@@ -204,6 +208,10 @@ mod tests {
             let n = turn.to_i8().unwrap();
             self = Cycle::from_i8((self.to_i8().unwrap() + n).rem_euclid(4)).unwrap();
             Ok((self, ()))
+        }
+
+        fn is_terminal(&self) -> bool {
+            false
         }
     }
 

@@ -37,7 +37,7 @@ pub enum NodeOpEvent {
 impl Fsm for NodeOpPhase {
     type Event = NodeOpEvent;
     type Fx = ();
-    type Error = Option<String>;
+    type Error = String;
 
     fn transition(mut self, t: Self::Event) -> FsmResult<Self> {
         use NodeOpEvent as E;
@@ -54,12 +54,15 @@ impl Fsm for NodeOpPhase {
             // (S::Pending | S::Validated, E::Validate) => S::Validated,
             // (S::Pending | S::Rejected, E::Reject) => S::Rejected,
 
-
-            (S::Integrated, _) => return Err(None),
-            (S::Rejected, _) => return Err(None),
-            p => return Err(Some(format!("invalid transition {:?}", p))),
+            (S::Integrated, _) => S::Integrated,
+            (S::Rejected, _) => S::Rejected,
+            p => return Err(format!("invalid transition {:?}", p)),
         };
         Ok((next, ()))
+    }
+
+    fn is_terminal(&self) -> bool {
+        matches!(self, NodeOpPhase::Integrated | NodeOpPhase::Rejected)
     }
 }
 
@@ -149,7 +152,7 @@ fn test_diagram() {
     tracing::subscriber::set_global_default(tracing_subscriber::FmtSubscriber::new()).unwrap();
 
     // print_dot_state_diagram(NodeOpPhase::default(), 5, 30);
-    let ids = (0..3).map(|i| Id::new().into()).collect_vec();
+    let ids = (0..2).map(|i| Id::new().into()).collect_vec();
     let (initial, ()) = NetworkOp::new_empty(&ids).transition(NetworkOpEvent(ids[0].clone(), NodeOpEvent::Store)).unwrap();
 
     // TODO allow for strategy params

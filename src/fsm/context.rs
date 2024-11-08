@@ -43,4 +43,8 @@ where
         let (fsm, fx) = Fsm::transition(self.fsm, (event, context.clone()))?;
         Ok((Self { fsm, context }, fx))
     }
+
+    fn is_terminal(&self) -> bool {
+        self.fsm.is_terminal()
+    }
 }

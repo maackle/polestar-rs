@@ -139,6 +139,15 @@ impl<S: Fsm> Fsm for ActorFsm<S> {
         };
         Ok((self, fx))
     }
+
+    fn is_terminal(&self) -> bool {
+        self.0
+             .0
+            .read()
+            .as_ref()
+            .map(|x| x.is_terminal())
+            .unwrap_or(false)
+    }
 }
 
 impl<S: Fsm> ActorFsm<S> {
