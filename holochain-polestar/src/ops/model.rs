@@ -43,16 +43,17 @@ impl Fsm for NodeOpPhase {
         use NodeOpEvent as E;
         use NodeOpPhase as S;
         let next = match (self, t) {
+            // Receive the op
             (S::None, E::Store) => S::Pending,
-            (S::Pending, E::Validate) => S::Validated,
-            (S::Pending, E::Reject) => S::Rejected,
+
+            // Store is idempotent
+            (s, E::Store) => s,
+
+            (S::Pending | S::Validated, E::Validate) => S::Validated,
+            (S::Pending | S::Rejected, E::Reject) => S::Rejected,
+
             (S::Validated, E::Integrate) => S::Integrated,
             (S::Integrated, E::Send(_)) => S::Integrated,
-
-            // TODO: add these cases to fix a bug
-            // (s, E::Store) => s,
-            // (S::Pending | S::Validated, E::Validate) => S::Validated,
-            // (S::Pending | S::Rejected, E::Reject) => S::Rejected,
 
             (S::Integrated, _) => S::Integrated,
             (S::Rejected, _) => S::Rejected,

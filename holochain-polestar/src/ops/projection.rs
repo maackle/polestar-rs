@@ -48,7 +48,7 @@ impl ProjectionDown<model::NetworkOp> for NetworkOpProjection {
         use system::NodeEvent as S;
         use system::OpState as O;
         let n = match event {
-            S::SetOpState(op, state) => match state {
+            S::SetOpState(op, state) if op == self.op.hash => match state {
                 O::Rejected(_) => Some(M::Reject),
                 O::Validated => Some(M::Validate),
                 O::Integrated => Some(M::Integrate),
@@ -56,8 +56,8 @@ impl ProjectionDown<model::NetworkOp> for NetworkOpProjection {
                 O::MissingDeps(vec) => unreachable!(),
             },
             S::AuthorOp(op) if op == self.op => Some(M::Store),
-            S::StoreOp(op, system::FetchDestination::Vault) => Some(M::Store),
-            S::SendOp(op, id) => Some(M::Send(id)),
+            S::StoreOp(op, system::FetchDestination::Vault) if op == self.op => Some(M::Store),
+            S::SendOp(op, id) if op == self.op => Some(M::Send(id)),
             _ => None,
         }?;
         Some(NetworkOpEvent(id, n))

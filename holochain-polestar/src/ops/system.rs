@@ -4,6 +4,7 @@ use std::{
     sync::{mpsc, Arc},
 };
 
+use itertools::Itertools;
 use polestar::actor::ActorRw;
 use rand::{seq::IteratorRandom, Rng};
 
@@ -142,13 +143,18 @@ impl Node {
     }
 
     pub fn send_random(&self, msg: Message) {
-        self.connections
-            .outboxes
-            .values()
-            .choose(&mut rand::thread_rng())
-            .unwrap()
-            .send((self.id.clone(), msg))
-            .unwrap();
+        loop {
+            let (id, outbox) = self
+                .connections
+                .outboxes
+                .iter()
+                .choose(&mut rand::thread_rng())
+                .unwrap();
+            if *id != self.id {
+                outbox.send((self.id.clone(), msg)).unwrap();
+                break;
+            }
+        }
     }
 
     pub fn add_connection(&mut self, peer: NodeId, tx: mpsc::Sender<(NodeId, Message)>) {
@@ -248,6 +254,11 @@ pub fn step(node: &mut Node, t: usize) {
     let mut to_validate: Vec<Op> = vec![];
     let mut events = vec![];
     let mut to_publish = vec![];
+
+    for m in node.connections.inbox.try_iter().collect_vec() {
+        node.handle_message(m);
+    }
+
     node.read(|n| {
         for op in n.vault.values() {
             match &op.state {
