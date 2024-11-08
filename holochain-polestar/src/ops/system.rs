@@ -53,7 +53,7 @@ impl NodeState {
 
 #[derive(Clone, Debug)]
 pub enum NodeEvent {
-    AuthorOp(usize),
+    AuthorOp(Op),
     // AddPeer(NodeId),
     StoreOp(Op, FetchDestination),
     SetOpState(OpHash, OpState),
@@ -167,7 +167,7 @@ impl Node {
 impl NodeState {
     pub fn handle_event(&mut self, event: NodeEvent) {
         match event {
-            NodeEvent::AuthorOp(num_deps) => self.author(num_deps),
+            NodeEvent::AuthorOp(op) => self.author(op),
             NodeEvent::StoreOp(op, destination) => {
                 self.store(op, destination);
             }
@@ -197,7 +197,7 @@ impl NodeState {
     }
 
     #[tracing::instrument(skip(self))]
-    fn author(&mut self, num_deps: usize) {
+    pub fn make_op(&self, num_deps: usize) -> Op {
         let hash: OpHash = Id::new().into();
         let deps: Vec<OpHash> = self
             .vault
@@ -206,7 +206,10 @@ impl NodeState {
             .map(|(hash, _)| hash)
             .cloned()
             .collect();
-        let op = Op::new(hash, deps);
+        Op::new(hash, deps)
+    }
+
+    fn author(&mut self, op: Op) {
         self.vault.insert(
             OpHash::from(&op),
             OpData {
@@ -343,6 +346,7 @@ pub enum OpOrigin {
 #[cfg(test)]
 mod tests {
 
+    use itertools::Itertools;
     use polestar::{prelude::ProjectionDown, Fsm};
     use projection::NetworkOpProjection;
     use rand::Rng;
@@ -378,7 +382,10 @@ mod tests {
         }
 
         for i in 0..AUTHORED_OPS {
-            nodes[0].handle_event(NodeEvent::AuthorOp(rand::thread_rng().gen_range(0..i + 1)));
+            let op = nodes[0]
+                .state
+                .read(|n| n.make_op(rand::thread_rng().gen_range(0..i + 1)));
+            nodes[0].handle_event(NodeEvent::AuthorOp(op));
         }
 
         for t in 0..MAX_ITERS {
@@ -401,7 +408,11 @@ mod tests {
             let projection = NetworkOpProjection { op };
             let mut model = projection.map_state(&initial).unwrap();
 
-            while let Ok(event) = event_rx.try_recv() {
+            let events = event_rx.try_iter().collect_vec();
+
+            dbg!(&events);
+
+            for event in events {
                 if let Some(action) = projection.map_event(event) {
                     model = model.transition_(action).unwrap()
                 } else {

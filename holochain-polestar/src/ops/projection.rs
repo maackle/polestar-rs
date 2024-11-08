@@ -55,7 +55,7 @@ impl ProjectionDown<model::NetworkOp> for NetworkOpProjection {
                 O::Pending(op_origin) => unreachable!(),
                 O::MissingDeps(vec) => unreachable!(),
             },
-            S::AuthorOp(0) => Some(M::Store),
+            S::AuthorOp(op) if op == self.op => Some(M::Store),
             S::StoreOp(op, system::FetchDestination::Vault) => Some(M::Store),
             S::SendOp(op, id) => Some(M::Send(id)),
             _ => None,
@@ -142,7 +142,7 @@ fn initial_state(ids: &[NodeId]) -> (HashMap<NodeId, system::NodeState>, Op) {
         .next()
         .map(|(id, n)| {
             for i in 0..5 {
-                n.handle_event(system::NodeEvent::AuthorOp(0));
+                n.handle_event(system::NodeEvent::AuthorOp(n.make_op(0)));
             }
 
             (id.clone(), n.vault.iter().next().unwrap().1.op.clone())
