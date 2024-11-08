@@ -60,11 +60,17 @@ where
 
         let x_am = self.map_state(&x_a);
 
+        let a = self.map_event(event.clone());
+
         let x_ma = {
-            let e = self.map_event(event);
-            if let (Some(x_m), Some(e)) = (x_m, e) {
+            if let (Some(x_m), Some(a)) = (&x_m, &a) {
                 // if error, return original state
-                Some(x_m.clone().transition(e).map(first).unwrap_or(x_m))
+                Some(
+                    x_m.clone()
+                        .transition(a.clone())
+                        .map(first)
+                        .unwrap_or(x_m.clone()),
+                )
             } else {
                 None
             }
@@ -73,7 +79,27 @@ where
         assert_eq!(
             x_am,
             x_ma,
-            "transition_commutes_with_mapping failed:\n{}",
+            "
+transition_commutes_with_mapping failed.
+
+commutative diff: 
+{}
+
+original system state:
+{x:#?}
+
+original system event:
+{event:#?}
+
+transitioned system state:
+{x_a:#?}
+
+mapped model state:
+{x_m:#?}
+
+mapped model action:
+{a:#?}
+",
             prettydiff::diff_lines(&format!("{:#?}", x_am), &format!("{:#?}", x_ma))
         )
     }

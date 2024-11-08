@@ -74,6 +74,7 @@ pub struct Node {
     #[deref]
     state: ActorRw<NodeState>,
     connections: NodeConnections,
+    tee: mpsc::Sender<(NodeId, NodeEvent)>,
 }
 
 impl Debug for Node {
@@ -86,16 +87,18 @@ impl Debug for Node {
 }
 
 impl Node {
-    pub fn new(id: NodeId, state: NodeState) -> Self {
+    pub fn new(id: NodeId, state: NodeState, tee: mpsc::Sender<(NodeId, NodeEvent)>) -> Self {
         Self {
             id,
             state: ActorRw::new(state),
             connections: NodeConnections::new(),
+            tee,
         }
     }
 
     #[tracing::instrument(skip(self), fields(id = %self.id))]
     pub fn handle_event(&mut self, event: NodeEvent) {
+        self.tee.send((self.id.clone(), event.clone())).unwrap();
         if let NodeEvent::SendOp(op, peer) = &event {
             self.send(peer, Message::Publish(op.clone()));
         }
@@ -352,6 +355,8 @@ pub enum OpOrigin {
 #[cfg(test)]
 mod tests {
 
+    use polestar::{prelude::ProjectionDown, Fsm};
+    use projection::NetworkOpProjection;
     use rand::Rng;
     use system::{Node, NodeEvent, NodeState};
 
@@ -365,9 +370,16 @@ mod tests {
         const AUTHORED_OPS: usize = 10;
         const MAX_ITERS: usize = 100_000;
 
-        let mut nodes: Vec<Node> = std::iter::repeat_with(NodeState::new)
-            .map(|s| Node::new(Id::new().into(), s))
-            .take(N)
+        let (event_tx, event_rx) = mpsc::channel();
+
+        let initial: HashMap<NodeId, NodeState> =
+            std::iter::repeat_with(|| (Id::new().into(), NodeState::new()))
+                .take(N)
+                .collect();
+
+        let mut nodes: Vec<Node> = initial
+            .iter()
+            .map(|(id, s)| Node::new(id.clone(), s.clone(), event_tx.clone()))
             .collect();
 
         // peer discovery
@@ -395,6 +407,20 @@ mod tests {
             {
                 println!("consistency reached, t = {t}");
                 break;
+            }
+        }
+
+        {
+            let op = nodes[0].read(|n| n.vault.values().next().unwrap().op.clone());
+            let projection = NetworkOpProjection { op };
+            let mut model = projection.map_state(&initial).unwrap();
+
+            while let Ok(event) = event_rx.try_recv() {
+                if let Some(action) = projection.map_event(event) {
+                    model = model.transition_(action).unwrap()
+                } else {
+                    tracing::info!("no event mapped");
+                }
             }
         }
 

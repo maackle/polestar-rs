@@ -6,8 +6,8 @@ use crate::ops::model::NetworkOpEvent;
 
 use super::{model, system, Id, NodeId, Op, OpHash};
 
-struct NetworkOpProjection {
-    op: Op,
+pub struct NetworkOpProjection {
+    pub op: Op,
 }
 
 impl ProjectionDown<model::NetworkOp> for NetworkOpProjection {
@@ -55,8 +55,8 @@ impl ProjectionDown<model::NetworkOp> for NetworkOpProjection {
                 O::Pending(op_origin) => unreachable!(),
                 O::MissingDeps(vec) => unreachable!(),
             },
-            S::AuthorOp(0) => todo!(),
-            S::StoreOp(op, system::FetchDestination::Vault) => todo!(),
+            S::AuthorOp(0) => Some(M::Store),
+            S::StoreOp(op, system::FetchDestination::Vault) => Some(M::Store),
             S::SendOp(op, id) => Some(M::Send(id)),
             _ => None,
         }?;
@@ -159,16 +159,19 @@ mod tests {
 
     proptest::proptest! {
         #[test]
-        fn test_invariants(event: model::NodeOpEvent) {
+        fn test_invariants(events: Vec<model::NodeOpEvent>) {
             let ids: Vec<_> = std::iter::repeat_with(Id::new).map(NodeId::from).take(3).collect();
             let mut gen = proptest::test_runner::TestRunner::default();
-            let (system, op) = initial_state(&ids);
+            let (mut system, op) = initial_state(&ids);
             let projection = NetworkOpProjection { op };
-            let event = projection.gen_event(&mut gen, NetworkOpEvent(ids[0].clone(), event));
-            projection.test_commutativity(
-                system,
-                event,
-            );
+            for event in events {
+                let event = projection.gen_event(&mut gen, NetworkOpEvent(ids[0].clone(), event));
+                projection.test_commutativity(
+                    system.clone(),
+                    event.clone(),
+                );
+                projection.apply(&mut system, event);
+            }
         }
     }
 }
