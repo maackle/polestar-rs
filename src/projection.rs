@@ -80,7 +80,7 @@ where
             x_am,
             x_ma,
             "
-transition_commutes_with_mapping failed.
+`transition_commutes_with_mapping` failed.
 
 original system event:
 {event:#?}
@@ -133,7 +133,7 @@ where
         assert_eq!(
             Some(&state),
             roundtrip.as_ref(),
-            "map_state_is_a_retraction failed:\n{}",
+            "`map_state_is_a_retraction` failed:\n{}",
             prettydiff::diff_lines(
                 &format!("{:#?}", Some(&state)),
                 &format!("{:#?}", roundtrip)
@@ -146,7 +146,7 @@ where
         assert_eq!(
             Some(&event),
             roundtrip.as_ref(),
-            "map_event_is_a_retraction failed:\n{}",
+            "`map_event_is_a_retraction` failed:\n{}",
             prettydiff::diff_lines(
                 &format!("{:#?}", Some(&event)),
                 &format!("{:#?}", roundtrip.as_ref())
@@ -178,7 +178,7 @@ where
         assert_eq!(
             x_tgm,
             x_gtm,
-            "transition_commutes_with_generation failed:\n{}",
+            "`transition_commutes_with_generation` failed:\n{}",
             prettydiff::diff_lines(&format!("{:#?}", x_tgm), &format!("{:#?}", x_gtm))
         )
     }

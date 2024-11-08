@@ -221,16 +221,13 @@ impl NodeState {
         tracing::info!("stored op");
         match destination {
             FetchDestination::Vault => {
-                self.vault.insert(
-                    op.hash.clone(),
-                    OpData {
-                        op,
-                        state: OpState::Pending(OpOrigin::Fetched),
-                    },
-                );
+                self.vault.entry(op.hash.clone()).or_insert(OpData {
+                    op,
+                    state: OpState::Pending(OpOrigin::Fetched),
+                });
             }
             FetchDestination::Cache => {
-                self.cache.insert(op.hash.clone(), op);
+                self.cache.entry(op.hash.clone()).or_insert(op);
             }
         }
     }
@@ -242,15 +239,6 @@ pub enum Message {
     FetchRequest(OpHash),
     FetchResponse(Op),
 }
-
-// fn fetch_from(&self, op: OpHash) -> Option<Op> {
-//     self.0.read(|n| {
-//         n.vault
-//             .get(&op)
-//             .filter(|op_data| op_data.state == OpState::Integrated)
-//             .map(|op_data| op_data.op.clone())
-//     })
-// }
 
 pub fn step(node: &mut Node, t: usize) {
     // move ops through the validation pipeline
