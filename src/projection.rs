@@ -82,25 +82,21 @@ where
             "
 transition_commutes_with_mapping failed.
 
-commutative diff: 
-{}
-
-original system state:
-{x:#?}
-
 original system event:
 {event:#?}
 
-transitioned system state:
-{x_a:#?}
+system transition diff (previous system state vs new system state):
+{}
 
-mapped model state:
-{x_m:#?}
+model transition diff (previous model state vs new model state):
+{}
 
-mapped model action:
-{a:#?}
+commutative diff (transitioned and mapped vs mapped and transitioned): 
+{}
 ",
-            prettydiff::diff_lines(&format!("{:#?}", x_am), &format!("{:#?}", x_ma))
+            prettydiff::diff_lines(&format!("{:#?}", x), &format!("{:#?}", x_a)),
+            prettydiff::diff_lines(&format!("{:#?}", x_m), &format!("{:#?}", x_ma)),
+            prettydiff::diff_lines(&format!("{:#?}", x_am), &format!("{:#?}", x_ma)),
         )
     }
 }
