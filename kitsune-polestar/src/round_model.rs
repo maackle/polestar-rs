@@ -90,15 +90,13 @@ fn diagram_round_state() {
 
     tracing::subscriber::set_global_default(tracing_subscriber::FmtSubscriber::new()).unwrap();
 
-    print_dot_state_diagram(
-        RoundPhase::Begin.context(GossipType::Recent),
-        vec![RoundPhase::Finished.context(GossipType::Recent)],
-        1000,
-    );
+    let config = DiagramConfig {
+        steps: 100,
+        walks: 100,
+        ignore_loopbacks: false,
+    };
 
-    print_dot_state_diagram(
-        RoundPhase::Begin.context(GossipType::Historical),
-        vec![RoundPhase::Finished.context(GossipType::Historical)],
-        1000,
-    );
+    print_dot_state_diagram(RoundPhase::Begin.context(GossipType::Recent), &config);
+
+    print_dot_state_diagram(RoundPhase::Begin.context(GossipType::Historical), &config);
 }

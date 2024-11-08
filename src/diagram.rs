@@ -19,20 +19,17 @@ const MAX_WALKS: usize = 1000000;
 
 #[derive(Debug, Clone)]
 pub struct DiagramConfig {
-    collapse_duplicate_edges: bool,
-    ignore_loopbacks: bool,
+    pub steps: usize,
+    pub walks: usize,
+    pub ignore_loopbacks: bool,
 }
 
-pub fn print_dot_state_diagram<M>(
-    m: M,
-    config: &DiagramConfig,
-    stop: impl Into<StopCondition<M>>,
-    min_walks: usize,
-) where
+pub fn print_dot_state_diagram<M>(m: M, config: &DiagramConfig)
+where
     M: Fsm + Clone + Eq + Debug + Hash,
     M::Event: Arbitrary + Clone + Eq + Debug + Hash,
 {
-    println!("{}", to_dot(state_diagram(m, stop, min_walks)));
+    println!("{}", to_dot(state_diagram(m, config)));
 }
 
 pub fn to_dot<N, E>(graph: DiGraph<N, E>) -> String
@@ -46,18 +43,11 @@ where
 
 /// Generate a "Monte Carlo state diagram" of this state machine.
 // TODO: stop early if graph is saturated (by random walking over node and edge space first).
-pub fn state_diagram<M>(
-    m: M,
-    config: &DiagramConfig,
-    stop: impl Into<StopCondition<M>>,
-    min_walks: usize,
-) -> DiGraph<M, M::Event>
+pub fn state_diagram<M>(m: M, config: &DiagramConfig) -> DiGraph<M, M::Event>
 where
     M: Fsm + Clone + Eq + Hash + Debug,
     M::Event: Arbitrary + Clone + Eq + Hash,
 {
-    let stop = stop.into();
-
     let mut graph = DiGraph::new();
     let mut node_indices = HashMap::new();
     let mut edges = HashSet::new();
@@ -67,7 +57,6 @@ where
     node_indices.insert(initial, ix);
 
     let mut terminals = HashSet::new();
-    let mut terminals_reached = !matches!(stop, StopCondition::Terminals(_));
 
     let mut walks = 0;
     let mut total_steps = 0;
@@ -76,7 +65,7 @@ where
 
     'outer: loop {
         let mut prev = ix;
-        let (transitions, errors, num_steps, terminated) = take_a_walk(m.clone(), &stop);
+        let (transitions, errors, num_steps, terminated) = take_a_walk(m.clone(), config.steps);
         num_errors += errors.len();
         num_terminations += terminated as usize;
         if !errors.is_empty() {
@@ -91,16 +80,17 @@ where
                 node_indices.insert(node.clone(), ix);
                 ix
             };
-            if edges.insert((prev, ix, edge.clone())) {
-                graph.add_edge(prev, ix, edge);
-            }
-            prev = ix;
-            if terminals.insert(node) {
-                if let StopCondition::Terminals(ref t) = stop {
-                    terminals_reached = terminals.intersection(t).count() == t.len();
+
+            if !(config.ignore_loopbacks && prev == ix) {
+                if edges.insert((prev, ix, edge.clone())) {
+                    graph.add_edge(prev, ix, edge);
+                }
+                prev = ix;
+                if terminals.insert(node) {
+                    // TODO: can stop here if we know that all terminals have been reached.
                 }
             }
-            if walks >= MAX_WALKS || terminals_reached && walks >= min_walks {
+            if walks >= config.walks {
                 break 'outer;
             }
         }
@@ -133,10 +123,7 @@ impl<M: Eq + Hash> From<Vec<M>> for StopCondition<M> {
 }
 
 #[allow(clippy::type_complexity)]
-fn take_a_walk<M>(
-    mut m: M,
-    stop: &StopCondition<M>,
-) -> (Vec<(M::Event, M)>, Vec<M::Error>, usize, bool)
+fn take_a_walk<M>(mut m: M, steps: usize) -> (Vec<(M::Event, M)>, Vec<M::Error>, usize, bool)
 where
     M: Fsm + Debug + Clone + Hash + Eq,
     M::Event: Arbitrary + Clone,
@@ -148,10 +135,7 @@ where
     let mut num_steps = 0;
     let mut errors = vec![];
     let mut terminated = false;
-    while match stop {
-        StopCondition::Steps { steps: n, .. } => num_steps < *n,
-        StopCondition::Terminals(terminals) => !terminals.contains(&m),
-    } {
+    while num_steps < steps {
         num_steps += 1;
         let event: M::Event = M::Event::arbitrary()
             .new_tree(&mut runner)
@@ -217,11 +201,16 @@ mod tests {
 
     #[test]
     fn test_state_diagram() {
-        let graph1 = state_diagram(Cycle::D, 10, 10);
+        let config = DiagramConfig {
+            steps: 10,
+            walks: 10,
+            ignore_loopbacks: false,
+        };
+        let graph1 = state_diagram(Cycle::D, &config);
         let nodes1: HashSet<_> = graph1.node_weights().collect();
         let edges1: HashSet<_> = graph1.edge_weights().collect();
 
-        let graph2 = state_diagram(Cycle::D, 10, 10);
+        let graph2 = state_diagram(Cycle::D, &config);
         let nodes2: HashSet<_> = graph2.node_weights().collect();
         let edges2: HashSet<_> = graph2.edge_weights().collect();
 

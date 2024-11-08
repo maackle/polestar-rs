@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use itertools::Itertools;
 use polestar::{
-    diagram::{print_dot_state_diagram, StopCondition},
+    diagram::{print_dot_state_diagram, DiagramConfig, StopCondition},
     fsm::FsmBTreeMap,
     prelude::*,
 };
@@ -156,5 +156,5 @@ fn test_diagram() {
     let (initial, ()) = NetworkOp::new_empty(&ids).transition(NetworkOpEvent(ids[0].clone(), NodeOpEvent::Store)).unwrap();
 
     // TODO allow for strategy params
-    print_dot_state_diagram(initial, 1_000, 300);
+    print_dot_state_diagram(initial, &DiagramConfig { steps: 1_000, walks: 300, ignore_loopbacks: true });
 }
