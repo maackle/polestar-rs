@@ -22,6 +22,7 @@ where
 
     fn transition(self, event: Self::Event) -> FsmResult<Self>;
 
+    /// Perform a transition and ignore the effect, when the effect is `()`.
     fn transition_(self, event: Self::Event) -> Result<Self, Self::Error>
     where
         Self: Fsm<Fx = ()>,

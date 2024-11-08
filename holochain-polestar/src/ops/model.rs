@@ -49,6 +49,12 @@ impl Fsm for NodeOpPhase {
             (S::Validated, E::Integrate) => S::Integrated,
             (S::Integrated, E::Send(_)) => S::Integrated,
 
+            // TODO: add these cases to fix a bug
+            // (s, E::Store) => s,
+            // (S::Pending | S::Validated, E::Validate) => S::Validated,
+            // (S::Pending | S::Rejected, E::Reject) => S::Rejected,
+
+
             (S::Integrated, _) => return Err(None),
             (S::Rejected, _) => return Err(None),
             p => return Err(Some(format!("invalid transition {:?}", p))),

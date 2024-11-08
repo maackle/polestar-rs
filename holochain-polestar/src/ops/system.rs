@@ -382,8 +382,6 @@ mod tests {
         }
 
         for t in 0..MAX_ITERS {
-            println!("t = {t}");
-
             for n in nodes.iter_mut() {
                 step(n, t);
             }
