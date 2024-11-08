@@ -18,6 +18,7 @@ use super::*;
 #[derive(Clone, Default, Debug, PartialEq, Eq, Hash)]
 pub enum NodeOpPhase {
     #[default]
+    None,
     Pending,
     Validated,
     Rejected,
@@ -26,6 +27,7 @@ pub enum NodeOpPhase {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Arbitrary, derive_more::Display)]
 pub enum NodeOpEvent {
+    Store,
     Validate,
     Reject,
     Integrate,
@@ -41,6 +43,7 @@ impl Fsm for NodeOpPhase {
         use NodeOpEvent as E;
         use NodeOpPhase as S;
         let next = match (self, t) {
+            (S::None, E::Store) => S::Pending,
             (S::Pending, E::Validate) => S::Validated,
             (S::Pending, E::Reject) => S::Rejected,
             (S::Validated, E::Integrate) => S::Integrated,
@@ -56,19 +59,18 @@ impl Fsm for NodeOpPhase {
 
 #[derive(Clone, PartialEq, Eq, Hash, derive_more::Deref)]
 pub struct NetworkOp {
-    nodes: FsmBTreeMap<NodeId, Option<NodeOpPhase>>,
+    nodes: FsmBTreeMap<NodeId, NodeOpPhase>,
 }
 
 impl NetworkOp {
-    pub fn new(nodes: BTreeMap<NodeId, Option<NodeOpPhase>>) -> Self {
+    pub fn new(nodes: BTreeMap<NodeId, NodeOpPhase>) -> Self {
         Self {
             nodes: FsmBTreeMap::from(nodes),
         }
     }
 
-    pub fn new_single_op(num: usize) -> Self {
-        let mut nodes: BTreeMap<NodeId, _> = (0..num).map(|_| (Id::new().into(), None)).collect();
-        *nodes.iter_mut().next().unwrap().1 = Some(NodeOpPhase::Pending);
+    pub fn new_empty(ids: &[NodeId]) -> Self {
+        let mut nodes: BTreeMap<NodeId, _> = ids.iter().map(|id| (id.clone(), Default::default())).collect();
         Self {
             nodes: FsmBTreeMap::from(nodes),
         }
@@ -82,16 +84,15 @@ impl Fsm for NetworkOp {
 
     fn transition(mut self, NetworkOpEvent(node_id, event): Self::Event) -> FsmResult<Self> {
         {
-            if 
-                // all integrated
-                self.values()
-                    .all(|n| matches!(n, Some(NodeOpPhase::Integrated)))
+            let vs = || self.values();
+            if
+            // all integrated
+            vs().all(|n| matches!(n, NodeOpPhase::Integrated))
                     || 
-                    // only rejected
-                    self
-                        .values()
-                        .all(|n| matches!(n, None | Some(NodeOpPhase::Rejected)))
-             {
+                    // all non-None are rejected, but not all None
+                    (vs().all(|n| matches!(n, NodeOpPhase::None | NodeOpPhase::Rejected) && vs().any(|n| !matches!(n, NodeOpPhase::None))))
+            {
+                 // terminal states
                 return Err(None)
             }
         }
@@ -102,10 +103,11 @@ impl Fsm for NetworkOp {
             }
             let mut node = self.nodes.get_mut(id).unwrap();
             match node {
-                Some(_) => return Err(Some("don't send op twice".to_string())),
-                None => *node = Some(NodeOpPhase::Pending),
+                NodeOpPhase::None => *node = NodeOpPhase::Pending,
+                _ => return Err(Some("don't send op twice".to_string())),
             }
         }
+
         self.nodes
             .transition_mut(node_id.clone(), event)
             .ok_or_else(|| format!("no node {:?}", node_id))?
@@ -141,7 +143,8 @@ fn test_diagram() {
     tracing::subscriber::set_global_default(tracing_subscriber::FmtSubscriber::new()).unwrap();
 
     // print_dot_state_diagram(NodeOpPhase::default(), 5, 30);
-    let initial = NetworkOp::new_single_op(3);
+    let ids = (0..3).map(|i| Id::new().into()).collect_vec();
+    let (initial, ()) = NetworkOp::new_empty(&ids).transition(NetworkOpEvent(ids[0].clone(), NodeOpEvent::Store)).unwrap();
 
     // TODO allow for strategy params
     print_dot_state_diagram(initial, 1_000, 300);

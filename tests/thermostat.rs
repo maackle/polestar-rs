@@ -151,7 +151,9 @@ impl ProjectionDown<Thermostat> for Instrument {
         };
         Some(s.transition_(system.current.temp).unwrap())
     }
+}
 
+impl ProjectionUp<Thermostat> for Instrument {
     fn gen_event(&self, g: &mut impl Generator, temp: Temp) -> InstrumentReading {
         InstrumentReading {
             temp,
@@ -179,7 +181,7 @@ proptest! {
     #[test]
     fn test_thermostat(mut instrument: Instrument, event: InstrumentReading) {
         let mut r = TestRunner::default();
-        instrument.clone().test_invariants(&mut r, instrument,event);
+        instrument.clone().test_all_invariants(&mut r, instrument,event);
         // instrument = instrument.apply(event);
     }
 }

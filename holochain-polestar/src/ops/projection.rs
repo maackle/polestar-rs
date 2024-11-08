@@ -11,7 +11,7 @@ struct NetworkOpProjection {
 }
 
 impl ProjectionDown<model::NetworkOp> for NetworkOpProjection {
-    type System = HashMap<NodeId, system::Node>;
+    type System = HashMap<NodeId, system::NodeState>;
     type Event = (NodeId, system::NodeEvent);
 
     fn apply(&self, system: &mut Self::System, (id, event): Self::Event) {
@@ -27,13 +27,16 @@ impl ProjectionDown<model::NetworkOp> for NetworkOpProjection {
             system
                 .iter()
                 .map(|(id, node)| {
-                    let phase = node.get_op(&self.op.hash).map(|o| match o.state {
-                        S::Pending(_) => M::Pending,
-                        S::Validated => M::Validated,
-                        S::MissingDeps(_) => todo!(),
-                        S::Rejected(_) => M::Rejected,
-                        S::Integrated => M::Integrated,
-                    });
+                    let phase = node
+                        .get_op(&self.op.hash)
+                        .map(|o| match o.state {
+                            S::Pending(_) => M::Pending,
+                            S::Validated => M::Validated,
+                            S::MissingDeps(_) => todo!(),
+                            S::Rejected(_) => M::Rejected,
+                            S::Integrated => M::Integrated,
+                        })
+                        .unwrap_or(M::None);
                     (id.clone(), phase)
                 })
                 .collect(),
@@ -52,6 +55,9 @@ impl ProjectionDown<model::NetworkOp> for NetworkOpProjection {
                 O::Pending(op_origin) => unreachable!(),
                 O::MissingDeps(vec) => unreachable!(),
             },
+            S::AuthorOp(0) => todo!(),
+            S::StoreOp(op, system::FetchDestination::Vault) => todo!(),
+            S::SendOp(op, id) => Some(M::Send(id)),
             _ => None,
         }?;
         Some(NetworkOpEvent(id, n))
@@ -65,16 +71,19 @@ impl ProjectionUp<model::NetworkOp> for NetworkOpProjection {
             .iter()
             .map(|(id, phase)| {
                 let mut node = system::NodeState::new();
-                if let Some(phase) = phase {
-                    let state = match phase {
-                        // OpOrigin is arbitrary
-                        model::NodeOpPhase::Pending => {
-                            system::OpState::Pending(system::OpOrigin::Fetched)
-                        }
-                        model::NodeOpPhase::Validated => system::OpState::Validated,
-                        model::NodeOpPhase::Rejected => system::OpState::Rejected("reason".into()),
-                        model::NodeOpPhase::Integrated => system::OpState::Integrated,
-                    };
+                let state = match phase {
+                    // OpOrigin is arbitrary
+                    model::NodeOpPhase::Pending => {
+                        Some({ system::OpState::Pending(system::OpOrigin::Fetched) })
+                    }
+                    model::NodeOpPhase::Validated => Some(system::OpState::Validated),
+                    model::NodeOpPhase::Rejected => {
+                        Some(system::OpState::Rejected("reason".into()))
+                    }
+                    model::NodeOpPhase::Integrated => Some(system::OpState::Integrated),
+                    model::NodeOpPhase::None => None,
+                };
+                if let Some(state) = state {
                     node.vault.insert(
                         self.op.hash.clone(),
                         system::OpData {
@@ -83,7 +92,7 @@ impl ProjectionUp<model::NetworkOp> for NetworkOpProjection {
                         },
                     );
                 }
-                (id.clone(), system::Node::new(id.clone(), node))
+                (id.clone(), node)
             })
             .collect()
     }
@@ -94,41 +103,38 @@ impl ProjectionUp<model::NetworkOp> for NetworkOpProjection {
         model::NetworkOpEvent(id, event): model::NetworkOpEvent,
     ) -> Self::Event {
         use model::NodeOpEvent as M;
+        use system::NodeEvent as S;
         match event {
+            M::Store => (
+                id,
+                S::StoreOp(self.op.clone(), system::FetchDestination::Vault),
+            ),
             M::Validate => (
                 id,
-                system::NodeEvent::SetOpState(self.op.hash.clone(), system::OpState::Validated),
+                S::SetOpState(self.op.hash.clone(), system::OpState::Validated),
             ),
             M::Reject => (
                 id,
-                system::NodeEvent::SetOpState(
+                S::SetOpState(
                     self.op.hash.clone(),
                     system::OpState::Rejected("reason".into()),
                 ),
             ),
             M::Integrate => (
                 id,
-                system::NodeEvent::SetOpState(self.op.hash.clone(), system::OpState::Integrated),
+                S::SetOpState(self.op.hash.clone(), system::OpState::Integrated),
             ),
-            M::Send(id) => (
-                id.clone(),
-                system::NodeEvent::SendOp(self.op.hash.clone(), id),
-            ),
+            M::Send(id) => (id.clone(), S::SendOp(self.op.clone(), id)),
         }
     }
 }
 
-fn initial_state(ids: &[NodeId]) -> (HashMap<NodeId, system::Node>, Op) {
+fn initial_state(ids: &[NodeId]) -> (HashMap<NodeId, system::NodeState>, Op) {
     let mut gen = proptest::test_runner::TestRunner::default();
 
-    let mut system: HashMap<NodeId, system::Node> = ids
+    let mut system: HashMap<NodeId, system::NodeState> = ids
         .iter()
-        .map(|id| {
-            (
-                id.clone(),
-                system::Node::new(id.clone(), system::NodeState::new()),
-            )
-        })
+        .map(|id| (id.clone(), system::NodeState::new()))
         .collect();
 
     let (_, op) = system
@@ -139,10 +145,7 @@ fn initial_state(ids: &[NodeId]) -> (HashMap<NodeId, system::Node>, Op) {
                 n.handle_event(system::NodeEvent::AuthorOp(0));
             }
 
-            (
-                id.clone(),
-                n.read(|n| n.vault.iter().next().unwrap().1.op.clone()),
-            )
+            (id.clone(), n.vault.iter().next().unwrap().1.op.clone())
         })
         .unwrap();
 
@@ -162,8 +165,7 @@ mod tests {
             let (system, op) = initial_state(&ids);
             let projection = NetworkOpProjection { op };
             let event = projection.gen_event(&mut gen, NetworkOpEvent(ids[0].clone(), event));
-            projection.test_all_invariants(
-                &mut gen,
+            projection.test_commutativity(
                 system,
                 event,
             );

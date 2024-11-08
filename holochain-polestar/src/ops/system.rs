@@ -1,31 +1,45 @@
 use std::{
     collections::{BTreeMap, HashMap, HashSet, VecDeque},
     fmt::Debug,
-    sync::Arc,
+    sync::{mpsc, Arc},
 };
 
 use polestar::actor::ActorRw;
-use rand::Rng;
+use rand::{seq::IteratorRandom, Rng};
 
 use super::*;
 
 #[derive(Clone, Debug)]
 pub struct NodeState {
-    pub agents: Vec<Agent>,
+    // pub agents: Vec<Agent>,
     pub vault: BTreeMap<OpHash, OpData>,
     pub cache: HashMap<OpHash, Op>,
-    pub fetchpool: VecDeque<(OpHash, Option<Peer>, FetchDestination)>,
-    pub peers: Vec<Peer>,
+}
+
+#[derive(Debug)]
+pub struct NodeConnections {
+    pub sender: mpsc::Sender<(NodeId, Message)>,
+    pub inbox: mpsc::Receiver<(NodeId, Message)>,
+    pub outboxes: HashMap<NodeId, mpsc::Sender<(NodeId, Message)>>,
+}
+
+impl NodeConnections {
+    pub fn new() -> Self {
+        let (sender, inbox) = mpsc::channel();
+        Self {
+            sender,
+            inbox,
+            outboxes: HashMap::new(),
+        }
+    }
 }
 
 impl NodeState {
     pub fn new() -> Self {
         Self {
-            agents: vec![],
+            // agents: vec![],
             vault: Default::default(),
             cache: Default::default(),
-            fetchpool: VecDeque::new(),
-            peers: vec![],
         }
     }
 
@@ -40,11 +54,11 @@ impl NodeState {
 #[derive(Clone, Debug)]
 pub enum NodeEvent {
     AuthorOp(usize),
+    // AddPeer(NodeId),
     StoreOp(Op, FetchDestination),
-    SendOp(OpHash, NodeId),
     SetOpState(OpHash, OpState),
-    AddPeer(Peer),
-    EnqueueFetch(OpHash, Option<Peer>, FetchDestination),
+
+    SendOp(Op, NodeId),
 }
 
 #[derive(Clone, Debug)]
@@ -54,27 +68,21 @@ pub enum FetchDestination {
 }
 
 /// A node in the network
-#[derive(Clone, Debug, derive_more::From, derive_more::Deref)]
+#[derive(derive_more::From, derive_more::Deref)]
 pub struct Node {
     id: NodeId,
     #[deref]
     state: ActorRw<NodeState>,
+    connections: NodeConnections,
 }
 
-// impl Debug for Node {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         f.debug_struct("Node").field("id", &self.id).finish()
-//     }
-// }
-
-/// A node from another node's perspective
-#[derive(Clone, Debug, derive_more::From, derive_more::Deref)]
-pub struct Peer(Node);
-
-pub trait PeerInterface {
-    fn publish_to(&mut self, from: Peer, op: OpHash);
-    fn gossip_to(&mut self, from: Peer, ops: Vec<OpHash>);
-    fn fetch_from(&self, op: OpHash) -> Option<Op>;
+impl Debug for Node {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Node")
+            .field("id", &self.id)
+            .field("state", &self.state)
+            .finish()
+    }
 }
 
 impl Node {
@@ -82,17 +90,86 @@ impl Node {
         Self {
             id,
             state: ActorRw::new(state),
+            connections: NodeConnections::new(),
         }
     }
 
+    #[tracing::instrument(skip(self), fields(id = %self.id))]
     pub fn handle_event(&mut self, event: NodeEvent) {
-        tracing::info!("node {:?}  event {:?}", self.id, event);
-        self.state.write(|n| match event {
-            NodeEvent::AuthorOp(num_deps) => n.author(num_deps),
-            NodeEvent::AddPeer(peer) => n.peers.push(peer),
-            NodeEvent::StoreOp(op, destination) => n.store(op, destination),
+        if let NodeEvent::SendOp(op, peer) = &event {
+            self.send(peer, Message::Publish(op.clone()));
+        }
+        self.state.write(|n| n.handle_event(event));
+    }
+
+    pub fn handle_message(&mut self, (from, msg): (NodeId, Message)) {
+        match msg {
+            Message::Publish(op) => {
+                self.handle_event(NodeEvent::StoreOp(op, FetchDestination::Vault))
+            }
+            Message::Gossip(ops) => {
+                for op in ops {
+                    self.handle_event(NodeEvent::StoreOp(op, FetchDestination::Vault))
+                }
+            }
+            Message::FetchRequest(hash) => {
+                if let Some(op) = self
+                    .get_op(&hash)
+                    .filter(|op| op.state == OpState::Integrated)
+                {
+                    self.send(&from, Message::FetchResponse(op.op));
+                }
+            }
+            Message::FetchResponse(op) => {
+                self.handle_event(NodeEvent::StoreOp(op, FetchDestination::Cache))
+            }
+        }
+    }
+
+    pub fn process_inbox(&mut self) {
+        if let Ok(msg) = self.connections.inbox.try_recv() {
+            self.handle_message(msg);
+        }
+    }
+
+    pub fn send(&self, peer: &NodeId, msg: Message) {
+        self.connections.outboxes[peer]
+            .send((self.id.clone(), msg))
+            .unwrap();
+    }
+
+    pub fn send_random(&self, msg: Message) {
+        self.connections
+            .outboxes
+            .values()
+            .choose(&mut rand::thread_rng())
+            .unwrap()
+            .send((self.id.clone(), msg))
+            .unwrap();
+    }
+
+    pub fn add_connection(&mut self, peer: NodeId, tx: mpsc::Sender<(NodeId, Message)>) {
+        self.connections.outboxes.insert(peer, tx);
+    }
+
+    pub fn get_sender(&self) -> mpsc::Sender<(NodeId, Message)> {
+        self.connections.sender.clone()
+    }
+
+    pub fn get_op(&self, hash: &OpHash) -> Option<OpData> {
+        self.read(|n| n.vault.get(hash).cloned())
+    }
+}
+
+impl NodeState {
+    pub fn handle_event(&mut self, event: NodeEvent) {
+        match event {
+            NodeEvent::AuthorOp(num_deps) => self.author(num_deps),
+            NodeEvent::StoreOp(op, destination) => {
+                self.store(op, destination);
+            }
             NodeEvent::SetOpState(hash, state) => {
-                if let Some(op) = n.vault.get_mut(&hash) {
+                if let Some(op) = self.vault.get_mut(&hash) {
                     use OpState::*;
                     let valid = matches!(
                         (&op.state, &state),
@@ -106,21 +183,17 @@ impl Node {
                     };
                 };
             }
-            NodeEvent::EnqueueFetch(hash, peer, destination) => {
-                n.fetchpool.push_back((hash, peer, destination));
+            NodeEvent::SendOp(op, peer) => {
+                // not handled in the real system
             }
-            NodeEvent::SendOp(hash, peer) => {
-                // noop
-            }
-        });
+        }
     }
 
     pub fn get_op(&self, hash: &OpHash) -> Option<OpData> {
-        self.read(|n| n.vault.get(hash).cloned())
+        self.vault.get(hash).cloned()
     }
-}
 
-impl NodeState {
+    #[tracing::instrument(skip(self))]
     fn author(&mut self, num_deps: usize) {
         let hash: OpHash = Id::new().into();
         let deps: Vec<OpHash> = self
@@ -140,7 +213,9 @@ impl NodeState {
         );
     }
 
+    #[tracing::instrument(skip(self))]
     fn store(&mut self, op: Op, destination: FetchDestination) {
+        tracing::info!("stored op");
         match destination {
             FetchDestination::Vault => {
                 self.vault.insert(
@@ -158,120 +233,99 @@ impl NodeState {
     }
 }
 
-impl Peer {
-    fn publish_to(&mut self, from: Peer, op: OpHash) {
-        self.0.handle_event(NodeEvent::EnqueueFetch(
-            op,
-            Some(from),
-            FetchDestination::Vault,
-        ));
-    }
-
-    fn gossip_to(&mut self, from: Peer, ops: Vec<OpHash>) {
-        for op in ops {
-            self.0.handle_event(NodeEvent::EnqueueFetch(
-                op,
-                Some(from.clone()),
-                FetchDestination::Vault,
-            ));
-        }
-    }
-
-    fn fetch_from(&self, op: OpHash) -> Option<Op> {
-        self.0.read(|n| {
-            n.vault
-                .get(&op)
-                .filter(|op_data| op_data.state == OpState::Integrated)
-                .map(|op_data| op_data.op.clone())
-        })
-    }
+pub enum Message {
+    Publish(Op),
+    Gossip(Vec<Op>),
+    FetchRequest(OpHash),
+    FetchResponse(Op),
 }
 
-pub fn step(node: Node, t: usize) {
-    node.clone().state.write(|n| {
-        // handle some fetchpool item
-        for _ in 0..1 {
-            if let Some((hash, from, destination)) = n.fetchpool.pop_front() {
-                // If no "from" specified, pick a random peer
-                let peer = from.unwrap_or_else(|| {
-                    n.peers[rand::thread_rng().gen_range(0..n.peers.len())].clone()
-                });
-                if let Some(op) = peer.fetch_from(hash.clone()) {
-                    tracing::trace!("node {:?}    fetched {:?}", node.id, hash);
-                    n.store(op, destination);
-                }
-            } else {
-                break;
-            }
-        }
+// fn fetch_from(&self, op: OpHash) -> Option<Op> {
+//     self.0.read(|n| {
+//         n.vault
+//             .get(&op)
+//             .filter(|op_data| op_data.state == OpState::Integrated)
+//             .map(|op_data| op_data.op.clone())
+//     })
+// }
 
-        // move ops through the validation pipeline
-        let mut to_validate: Vec<Op> = vec![];
-        for op in n.vault.values_mut() {
+pub fn step(node: &mut Node, t: usize) {
+    // move ops through the validation pipeline
+    let mut to_validate: Vec<Op> = vec![];
+    let mut events = vec![];
+    let mut to_publish = vec![];
+    node.read(|n| {
+        for op in n.vault.values() {
             match &op.state {
                 OpState::Pending(_) => {
                     to_validate.push(op.op.clone());
                 }
                 OpState::MissingDeps(deps) => {
-                    n.fetchpool.extend(
-                        deps.iter()
-                            .map(|dep| (dep.clone(), None, FetchDestination::Cache)),
-                    );
+                    todo!()
+                    // events.extend(deps.iter().map(|dep| {
+                    //     NodeEvent::EnqueueFetch(dep.clone(), None, FetchDestination::Cache)
+                    // }));
                 }
                 OpState::Validated => {
-                    op.state = OpState::Integrated;
+                    events.push(NodeEvent::SetOpState(
+                        op.op.hash.clone(),
+                        OpState::Integrated,
+                    ));
 
-                    // publishing as soon as integrated
-                    for peer in n.peers.iter_mut() {
-                        let hash = op.op.hash.clone();
-                        peer.read(|p| {
-                            tracing::trace!(
-                                "node {:?}  published {:?}  to {:?}",
-                                node.id,
-                                hash,
-                                peer.id.clone()
-                            )
-                        });
-                        peer.publish_to(node.clone().into(), hash);
-                    }
+                    to_publish.push(op.op.clone());
                 }
                 _ => {}
             }
         }
+    });
 
+    for op in to_publish {
+        for tx in node.connections.outboxes.values() {
+            tx.send((node.id.clone(), Message::Publish(op.clone())))
+                .unwrap();
+        }
+    }
+
+    for e in events.drain(..) {
+        node.handle_event(e);
+    }
+
+    node.read(|n| {
         for op in to_validate {
             if op
                 .deps
                 .iter()
                 .all(|dep| n.vault.contains_key(dep) || n.cache.contains_key(dep))
             {
-                n.vault.get_mut(&op.hash).unwrap().state = OpState::Validated;
+                events.push(NodeEvent::SetOpState(op.hash.clone(), OpState::Validated));
             } else {
-                n.vault.get_mut(&op.hash).unwrap().state = OpState::MissingDeps(op.deps);
+                events.push(NodeEvent::SetOpState(
+                    op.hash.clone(),
+                    OpState::MissingDeps(op.deps),
+                ));
             }
         }
+    });
 
-        // gossip ops
-        if t % 10 == 0 {
-            let ops: Vec<OpHash> = n
-                .vault
+    for e in events.drain(..) {
+        node.handle_event(e);
+    }
+
+    // gossip ops
+    if t % 10 == 0 {
+        let ops: Vec<Op> = node.read(|n| {
+            n.vault
                 .values()
                 .filter(|op| op.state == OpState::Integrated)
-                .map(|op| OpHash::from(&op.op))
-                .collect();
-            for peer in n.peers.iter_mut() {
-                peer.read(|p| {
-                    tracing::trace!(
-                        "node {:?}   gossiped {} ops to {:?}",
-                        node.id,
-                        ops.len(),
-                        peer.id.clone()
-                    )
-                });
-                peer.gossip_to(node.clone().into(), ops.clone());
-            }
-        }
-    })
+                .map(|op| op.op.clone())
+                .collect()
+        });
+        node.send_random(Message::Gossip(ops));
+    }
+
+    for e in events.drain(..) {
+        node.handle_event(e);
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -318,8 +372,9 @@ mod tests {
 
         // peer discovery
         for i in 0..N {
-            let peer = nodes[(i + 1) % N].clone().into();
-            nodes[i].handle_event(NodeEvent::AddPeer(peer));
+            let id = nodes[(i + 1) % N].id.clone();
+            let sender = nodes[(i + 1) % N].connections.sender.clone();
+            nodes[i].add_connection(id, sender);
         }
 
         for i in 0..AUTHORED_OPS {
@@ -327,8 +382,10 @@ mod tests {
         }
 
         for t in 0..MAX_ITERS {
-            for n in nodes.iter() {
-                step(n.clone(), t);
+            println!("t = {t}");
+
+            for n in nodes.iter_mut() {
+                step(n, t);
             }
 
             if t % 10 == 0
@@ -342,7 +399,13 @@ mod tests {
         }
 
         for n in nodes.iter() {
-            assert_eq!(n.read(|n| n.num_integrated()), AUTHORED_OPS);
+            assert_eq!(
+                n.read(|n| n.num_integrated()),
+                AUTHORED_OPS,
+                "node {} has {} integrated ops",
+                n.id,
+                n.read(|n| n.num_integrated())
+            );
         }
     }
 }
