@@ -27,6 +27,7 @@ pub enum NodeOpPhase {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Arbitrary, derive_more::Display)]
 pub enum NodeOpEvent {
+    Author,
     Store,
     Validate,
     Reject,
@@ -108,9 +109,14 @@ impl Fsm for NetworkOp {
         }
 
         if let NodeOpEvent::Send(id) = &event {
+            if !self.nodes.values().any(|n| matches!(n, NodeOpPhase::Integrated)) {
+                return Err(Some("a Send can't happen until at least one node has Integrated the op".to_string()));
+            }
+
             if node_id == *id {
                 return Err(Some("cannot send op to self".to_string()));
             }
+
             let mut node = self.nodes.get_mut(id).unwrap();
             match node {
                 NodeOpPhase::None => *node = NodeOpPhase::Pending,
@@ -118,9 +124,9 @@ impl Fsm for NetworkOp {
             }
         }
 
-        if let NodeOpEvent::Store = event {
+        if let NodeOpEvent::Author = event {
             if self.nodes.values().any(|n| !matches!(n, NodeOpPhase::None)) {
-                return Err(Some("this model only handles one Store".to_string()));
+                return Err(Some("this model only handles one Author event".to_string()));
             }
         }
 
@@ -158,7 +164,7 @@ impl std::fmt::Debug for NetworkOpEvent {
 fn test_diagram() {
     tracing::subscriber::set_global_default(tracing_subscriber::FmtSubscriber::new()).unwrap();
     
-    let num = 3;
+    let num = 2;
 
     let ids = (0..num).map(|i| Id::new().into()).collect_vec();
     let (initial, ()) = NetworkOp::new_empty(&ids).transition(NetworkOpEvent(ids[0].clone(), NodeOpEvent::Store)).unwrap();

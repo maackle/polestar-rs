@@ -54,16 +54,15 @@ impl NodeState {
 
 #[derive(Clone, Debug)]
 pub enum NodeEvent {
-    AuthorOp(Op),
     // AddPeer(NodeId),
-    StoreOp(Op, FetchDestination),
+    AuthorOp(Op),
+    StoreOp(Op, StoreDestination),
     SetOpState(OpHash, OpState),
-
     SendOp(Op, NodeId),
 }
 
 #[derive(Clone, Debug)]
-pub enum FetchDestination {
+pub enum StoreDestination {
     Vault,
     Cache,
 }
@@ -109,11 +108,11 @@ impl Node {
     pub fn handle_message(&mut self, (from, msg): (NodeId, Message)) {
         match msg {
             Message::Publish(op) => {
-                self.handle_event(NodeEvent::StoreOp(op, FetchDestination::Vault))
+                self.handle_event(NodeEvent::StoreOp(op, StoreDestination::Vault))
             }
             Message::Gossip(ops) => {
                 for op in ops {
-                    self.handle_event(NodeEvent::StoreOp(op, FetchDestination::Vault))
+                    self.handle_event(NodeEvent::StoreOp(op, StoreDestination::Vault))
                 }
             }
             Message::FetchRequest(hash) => {
@@ -125,7 +124,7 @@ impl Node {
                 }
             }
             Message::FetchResponse(op) => {
-                self.handle_event(NodeEvent::StoreOp(op, FetchDestination::Cache))
+                self.handle_event(NodeEvent::StoreOp(op, StoreDestination::Cache))
             }
         }
     }
@@ -216,26 +215,23 @@ impl NodeState {
     }
 
     fn author(&mut self, op: Op) {
-        self.vault.insert(
-            OpHash::from(&op),
-            OpData {
-                op,
-                state: OpState::Pending(OpOrigin::Authored),
-            },
-        );
+        self.vault.entry(op.hash.clone()).or_insert(OpData {
+            op,
+            state: OpState::Pending(OpOrigin::Authored),
+        });
     }
 
     #[tracing::instrument(skip(self))]
-    fn store(&mut self, op: Op, destination: FetchDestination) {
+    fn store(&mut self, op: Op, destination: StoreDestination) {
         tracing::info!("stored op");
         match destination {
-            FetchDestination::Vault => {
+            StoreDestination::Vault => {
                 self.vault.entry(op.hash.clone()).or_insert(OpData {
                     op,
                     state: OpState::Pending(OpOrigin::Fetched),
                 });
             }
-            FetchDestination::Cache => {
+            StoreDestination::Cache => {
                 self.cache.entry(op.hash.clone()).or_insert(op);
             }
         }

@@ -55,8 +55,8 @@ impl ProjectionDown<model::NetworkOp> for NetworkOpProjection {
                 O::Pending(op_origin) => unreachable!(),
                 O::MissingDeps(vec) => unreachable!(),
             },
-            S::AuthorOp(op) if op == self.op => Some(M::Store),
-            S::StoreOp(op, system::FetchDestination::Vault) if op == self.op => Some(M::Store),
+            S::AuthorOp(op) if op == self.op => Some(M::Author),
+            S::StoreOp(op, system::StoreDestination::Vault) if op == self.op => Some(M::Store),
             S::SendOp(op, id) if op == self.op => Some(M::Send(id)),
             _ => None,
         }?;
@@ -105,9 +105,10 @@ impl ProjectionUp<model::NetworkOp> for NetworkOpProjection {
         use model::NodeOpEvent as M;
         use system::NodeEvent as S;
         match event {
+            M::Author => (id, S::AuthorOp(self.op.clone())),
             M::Store => (
                 id,
-                S::StoreOp(self.op.clone(), system::FetchDestination::Vault),
+                S::StoreOp(self.op.clone(), system::StoreDestination::Vault),
             ),
             M::Validate => (
                 id,
