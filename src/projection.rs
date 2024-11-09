@@ -1,5 +1,4 @@
 use core::fmt::Debug;
-use std::fmt::Write;
 
 use crate::{prelude::*, util::first};
 
@@ -77,31 +76,28 @@ where
             }
         };
 
-        if x_am != x_ma {
-            println!(
-                " 
+        assert_eq!(
+            x_am,
+            x_ma,
+            "
+`transition_commutes_with_mapping` failed.
+
 original system event:
 {event:#?}
-"
-            );
 
-            println!("system transition diff : (previous system state) vs (new system state):");
-            prettydiff::diff_lines(&format!("{:#?}", x), &format!("{:#?}", x_a))
-                .names("previous", "new")
-                .prettytable();
+system transition diff : (previous system state) vs (new system state):
+{}
 
-            println!("model transition diff : (previous model state) vs (new model state):");
-            prettydiff::diff_lines(&format!("{:#?}", x_m), &format!("{:#?}", x_ma))
-                .names("previous", "new")
-                .prettytable();
+model transition diff : (previous model state) vs (new model state):
+{}
 
-            println!("commutative diff : (system-transitioned and mapped) vs (mapped and model-transitioned):");
-            prettydiff::diff_lines(&format!("{:#?}", x_am), &format!("{:#?}", x_ma))
-                .names("event->map", "map->action")
-                .prettytable();
-
-            panic!("`transition_commutes_with_mapping` failed. See above output for info.");
-        }
+commutative diff : (system-transitioned and mapped) vs (mapped and model-transitioned): 
+{}
+",
+            prettydiff::diff_lines(&format!("{:#?}", x), &format!("{:#?}", x_a)),
+            prettydiff::diff_lines(&format!("{:#?}", x_m), &format!("{:#?}", x_ma)),
+            prettydiff::diff_lines(&format!("{:#?}", x_am), &format!("{:#?}", x_ma)),
+        )
     }
 }
 

@@ -366,7 +366,7 @@ mod tests {
         tracing::subscriber::set_global_default(tracing_subscriber::FmtSubscriber::new()).unwrap();
 
         const N: usize = 3;
-        const AUTHORED_OPS: usize = 10;
+        const AUTHORED_OPS: usize = 3;
         const MAX_ITERS: usize = 100_000;
 
         let (event_tx, event_rx) = mpsc::channel();

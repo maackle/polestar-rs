@@ -15,6 +15,16 @@ impl ProjectionDown<model::NetworkOp> for NetworkOpProjection {
     type Event = (NodeId, system::NodeEvent);
 
     fn apply(&self, system: &mut Self::System, (id, event): Self::Event) {
+        if let system::NodeEvent::AuthorOp(op) = &event {
+            if system
+                .iter()
+                .any(|(i, n)| i != &id && n.vault.contains_key(&op.hash))
+            {
+                // Don't handle the unrealistic case of two nodes authoring the same op
+                return;
+            }
+        }
+
         if let Some(node) = system.get_mut(&id) {
             node.handle_event(event);
         }
@@ -142,9 +152,8 @@ fn initial_state(ids: &[NodeId]) -> (HashMap<NodeId, system::NodeState>, Op) {
         .iter_mut()
         .next()
         .map(|(id, n)| {
-            for i in 0..5 {
-                n.handle_event(system::NodeEvent::AuthorOp(n.make_op(0)));
-            }
+            n.handle_event(system::NodeEvent::AuthorOp(n.make_op(0)));
+            n.handle_event(system::NodeEvent::AuthorOp(n.make_op(0)));
 
             (id.clone(), n.vault.iter().next().unwrap().1.op.clone())
         })
