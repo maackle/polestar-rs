@@ -5,6 +5,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+use anyhow::bail;
 use itertools::Itertools;
 use polestar::{
     diagram::{print_dot_state_diagram, DiagramConfig, StopCondition},
@@ -38,17 +39,20 @@ pub enum NodeOpEvent {
 impl Fsm for NodeOpPhase {
     type Event = NodeOpEvent;
     type Fx = ();
-    type Error = String;
+    type Error = anyhow::Error;
 
     fn transition(mut self, t: Self::Event) -> FsmResult<Self> {
         use NodeOpEvent as E;
         use NodeOpPhase as S;
         let next = match (self, t) {
             // Receive the op
-            (S::None, E::Store) => S::Pending,
+            (S::None, E::Author | E::Store) => S::Pending,
 
             // Store is idempotent
-            (s, E::Store) => s,
+            (s, E::Store ) => s,
+
+            // Duplicate authorship is an error
+            (s, E::Author ) => bail!("duplicate authorship"),
 
             (S::Pending | S::Validated, E::Validate) => S::Validated,
             (S::Pending | S::Rejected, E::Reject) => S::Rejected,
@@ -58,7 +62,7 @@ impl Fsm for NodeOpPhase {
 
             (S::Integrated, _) => S::Integrated,
             (S::Rejected, _) => S::Rejected,
-            p => return Err(format!("invalid transition {:?}", p)),
+            (state, action) => bail!("invalid transition: {state:?} -> {action:?}"),
         };
         Ok((next, ()))
     }
@@ -81,7 +85,10 @@ impl NetworkOp {
     }
 
     pub fn new_empty(ids: &[NodeId]) -> Self {
-        let mut nodes: BTreeMap<NodeId, _> = ids.iter().map(|id| (id.clone(), Default::default())).collect();
+        let mut nodes: BTreeMap<NodeId, _> = ids
+            .iter()
+            .map(|id| (id.clone(), Default::default()))
+            .collect();
         Self {
             nodes: FsmBTreeMap::from(nodes),
         }
@@ -91,42 +98,34 @@ impl NetworkOp {
 impl Fsm for NetworkOp {
     type Event = NetworkOpEvent;
     type Fx = ();
-    type Error = Option<String>;
+    type Error = String;
 
     fn transition(mut self, NetworkOpEvent(node_id, event): Self::Event) -> FsmResult<Self> {
-        {
-            let vs = || self.values();
-            if
-            // all integrated
-            vs().all(|n| matches!(n, NodeOpPhase::Integrated))
-                    || 
-                    // all non-None are rejected, but not all None
-                    (vs().all(|n| matches!(n, NodeOpPhase::None | NodeOpPhase::Rejected) && vs().any(|n| !matches!(n, NodeOpPhase::None))))
-            {
-                 // terminal states
-                return Err(None)
-            }
-        }
-
         if let NodeOpEvent::Send(id) = &event {
-            if !self.nodes.values().any(|n| matches!(n, NodeOpPhase::Integrated)) {
-                return Err(Some("a Send can't happen until at least one node has Integrated the op".to_string()));
+            if !self
+                .nodes
+                .values()
+                .any(|n| matches!(n, NodeOpPhase::Integrated))
+            {
+                return Err(
+                    "a Send can't happen until at least one node has Integrated the op".to_string(),
+                );
             }
 
             if node_id == *id {
-                return Err(Some("cannot send op to self".to_string()));
+                return Err("cannot send op to self".to_string());
             }
 
             let mut node = self.nodes.get_mut(id).unwrap();
             match node {
                 NodeOpPhase::None => *node = NodeOpPhase::Pending,
-                _ => return Err(Some("don't send op twice".to_string())),
+                _ => return Err("don't send op twice".to_string()),
             }
         }
 
         if let NodeOpEvent::Author = event {
             if self.nodes.values().any(|n| !matches!(n, NodeOpPhase::None)) {
-                return Err(Some("this model only handles one Author event".to_string()));
+                return Err("this model only handles one Author event".to_string());
             }
         }
 
@@ -135,6 +134,19 @@ impl Fsm for NetworkOp {
             .ok_or_else(|| format!("no node {:?}", node_id))?
             .map_err(|e| format!("{:?}", e))?;
         Ok((self, ()))
+    }
+
+    fn is_terminal(&self) -> bool {
+        let vs = || self.values();
+
+        // all integrated
+        vs().all(|n| matches!(n, NodeOpPhase::Integrated))
+        || (
+            // all non-None are rejected
+            vs().all(|n| matches!(n, NodeOpPhase::None | NodeOpPhase::Rejected) 
+            // but not all None
+            && vs().any(|n| !matches!(n, NodeOpPhase::None)))
+        )
     }
 }
 
@@ -163,12 +175,21 @@ impl std::fmt::Debug for NetworkOpEvent {
 #[ignore = "diagram"]
 fn test_diagram() {
     tracing::subscriber::set_global_default(tracing_subscriber::FmtSubscriber::new()).unwrap();
-    
+
     let num = 2;
 
     let ids = (0..num).map(|i| Id::new().into()).collect_vec();
-    let (initial, ()) = NetworkOp::new_empty(&ids).transition(NetworkOpEvent(ids[0].clone(), NodeOpEvent::Store)).unwrap();
+    let (initial, ()) = NetworkOp::new_empty(&ids)
+        .transition(NetworkOpEvent(ids[0].clone(), NodeOpEvent::Store))
+        .unwrap();
 
     // TODO allow for strategy params
-    print_dot_state_diagram(initial, &DiagramConfig { steps: 300, walks: 100, ignore_loopbacks: true });
+    print_dot_state_diagram(
+        initial,
+        &DiagramConfig {
+            steps: 300,
+            walks: 100,
+            ignore_loopbacks: true,
+        },
+    );
 }

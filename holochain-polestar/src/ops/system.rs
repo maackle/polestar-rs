@@ -417,11 +417,15 @@ mod tests {
 
             let events = event_rx.try_iter().collect_vec();
 
-            dbg!(&events);
-
             for event in events {
-                if let Some(action) = projection.map_event(event) {
-                    model = model.transition_(action).unwrap()
+                if let Some(action) = projection.map_event(event.clone()) {
+                    model = match model.transition_(action) {
+                        Ok(m) => m,
+                        Err(e) => {
+                            panic!("error transitioning model: {e}. Last event: {event:#?}");
+                            continue;
+                        }
+                    }
                 } else {
                     tracing::info!("no event mapped");
                 }
