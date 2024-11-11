@@ -16,14 +16,14 @@ pub trait Fsm
 where
     Self: Sized,
 {
-    type Event;
+    type Action;
     type Fx;
     type Error: std::fmt::Debug;
 
-    fn transition(self, event: Self::Event) -> FsmResult<Self>;
+    fn transition(self, event: Self::Action) -> FsmResult<Self>;
 
     /// Perform a transition and ignore the effect, when the effect is `()`.
-    fn transition_(self, event: Self::Event) -> Result<Self, Self::Error>
+    fn transition_(self, event: Self::Action) -> Result<Self, Self::Error>
     where
         Self: Fsm<Fx = ()>,
     {
@@ -48,11 +48,11 @@ where
 pub type FsmResult<S: Fsm> = Result<(S, S::Fx), S::Error>;
 
 impl Fsm for bool {
-    type Event = bool;
+    type Action = bool;
     type Fx = ();
     type Error = Infallible;
 
-    fn transition(self, event: Self::Event) -> FsmResult<Self> {
+    fn transition(self, event: Self::Action) -> FsmResult<Self> {
         Ok((event, ()))
     }
 

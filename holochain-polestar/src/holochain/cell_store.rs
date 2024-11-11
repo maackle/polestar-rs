@@ -17,11 +17,11 @@ pub enum CellStoreEvent {
 pub struct CellStoreFx;
 
 impl polestar::Fsm for CellStore {
-    type Event = CellStoreEvent;
+    type Action = CellStoreEvent;
     type Fx = CellStoreFx;
     type Error = anyhow::Error;
 
-    fn transition(mut self, e: Self::Event) -> FsmResult<Self> {
+    fn transition(mut self, e: Self::Action) -> FsmResult<Self> {
         let () = match e {
             CellStoreEvent::CellEvent(id, e) => {
                 let () = self

@@ -125,11 +125,11 @@ impl<S> From<S> for ActorFsm<S> {
 }
 
 impl<S: Fsm> Fsm for ActorFsm<S> {
-    type Event = S::Event;
+    type Action = S::Action;
     type Fx = S::Fx;
     type Error = S::Error;
 
-    fn transition(self, event: Self::Event) -> FsmResult<Self> {
+    fn transition(self, event: Self::Action) -> FsmResult<Self> {
         let fx = {
             let mut lock = self.0 .0.write();
             let state = std::mem::take(&mut *lock).unwrap();
@@ -151,7 +151,7 @@ impl<S: Fsm> Fsm for ActorFsm<S> {
 }
 
 impl<S: Fsm> ActorFsm<S> {
-    pub fn transition_mut(&mut self, event: S::Event) -> Option<Result<S::Fx, S::Error>> {
+    pub fn transition_mut(&mut self, event: S::Action) -> Option<Result<S::Fx, S::Error>> {
         let mut lock = self.0 .0.write();
         match lock.take()?.transition(event) {
             Err(e) => Some(Err(e)),

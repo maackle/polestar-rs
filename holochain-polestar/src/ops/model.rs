@@ -37,11 +37,11 @@ pub enum NodeOpEvent {
 }
 
 impl Fsm for NodeOpPhase {
-    type Event = NodeOpEvent;
+    type Action = NodeOpEvent;
     type Fx = ();
     type Error = anyhow::Error;
 
-    fn transition(mut self, t: Self::Event) -> FsmResult<Self> {
+    fn transition(mut self, t: Self::Action) -> FsmResult<Self> {
         use NodeOpEvent as E;
         use NodeOpPhase as S;
         let next = match (self, t) {
@@ -96,11 +96,11 @@ impl NetworkOp {
 }
 
 impl Fsm for NetworkOp {
-    type Event = NetworkOpEvent;
+    type Action = NetworkOpEvent;
     type Fx = ();
     type Error = String;
 
-    fn transition(mut self, NetworkOpEvent(node_id, event): Self::Event) -> FsmResult<Self> {
+    fn transition(mut self, NetworkOpEvent(node_id, event): Self::Action) -> FsmResult<Self> {
         if let NodeOpEvent::Send(id) = &event {
             if !self
                 .nodes

@@ -20,11 +20,11 @@ pub enum AppStoreFx {
 }
 
 impl polestar::Fsm for AppStore {
-    type Event = AppStoreEvent;
+    type Action = AppStoreEvent;
     type Fx = Option<AppStoreFx>;
     type Error = anyhow::Error;
 
-    fn transition(mut self, e: Self::Event) -> FsmResult<Self> {
+    fn transition(mut self, e: Self::Action) -> FsmResult<Self> {
         let fx = match e {
             AppStoreEvent::AppEvent(id, e) => {
                 let fx = self

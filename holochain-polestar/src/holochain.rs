@@ -32,11 +32,11 @@ pub enum HolochainState {
 }
 
 impl polestar::Fsm for HolochainState {
-    type Event = HolochainEvent;
+    type Action = HolochainEvent;
     type Fx = ();
     type Error = anyhow::Error;
 
-    fn transition(mut self, event: Self::Event) -> FsmResult<Self> {
+    fn transition(mut self, event: Self::Action) -> FsmResult<Self> {
         self = match event {
             HolochainEvent::Init => HolochainState::ConductorInitialized(ConductorState::default()),
             HolochainEvent::Conductor(e) => match self {

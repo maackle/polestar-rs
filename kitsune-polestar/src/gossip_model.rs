@@ -23,11 +23,11 @@ pub struct GossipState {
 }
 
 impl Fsm for GossipState {
-    type Event = GossipEvent;
+    type Action = GossipEvent;
     type Fx = ();
     type Error = anyhow::Error;
 
-    fn transition(mut self, (node, event): Self::Event) -> FsmResult<Self> {
+    fn transition(mut self, (node, event): Self::Action) -> FsmResult<Self> {
         self.rounds
             .transition_mut(node.clone(), event)
             .ok_or(anyhow!("no round for {node:?}"))?

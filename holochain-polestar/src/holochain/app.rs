@@ -9,13 +9,13 @@ use super::*;
 use crate::*;
 
 impl polestar::Fsm for AppState {
-    type Event = (AppEvent, Arc<AppContext>);
+    type Action = (AppEvent, Arc<AppContext>);
     type Fx = Option<AppFx>;
     type Error = anyhow::Error;
 
     fn transition(
         mut self,
-        (event, context): Self::Event,
+        (event, context): Self::Action,
     ) -> Result<(Self, Self::Fx), Self::Error> {
         match event {
             AppEvent::Enable => {

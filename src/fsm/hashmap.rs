@@ -16,7 +16,7 @@ use std::collections::HashMap;
 pub struct FsmHashMap<K: Eq + std::hash::Hash, V>(HashMap<K, V>);
 
 impl<K: Eq + std::hash::Hash, V: Fsm> FsmHashMap<K, V> {
-    pub fn transition_mut(&mut self, k: K, event: V::Event) -> Option<Result<V::Fx, V::Error>> {
+    pub fn transition_mut(&mut self, k: K, event: V::Action) -> Option<Result<V::Fx, V::Error>> {
         let r = self.0.remove(&k)?.transition(event);
         match r {
             Ok((state, fx)) => {

@@ -17,11 +17,11 @@ pub struct ConductorState {
 }
 
 impl Fsm for ConductorState {
-    type Event = ConductorEvent;
+    type Action = ConductorEvent;
     type Fx = ();
     type Error = anyhow::Error;
 
-    fn transition(mut self, event: Self::Event) -> FsmResult<Self> {
+    fn transition(mut self, event: Self::Action) -> FsmResult<Self> {
         let (_, _fx) = match event {
             ConductorEvent::Admin(e) => {
                 match e {

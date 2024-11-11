@@ -20,7 +20,7 @@ where
 
     fn apply(&self, system: &mut Self::System, event: Self::Event);
     fn map_state(&self, system: &Self::System) -> Option<Model>;
-    fn map_event(&self, event: Self::Event) -> Option<Model::Event>;
+    fn map_event(&self, event: Self::Event) -> Option<Model::Action>;
 }
 
 /// Invariants:
@@ -37,7 +37,7 @@ where
     Model: Fsm,
 {
     fn gen_state(&self, generator: &mut impl Generator, state: Model) -> Self::System;
-    fn gen_event(&self, generator: &mut impl Generator, event: Model::Event) -> Self::Event;
+    fn gen_event(&self, generator: &mut impl Generator, event: Model::Action) -> Self::Event;
 }
 
 #[cfg(feature = "testing")]
@@ -46,7 +46,7 @@ where
     Self::System: Clone + Debug,
     Self::Event: Clone + Debug,
     Model: Fsm + Clone + Debug + Eq,
-    Model::Event: Clone + Debug + Eq,
+    Model::Action: Clone + Debug + Eq,
     Model::Error: Eq,
 {
     fn test_commutativity(&self, x: Self::System, event: Self::Event) {
@@ -107,7 +107,7 @@ where
     Self::System: Clone + Debug,
     Self::Event: Clone + Debug,
     Model: Fsm + Clone + Debug + Eq,
-    Model::Event: Clone + Debug + Eq,
+    Model::Action: Clone + Debug + Eq,
     Model::Error: Eq,
 {
     fn test_all_invariants(
@@ -141,7 +141,7 @@ where
         )
     }
 
-    fn map_event_is_a_retraction(&self, runner: &mut impl Generator, event: Model::Event) {
+    fn map_event_is_a_retraction(&self, runner: &mut impl Generator, event: Model::Action) {
         let roundtrip = self.map_event(self.gen_event(runner, event.clone()));
         assert_eq!(
             Some(&event),
@@ -158,7 +158,7 @@ where
         self,
         runner: &mut impl Generator,
         x: Model,
-        event: Model::Event,
+        event: Model::Action,
     ) {
         // if error, return original state
         let x_t = x
@@ -191,7 +191,7 @@ where
     Self::System: Clone + Debug,
     Self::Event: Clone + Debug,
     M: Fsm + Clone + Debug + Eq,
-    M::Event: Clone + Debug + Eq,
+    M::Action: Clone + Debug + Eq,
     M::Error: Eq,
 {
 }
@@ -203,7 +203,7 @@ where
     Self::System: Clone + Debug,
     Self::Event: Clone + Debug,
     M: Fsm + Clone + Debug + Eq,
-    M::Event: Clone + Debug + Eq,
+    M::Action: Clone + Debug + Eq,
     M::Error: Eq,
 {
 }

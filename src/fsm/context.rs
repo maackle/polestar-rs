@@ -32,13 +32,13 @@ where
 
 impl<S, C, E> Fsm for FsmContext<S, C>
 where
-    S: Fsm<Event = (E, Arc<C>)>,
+    S: Fsm<Action = (E, Arc<C>)>,
 {
-    type Event = E;
+    type Action = E;
     type Fx = S::Fx;
     type Error = S::Error;
 
-    fn transition(self, event: Self::Event) -> FsmResult<Self> {
+    fn transition(self, event: Self::Action) -> FsmResult<Self> {
         let context = self.context;
         let (fsm, fx) = Fsm::transition(self.fsm, (event, context.clone()))?;
         Ok((Self { fsm, context }, fx))

@@ -27,7 +27,7 @@ pub struct DiagramConfig {
 pub fn print_dot_state_diagram<M>(m: M, config: &DiagramConfig)
 where
     M: Fsm + Clone + Eq + Debug + Hash,
-    M::Event: Arbitrary + Clone + Eq + Debug + Hash,
+    M::Action: Arbitrary + Clone + Eq + Debug + Hash,
 {
     println!("{}", to_dot(state_diagram(m, config)));
 }
@@ -43,10 +43,10 @@ where
 
 /// Generate a "Monte Carlo state diagram" of this state machine.
 // TODO: stop early if graph is saturated (by random walking over node and edge space first).
-pub fn state_diagram<M>(m: M, config: &DiagramConfig) -> DiGraph<M, M::Event>
+pub fn state_diagram<M>(m: M, config: &DiagramConfig) -> DiGraph<M, M::Action>
 where
     M: Fsm + Clone + Eq + Hash + Debug,
-    M::Event: Arbitrary + Clone + Eq + Hash,
+    M::Action: Arbitrary + Clone + Eq + Hash,
 {
     let mut graph = DiGraph::new();
     let mut node_indices = HashMap::new();
@@ -123,10 +123,10 @@ impl<M: Eq + Hash> From<Vec<M>> for StopCondition<M> {
 }
 
 #[allow(clippy::type_complexity)]
-fn take_a_walk<M>(mut m: M, steps: usize) -> (Vec<(M::Event, M)>, Vec<M::Error>, usize, bool)
+fn take_a_walk<M>(mut m: M, steps: usize) -> (Vec<(M::Action, M)>, Vec<M::Error>, usize, bool)
 where
     M: Fsm + Debug + Clone + Hash + Eq,
-    M::Event: Arbitrary + Clone,
+    M::Action: Arbitrary + Clone,
 {
     use proptest::strategy::{Strategy, ValueTree};
     use proptest::test_runner::TestRunner;
@@ -137,7 +137,7 @@ where
     let mut terminated = false;
     while num_steps < steps {
         num_steps += 1;
-        let event: M::Event = M::Event::arbitrary()
+        let event: M::Action = M::Action::arbitrary()
             .new_tree(&mut runner)
             .unwrap()
             .current();
@@ -184,7 +184,7 @@ mod tests {
     }
 
     impl Fsm for Cycle {
-        type Event = Turn;
+        type Action = Turn;
         type Fx = ();
         type Error = Infallible;
 

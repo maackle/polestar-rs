@@ -19,7 +19,7 @@ use std::collections::BTreeMap;
 pub struct FsmBTreeMap<K: Ord, V>(BTreeMap<K, V>);
 
 impl<K: Ord, V: Fsm> FsmBTreeMap<K, V> {
-    pub fn transition_mut(&mut self, k: K, event: V::Event) -> Option<Result<V::Fx, V::Error>> {
+    pub fn transition_mut(&mut self, k: K, event: V::Action) -> Option<Result<V::Fx, V::Error>> {
         let r = self.0.remove(&k)?.transition(event);
         match r {
             Ok((state, fx)) => {

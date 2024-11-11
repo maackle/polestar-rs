@@ -33,11 +33,11 @@ pub enum RoundEvent {
 pub type RoundContext = GossipType;
 
 impl Fsm for RoundPhase {
-    type Event = (RoundEvent, Arc<RoundContext>);
+    type Action = (RoundEvent, Arc<RoundContext>);
     type Fx = ();
     type Error = Option<anyhow::Error>;
 
-    fn transition(mut self, (event, ctx): Self::Event) -> FsmResult<Self> {
+    fn transition(mut self, (event, ctx): Self::Action) -> FsmResult<Self> {
         use GossipType as T;
         use RoundEvent as E;
         use RoundPhase as P;

@@ -15,11 +15,11 @@ pub enum CellState {
 }
 
 impl polestar::Fsm for CellState {
-    type Event = CellEvent;
+    type Action = CellEvent;
     type Fx = ();
     type Error = Infallible;
 
-    fn transition(mut self, _: Self::Event) -> FsmResult<Self> {
+    fn transition(mut self, _: Self::Action) -> FsmResult<Self> {
         todo!()
     }
 }
