@@ -10,7 +10,7 @@ pub struct NetworkOpProjection {
     pub op: Op,
 }
 
-impl ProjectionDown<model::NetworkOp> for NetworkOpProjection {
+impl Projection<model::NetworkOp> for NetworkOpProjection {
     type System = HashMap<NodeId, system::NodeState>;
     type Event = (NodeId, system::NodeEvent);
 
@@ -72,9 +72,7 @@ impl ProjectionDown<model::NetworkOp> for NetworkOpProjection {
         }?;
         Some(NetworkOpEvent(id, n))
     }
-}
 
-impl ProjectionUp<model::NetworkOp> for NetworkOpProjection {
     fn gen_state(&self, generator: &mut impl Generator, state: model::NetworkOp) -> Self::System {
         // TODO: set up peers
         state

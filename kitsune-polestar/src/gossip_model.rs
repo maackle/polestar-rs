@@ -19,7 +19,7 @@ use crate::{
 #[derive(Debug, Clone, Eq, PartialEq, Arbitrary, derive_more::From)]
 pub struct GossipState {
     rounds: FsmHashMap<NodeCert, RoundFsm>,
-    initiate_tgt: Option<NodeCert>,
+    initiate_tgt: Option<Tgt>,
 }
 
 impl Fsm for GossipState {
@@ -36,46 +36,66 @@ impl Fsm for GossipState {
     }
 }
 
+#[derive(Debug, Clone, Eq, PartialEq, Arbitrary, derive_more::From)]
+pub struct Tgt {
+    pub cert: NodeCert,
+    pub tie_break: u32,
+}
+
 pub type GossipEvent = (NodeCert, RoundEvent);
 
-// impl Projection<GossipState> for KitsuneResult<ShardedGossipLocal> {
-//     type Event = (NodeCert, ShardedGossipWire);
+pub struct GossipProjection;
 
-//     fn apply(&mut self, (node, msg): Self::Event) {
-//         if let Ok(g) = self {
-//             let mut session = AgentInfoSession::default();
-//             let r = block_on(g.process_incoming(node, msg, &mut session));
-//             match r {
-//                 Ok(_) => (),
-//                 Err(e) => {
-//                     *self = Err(e);
-//                 }
-//             }
-//         }
-//     }
+impl Projection<GossipState> for GossipProjection {
+    type System = ShardedGossipLocal;
+    type Event = (NodeCert, ShardedGossipWire);
 
-//     fn map_event(&self, (node, msg): Self::Event) -> Option<GossipEvent> {
-//         crate::round_model::map_event(msg).map(|e| (node, e))
-//     }
+    fn apply(&self, system: &mut Self::System, (node, msg): Self::Event) {
+        let mut session = AgentInfoSession::default();
+        let r = block_on(system.process_incoming(node, msg, &mut session));
+    }
 
-//     fn map_state(&self) -> Option<GossipState> {
-//         todo!()
-//         // Some(map_result(self.map(|s| {
-//         //     map_result(s.inner.share_mut(|s, _| {
-//         //         Ok(s.round_map
-//         //             .iter()
-//         //             .map(|(k, v)| (k, map_state(v.clone())))
-//         //             .collect()
-//         //             .into())
-//         //     }))
-//         // })))
-//     }
+    fn map_event(&self, (node, msg): Self::Event) -> Option<GossipEvent> {
+        crate::round_model::map_event(msg).map(|e| (node, e))
+    }
 
-//     fn gen_event(&self, generator: &mut impl Generator, event: GossipEvent) -> Self::Event {
-//         todo!()
-//     }
+    fn map_state(&self, system: &Self::System) -> Option<GossipState> {
+        let state = system
+            .inner
+            .share_mut(|s, _| {
+                let rounds = s
+                    .round_map
+                    .map
+                    .iter()
+                    .map(|(k, mut v)| {
+                        (
+                            k.clone(),
+                            crate::round_model::map_state(v.clone())
+                                .unwrap()
+                                .context(system.gossip_type),
+                        )
+                    })
+                    .collect::<HashMap<NodeCert, RoundFsm>>()
+                    .into();
 
-//     fn gen_state(&self, generator: &mut impl Generator, state: GossipState) -> Self {
-//         todo!()
-//     }
-// }
+                let initiate_tgt = s.initiate_tgt.as_ref().map(|t| Tgt {
+                    cert: t.cert.clone(),
+                    tie_break: t.tie_break,
+                });
+                Ok(GossipState {
+                    rounds,
+                    initiate_tgt,
+                })
+            })
+            .unwrap();
+        Some(state)
+    }
+
+    fn gen_event(&self, generator: &mut impl Generator, event: GossipEvent) -> Self::Event {
+        todo!()
+    }
+
+    fn gen_state(&self, generator: &mut impl Generator, state: GossipState) -> Self::System {
+        todo!()
+    }
+}

@@ -62,7 +62,7 @@ pub struct CellId(pub DnaHash, pub AgentPubKey);
 mod tests {
     use core::default::Default;
 
-    use polestar::prelude::{Generator, ProjectionDown};
+    use polestar::prelude::{Generator, Projection};
     use polestar::Fsm;
     use prop::test_runner::TestRunner;
     use proptest::prelude::*;

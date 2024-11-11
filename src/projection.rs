@@ -13,20 +13,6 @@ use crate::{prelude::*, util::first};
 /// commutativity for down projection:
 /// - map_state(apply(x, event)) == transition(map_state(x), map_event(event))
 ///
-pub trait ProjectionDown<Model>
-where
-    Model: Fsm,
-{
-    type System: Clone;
-    type Event;
-
-    fn apply(&self, system: &mut Self::System, event: Self::Event);
-    fn map_state(&self, system: &Self::System) -> Option<Model>;
-    fn map_event(&self, event: Self::Event) -> Option<Model::Action>;
-}
-
-/// Invariants:
-///
 /// retractions:
 /// - map_state(gen_state(_, state)) == state
 /// - map_event(gen_event(_, transition)) == transition
@@ -34,16 +20,23 @@ where
 /// commutativity for up projection:
 /// - transition(state, transition) == map_state(apply(gen_state(_, state), gen_event(_, transition)))
 ///
-pub trait ProjectionUp<Model>: ProjectionDown<Model>
+///
+pub trait Projection<Model>
 where
     Model: Fsm,
 {
+    type System;
+    type Event;
+
+    fn apply(&self, system: &mut Self::System, event: Self::Event);
+    fn map_state(&self, system: &Self::System) -> Option<Model>;
+    fn map_event(&self, event: Self::Event) -> Option<Model::Action>;
     fn gen_state(&self, generator: &mut impl Generator, state: Model) -> Self::System;
     fn gen_event(&self, generator: &mut impl Generator, event: Model::Action) -> Self::Event;
 }
 
 #[cfg(feature = "testing")]
-pub trait ProjectionDownTests<Model>: Sized + ProjectionDown<Model>
+pub trait ProjectionTests<Model>: Sized + Projection<Model>
 where
     Self::System: Clone + Debug,
     Self::Event: Clone + Debug,
@@ -101,17 +94,7 @@ commutative diff : (system-transitioned and mapped) vs (mapped and model-transit
             prettydiff::diff_lines(&format!("{:#?}", x_am), &format!("{:#?}", x_ma)),
         )
     }
-}
 
-#[cfg(feature = "testing")]
-pub trait ProjectionUpTests<Model>: Sized + ProjectionUp<Model>
-where
-    Self::System: Clone + Debug,
-    Self::Event: Clone + Debug,
-    Model: Fsm + Clone + Debug + Eq,
-    Model::Action: Clone + Debug + Eq,
-    Model::Error: Eq,
-{
     fn test_all_invariants(
         self,
         runner: &mut impl Generator,
@@ -187,21 +170,9 @@ where
 }
 
 #[cfg(feature = "testing")]
-impl<M, T> ProjectionDownTests<M> for T
+impl<M, T> ProjectionTests<M> for T
 where
-    T: ProjectionDown<M>,
-    Self::System: Clone + Debug,
-    Self::Event: Clone + Debug,
-    M: Fsm + Clone + Debug + Eq,
-    M::Action: Clone + Debug + Eq,
-    M::Error: Eq,
-{
-}
-
-#[cfg(feature = "testing")]
-impl<M, T> ProjectionUpTests<M> for T
-where
-    T: ProjectionUp<M>,
+    T: Projection<M>,
     Self::System: Clone + Debug,
     Self::Event: Clone + Debug,
     M: Fsm + Clone + Debug + Eq,

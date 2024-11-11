@@ -120,7 +120,7 @@ impl Fsm for Thermostat {
 //     }
 // }
 
-impl ProjectionDown<Thermostat> for Instrument {
+impl Projection<Thermostat> for Instrument {
     type System = Self;
     type Event = InstrumentReading;
 
@@ -151,9 +151,7 @@ impl ProjectionDown<Thermostat> for Instrument {
         };
         Some(s.transition_(system.current.temp).unwrap())
     }
-}
 
-impl ProjectionUp<Thermostat> for Instrument {
     fn gen_event(&self, g: &mut impl Generator, temp: Temp) -> InstrumentReading {
         InstrumentReading {
             temp,

@@ -354,7 +354,7 @@ pub enum OpOrigin {
 mod tests {
 
     use itertools::Itertools;
-    use polestar::{prelude::ProjectionDown, Fsm};
+    use polestar::{prelude::Projection, Fsm};
     use projection::NetworkOpProjection;
     use rand::Rng;
     use system::{Node, NodeEvent, NodeState};
