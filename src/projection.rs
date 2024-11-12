@@ -1,6 +1,7 @@
 mod projection_result;
 
 use core::fmt::Debug;
+use std::sync::mpsc;
 
 use crate::{prelude::*, util::first};
 
@@ -43,11 +44,12 @@ where
 pub type ActionOf<M: Fsm> = <M as Fsm>::Action;
 pub type ErrorOf<M: Fsm> = <M as Fsm>::Error;
 
-// pub struct ProjectionRunner<P: Projection<M>, M: Fsm> {
-//     projection: P,
-// }
+pub struct ProjectionRunner<P: Projection> {
+    projection: P,
+    event_rx: mpsc::Receiver<P::Event>,
+}
 
-// impl<P: Projection<M>, M: Fsm> ProjectionRunner<P, M> {
+impl<P: Projection> ProjectionRunner<P> {}
 
 #[cfg(feature = "testing")]
 pub trait ProjectionTests: Sized + Projection
