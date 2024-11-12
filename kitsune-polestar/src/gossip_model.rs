@@ -46,8 +46,9 @@ pub type GossipEvent = (NodeCert, RoundEvent);
 
 pub struct GossipProjection;
 
-impl Projection<GossipState> for GossipProjection {
+impl Projection for GossipProjection {
     type System = ShardedGossipLocal;
+    type Model = GossipState;
     type Event = (NodeCert, ShardedGossipWire);
 
     fn apply(&self, system: &mut Self::System, (node, msg): Self::Event) {
@@ -92,10 +93,10 @@ impl Projection<GossipState> for GossipProjection {
     }
 
     fn gen_event(&self, generator: &mut impl Generator, event: GossipEvent) -> Self::Event {
-        todo!()
+        unimplemented!("generation not implemented")
     }
 
     fn gen_state(&self, generator: &mut impl Generator, state: GossipState) -> Self::System {
-        todo!()
+        unimplemented!("generation not implemented")
     }
 }

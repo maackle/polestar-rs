@@ -120,8 +120,9 @@ impl Fsm for Thermostat {
 //     }
 // }
 
-impl Projection<Thermostat> for Instrument {
+impl Projection for Instrument {
     type System = Self;
+    type Model = Thermostat;
     type Event = InstrumentReading;
 
     fn apply(&self, system: &mut Self, event: Self::Event) {

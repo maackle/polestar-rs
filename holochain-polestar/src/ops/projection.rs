@@ -10,8 +10,9 @@ pub struct NetworkOpProjection {
     pub op: Op,
 }
 
-impl Projection<model::NetworkOp> for NetworkOpProjection {
+impl Projection for NetworkOpProjection {
     type System = HashMap<NodeId, system::NodeState>;
+    type Model = model::NetworkOp;
     type Event = (NodeId, system::NodeEvent);
 
     fn apply(&self, system: &mut Self::System, (id, event): Self::Event) {

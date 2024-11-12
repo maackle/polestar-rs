@@ -21,28 +21,42 @@ use crate::{prelude::*, util::first};
 /// - transition(state, transition) == map_state(apply(gen_state(_, state), gen_event(_, transition)))
 ///
 ///
-pub trait Projection<Model>
+pub trait Projection
 where
-    Model: Fsm,
+    Self::Model: Fsm,
 {
     type System;
+    type Model;
     type Event;
 
     fn apply(&self, system: &mut Self::System, event: Self::Event);
-    fn map_state(&self, system: &Self::System) -> Option<Model>;
-    fn map_event(&self, event: Self::Event) -> Option<Model::Action>;
-    fn gen_state(&self, generator: &mut impl Generator, state: Model) -> Self::System;
-    fn gen_event(&self, generator: &mut impl Generator, event: Model::Action) -> Self::Event;
+    fn map_state(&self, system: &Self::System) -> Option<Self::Model>;
+    fn map_event(&self, event: Self::Event) -> Option<ActionOf<Self::Model>>;
+    fn gen_state(&self, generator: &mut impl Generator, state: Self::Model) -> Self::System;
+    fn gen_event(
+        &self,
+        generator: &mut impl Generator,
+        event: ActionOf<Self::Model>,
+    ) -> Self::Event;
 }
 
+pub type ActionOf<M: Fsm> = <M as Fsm>::Action;
+pub type ErrorOf<M: Fsm> = <M as Fsm>::Error;
+
+// pub struct ProjectionRunner<P: Projection<M>, M: Fsm> {
+//     projection: P,
+// }
+
+// impl<P: Projection<M>, M: Fsm> ProjectionRunner<P, M> {
+
 #[cfg(feature = "testing")]
-pub trait ProjectionTests<Model>: Sized + Projection<Model>
+pub trait ProjectionTests: Sized + Projection
 where
     Self::System: Clone + Debug,
     Self::Event: Clone + Debug,
-    Model: Fsm + Clone + Debug + Eq,
-    Model::Action: Clone + Debug + Eq,
-    Model::Error: Eq,
+    Self::Model: Fsm + Clone + Debug + Eq,
+    ActionOf<Self::Model>: Clone + Debug + Eq,
+    ErrorOf<Self::Model>: Eq,
 {
     fn test_commutativity(&self, x: Self::System, event: Self::Event) {
         let x_m = self.map_state(&x);
@@ -112,7 +126,7 @@ commutative diff : (system-transitioned and mapped) vs (mapped and model-transit
         // TODO: all other cases ok?
     }
 
-    fn map_state_is_a_retraction(&self, runner: &mut impl Generator, state: Model) {
+    fn map_state_is_a_retraction(&self, runner: &mut impl Generator, state: Self::Model) {
         let generated = self.gen_state(runner, state.clone());
         let roundtrip = self.map_state(&generated);
         assert_eq!(
@@ -126,7 +140,7 @@ commutative diff : (system-transitioned and mapped) vs (mapped and model-transit
         )
     }
 
-    fn map_event_is_a_retraction(&self, runner: &mut impl Generator, event: Model::Action) {
+    fn map_event_is_a_retraction(&self, runner: &mut impl Generator, event: ActionOf<Self::Model>) {
         let roundtrip = self.map_event(self.gen_event(runner, event.clone()));
         assert_eq!(
             Some(&event),
@@ -142,8 +156,8 @@ commutative diff : (system-transitioned and mapped) vs (mapped and model-transit
     fn transition_commutes_with_generation(
         self,
         runner: &mut impl Generator,
-        x: Model,
-        event: Model::Action,
+        x: Self::Model,
+        event: ActionOf<Self::Model>,
     ) {
         // if error, return original state
         let x_t = x
@@ -170,13 +184,13 @@ commutative diff : (system-transitioned and mapped) vs (mapped and model-transit
 }
 
 #[cfg(feature = "testing")]
-impl<M, T> ProjectionTests<M> for T
+impl<T> ProjectionTests for T
 where
-    T: Projection<M>,
+    T: Projection,
     Self::System: Clone + Debug,
     Self::Event: Clone + Debug,
-    M: Fsm + Clone + Debug + Eq,
-    M::Action: Clone + Debug + Eq,
-    M::Error: Eq,
+    T::Model: Fsm + Clone + Debug + Eq,
+    ActionOf<T::Model>: Clone + Debug + Eq,
+    ErrorOf<T::Model>: Eq,
 {
 }
