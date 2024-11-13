@@ -12,6 +12,7 @@ use crate::{util::first, Machine};
 #[derive(Debug, Clone)]
 pub struct DiagramConfig {
     pub max_actions: Option<usize>,
+    pub max_distance: Option<usize>,
     pub ignore_loopbacks: bool,
 }
 
@@ -19,9 +20,18 @@ impl Default for DiagramConfig {
     fn default() -> Self {
         Self {
             max_actions: None,
+            max_distance: None,
             ignore_loopbacks: false,
         }
     }
+}
+
+pub fn print_dot_state_diagram<M>(m: M, config: &DiagramConfig)
+where
+    M: Machine + Clone + Eq + Debug + Hash,
+    M::Action: Exhaustive + Clone + Eq + Debug + Hash,
+{
+    println!("{}", crate::diagram::to_dot(state_diagram(m, config)));
 }
 
 /// Generate a state diagram of this state machine by exhaustively taking all possible actions
@@ -33,28 +43,22 @@ where
 {
     let mut graph = DiGraph::new();
     let mut visited_nodes = HashMap::new();
-    let mut nodes_to_visit: VecDeque<(M, Option<(M::Action, NodeIndex)>)> = VecDeque::new();
+    let mut nodes_to_visit: VecDeque<(M, usize, Option<(M::Action, NodeIndex)>)> = VecDeque::new();
     let mut edges = HashSet::new();
 
-    nodes_to_visit.push_back((m, None));
+    nodes_to_visit.push_back((m, 0, None));
 
     let mut total_steps = 0;
     let mut num_errors = 0;
     let mut num_terminations = 0;
 
-    while let Some((node, origin)) = nodes_to_visit.pop_front() {
+    while let Some((node, distance, origin)) = nodes_to_visit.pop_front() {
         let ix = if let Some(ix) = visited_nodes.get(&node) {
             *ix
         } else {
             // Add the node to the graph.
             graph.add_node(node.clone())
         };
-
-        // If this is a terminal state, no need to explore further.
-        if node.is_terminal() {
-            num_terminations += 1;
-            continue;
-        }
 
         // Add an edge from the previous node to this node.
         if let Some((prev_edge, prev_ix)) = origin {
@@ -65,8 +69,15 @@ where
             }
         }
 
+        // If this is a terminal state, no need to explore further.
+        if node.is_terminal() {
+            num_terminations += 1;
+            continue;
+        }
+
         // Don't explore the same node twice.
-        if visited_nodes.contains_key(&node) {
+        if distance > config.max_distance.unwrap_or(usize::MAX) && visited_nodes.contains_key(&node)
+        {
             continue;
         }
 
@@ -75,7 +86,7 @@ where
             total_steps += 1;
             match node.clone().transition(edge.clone()).map(first) {
                 Ok(node) => {
-                    nodes_to_visit.push_back((node, Some((edge, ix))));
+                    nodes_to_visit.push_back((node, distance + 1, Some((edge, ix))));
                 }
                 Err(_err) => {
                     num_errors += 1;
