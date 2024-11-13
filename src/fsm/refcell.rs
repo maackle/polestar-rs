@@ -1,4 +1,4 @@
-use crate::Fsm;
+use crate::Machine;
 use proptest::prelude::{Arbitrary, BoxedStrategy, Strategy};
 use std::cell::RefCell;
 
@@ -54,8 +54,8 @@ impl<S> From<S> for FsmRefCell<S> {
     }
 }
 
-impl<S: Fsm> FsmRefCell<S> {
-    pub fn transition_mut(&mut self, event: S::Event) -> Option<Result<S::Fx, S::Error>> {
+impl<S: Machine> FsmRefCell<S> {
+    pub fn transition_mut(&mut self, event: S::Action) -> Option<Result<S::Fx, S::Error>> {
         match self.0.take()?.transition(event) {
             Err(e) => Some(Err(e)),
             Ok((state, fx)) => {

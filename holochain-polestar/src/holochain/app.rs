@@ -8,14 +8,14 @@ use std::{
 use super::*;
 use crate::*;
 
-impl polestar::Fsm for AppState {
-    type Event = (AppEvent, Arc<AppContext>);
+impl polestar::Machine for AppState {
+    type Action = (AppEvent, Arc<AppContext>);
     type Fx = Option<AppFx>;
     type Error = anyhow::Error;
 
     fn transition(
         mut self,
-        (event, context): Self::Event,
+        (event, context): Self::Action,
     ) -> Result<(Self, Self::Fx), Self::Error> {
         match event {
             AppEvent::Enable => {
@@ -131,7 +131,7 @@ pub struct AppManifest {
     roles: HashMap<RoleName, DnaHash>,
 }
 
-pub type AppFsm = polestar::fsm::FsmContext<AppState, AppContext>;
+pub type AppFsm = polestar::fsm::Contextual<AppState, AppContext>;
 
 #[derive(Debug)]
 pub struct InstallAppPayload {

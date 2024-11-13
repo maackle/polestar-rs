@@ -41,7 +41,6 @@ impl proptest::prelude::Arbitrary for Id {
 }
 
 #[derive(
-    Debug,
     Clone,
     PartialEq,
     Eq,
@@ -56,7 +55,6 @@ impl proptest::prelude::Arbitrary for Id {
 pub struct NodeId(Id);
 
 #[derive(
-    Debug,
     Clone,
     PartialEq,
     Eq,
@@ -83,7 +81,6 @@ impl Op {
 }
 
 #[derive(
-    Debug,
     Clone,
     PartialEq,
     Eq,
@@ -103,5 +100,24 @@ impl From<&Op> for OpHash {
     }
 }
 
+impl std::fmt::Debug for NodeId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "NodeId({})", self.0)
+    }
+}
+
+impl std::fmt::Debug for Agent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Agent({})", self.0)
+    }
+}
+
+impl std::fmt::Debug for OpHash {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "OpHash({})", self.0)
+    }
+}
+
 mod model;
+mod projection;
 mod system;

@@ -31,12 +31,12 @@ pub enum HolochainState {
     ConductorInitialized(ConductorState),
 }
 
-impl polestar::Fsm for HolochainState {
-    type Event = HolochainEvent;
+impl polestar::Machine for HolochainState {
+    type Action = HolochainEvent;
     type Fx = ();
     type Error = anyhow::Error;
 
-    fn transition(mut self, event: Self::Event) -> FsmResult<Self> {
+    fn transition(mut self, event: Self::Action) -> MachineResult<Self> {
         self = match event {
             HolochainEvent::Init => HolochainState::ConductorInitialized(ConductorState::default()),
             HolochainEvent::Conductor(e) => match self {
@@ -63,7 +63,7 @@ mod tests {
     use core::default::Default;
 
     use polestar::prelude::{Generator, Projection};
-    use polestar::Fsm;
+    use polestar::Machine;
     use prop::test_runner::TestRunner;
     use proptest::prelude::*;
     use proptest::strategy::ValueTree;

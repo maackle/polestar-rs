@@ -2,49 +2,44 @@ use std::sync::Arc;
 
 use kitsune_p2p::{
     dependencies::kitsune_p2p_types::{GossipType, KitsuneResult},
-    gossip::sharded_gossip::{store::AgentInfoSession, RoundState, ShardedGossipWire},
+    gossip::{
+        model::round_model::RoundEvent,
+        sharded_gossip::{store::AgentInfoSession, RoundState, ShardedGossipWire},
+    },
     NodeCert,
 };
-use polestar::{fsm::FsmContext, prelude::*};
+use polestar::{fsm::Contextual, prelude::*};
 use proptest_derive::Arbitrary;
 
 use crate::block_on;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Arbitrary)]
 pub enum RoundPhase {
-    Begin,
+    Initiated,
+    Accepted,
+
     AgentDiffReceived,
     AgentsReceived,
     OpDiffReceived,
-    Finished,
-}
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Arbitrary)]
-pub enum RoundEvent {
-    Initiate,
-    Accept,
-    AgentDiff,
-    Agents,
-    OpDiff,
-    Ops,
-    Close,
+    Finished,
 }
 
 pub type RoundContext = GossipType;
 
-impl Fsm for RoundPhase {
-    type Event = (RoundEvent, Arc<RoundContext>);
+impl Machine for RoundPhase {
+    type Action = (RoundEvent, Arc<RoundContext>);
     type Fx = ();
     type Error = Option<anyhow::Error>;
 
-    fn transition(mut self, (event, ctx): Self::Event) -> FsmResult<Self> {
+    fn transition(mut self, (event, ctx): Self::Action) -> MachineResult<Self> {
         use GossipType as T;
         use RoundEvent as E;
         use RoundPhase as P;
 
         let next = match (*ctx, self, event) {
-            (T::Recent, P::Begin, E::AgentDiff) => P::AgentDiffReceived,
-            (T::Historical, P::Begin, E::OpDiff) => P::OpDiffReceived,
+            (T::Recent, P::Initiated | P::Accepted, E::AgentDiff) => P::AgentDiffReceived,
+            (T::Historical, P::Initiated | P::Accepted, E::OpDiff) => P::OpDiffReceived,
             (T::Recent, P::AgentDiffReceived, E::Agents) => P::AgentsReceived,
             (T::Recent, P::AgentsReceived, E::OpDiff) => P::OpDiffReceived,
             (_, P::OpDiffReceived, E::Ops) => P::Finished,
@@ -59,7 +54,7 @@ impl Fsm for RoundPhase {
     }
 }
 
-pub type RoundFsm = FsmContext<RoundPhase, RoundContext>;
+pub type RoundFsm = Contextual<RoundPhase, RoundContext>;
 
 pub fn map_event(msg: ShardedGossipWire) -> Option<RoundEvent> {
     match msg {
@@ -86,19 +81,20 @@ pub fn map_state(state: RoundState) -> Option<RoundPhase> {
 #[test]
 #[ignore = "diagram"]
 fn diagram_round_state() {
-    use polestar::diagram::*;
+    use polestar::diagram::montecarlo::*;
 
     tracing::subscriber::set_global_default(tracing_subscriber::FmtSubscriber::new()).unwrap();
 
-    print_dot_state_diagram(
-        RoundPhase::Begin.context(GossipType::Recent),
-        vec![RoundPhase::Finished.context(GossipType::Recent)],
-        1000,
-    );
+    let config = DiagramConfig {
+        steps: 100,
+        walks: 100,
+        ignore_loopbacks: false,
+    };
+
+    print_dot_state_diagram(RoundPhase::Initiated.context(GossipType::Recent), &config);
 
     print_dot_state_diagram(
-        RoundPhase::Begin.context(GossipType::Historical),
-        vec![RoundPhase::Finished.context(GossipType::Historical)],
-        1000,
+        RoundPhase::Initiated.context(GossipType::Historical),
+        &config,
     );
 }

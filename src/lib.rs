@@ -1,21 +1,24 @@
-#![feature(associated_type_defaults)]
-#![feature(lazy_type_alias)]
+// #![feature(associated_type_defaults)]
+// #![feature(lazy_type_alias)]
 
 pub mod actor;
 pub mod fsm;
 pub mod generate;
 // pub mod lens;
-pub mod projection;
 pub mod util;
+
+#[cfg(feature = "testing")]
+pub mod projection;
 
 #[cfg(feature = "diagrams")]
 pub mod diagram;
 
-pub use fsm::Fsm;
+pub use actor::Actor;
+pub use fsm::{Machine, MachineResult};
 
 pub mod prelude {
-    pub use crate::actor::{ActorFsm, ActorRead, ActorRw};
-    pub use crate::fsm::{Fsm, FsmContext, FsmHashMap, FsmRefCell, FsmResult};
+    pub use crate::actor::{Actor, ShareRead, ShareRw};
+    pub use crate::fsm::{Contextual, FsmHashMap, FsmRefCell, Machine, MachineResult};
     pub use crate::generate::Generator;
     pub use crate::projection::{Projection, ProjectionTests};
 

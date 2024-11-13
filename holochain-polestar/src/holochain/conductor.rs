@@ -12,16 +12,16 @@ pub enum ConductorEvent {
 
 #[derive(Default, Clone)]
 pub struct ConductorState {
-    apps: polestar::actor::ActorFsm<AppStore>,
-    cells: polestar::actor::ActorFsm<CellStore>,
+    apps: polestar::actor::Actor<AppStore>,
+    cells: polestar::actor::Actor<CellStore>,
 }
 
-impl Fsm for ConductorState {
-    type Event = ConductorEvent;
+impl Machine for ConductorState {
+    type Action = ConductorEvent;
     type Fx = ();
     type Error = anyhow::Error;
 
-    fn transition(mut self, event: Self::Event) -> FsmResult<Self> {
+    fn transition(mut self, event: Self::Action) -> MachineResult<Self> {
         let (_, _fx) = match event {
             ConductorEvent::Admin(e) => {
                 match e {

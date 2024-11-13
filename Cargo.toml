@@ -15,19 +15,21 @@ tracing-subscriber = "0.3"
 
 exhaustive = { version = "0.2.1", optional = true }
 petgraph = { version = "*", optional = true }
+prettydiff = { version = "*", optional = true }
 
 [dev-dependencies]
-polestar = { path = ".", feature = ["testing"] }
+polestar = { path = ".", features = ["testing"] }
+
 
 [features]
 default = ["diagrams", "testing"]
 
 diagrams = ["exhaustive", "petgraph"]
-testing = []
+testing = ["prettydiff"]
 
 [workspace]
 members = ["holochain-polestar", "kitsune-polestar"]
 
 [patch.crates-io]
 # holo_hash = { path = "/home/michael/Holo/chain/crates/holo_hash" }
-proptest-derive = { path = "/home/michael/gitfork/proptest/proptest-derive" }
+proptest-derive = { git = "https://github.com/maackle/proptest.git", branch = "allow-non-local-definitions" }

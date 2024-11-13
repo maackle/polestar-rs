@@ -110,8 +110,9 @@ async fn make_gossip(gen: &mut impl Generator, gossip_type: GossipType) -> Shard
         host_api,
         inner: Share::new(state),
         gossip_type,
-        closing: AtomicBool::new(false),
+        closing: AtomicBool::new(false).into(),
         fetch_pool,
+        polestar_sender: todo!(),
     }
 }
 

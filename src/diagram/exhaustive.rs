@@ -1,122 +1,96 @@
 use exhaustive::Exhaustive;
-use petgraph::graph::DiGraph;
+use petgraph::graph::{DiGraph, NodeIndex};
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, VecDeque},
     fmt::Debug,
     hash::Hash,
 };
 
-use crate::Fsm;
+use crate::{util::first, Machine};
 
-/// Generate a "Monte Carlo state diagram" of this state machine.
-// TODO: stop early if graph is saturated (by random walking over node and edge space first).
-pub fn state_diagram<M>(m: M) -> DiGraph<M, M::Event>
+#[derive(Debug, Clone)]
+pub struct DiagramConfig {
+    pub max_actions: Option<usize>,
+    pub ignore_loopbacks: bool,
+}
+
+impl Default for DiagramConfig {
+    fn default() -> Self {
+        Self {
+            max_actions: None,
+            ignore_loopbacks: false,
+        }
+    }
+}
+
+/// Generate a state diagram of this state machine by exhaustively taking all possible actions
+/// at each visited state.
+pub fn state_diagram<M>(m: M, config: &DiagramConfig) -> DiGraph<M, M::Action>
 where
-    M: Fsm + Clone + Eq + Hash + Debug,
-    M::Event: Exhaustive + Clone + Eq + Hash,
+    M: Machine + Clone + Eq + Hash + Debug,
+    M::Action: Exhaustive + Clone + Eq + Hash,
 {
-    let stop = stop.into();
-
     let mut graph = DiGraph::new();
-    let mut node_indices = HashMap::new();
+    let mut visited_nodes = HashMap::new();
+    let mut nodes_to_visit: VecDeque<(M, Option<(M::Action, NodeIndex)>)> = VecDeque::new();
     let mut edges = HashSet::new();
 
-    let initial = m.clone();
-    let ix = graph.add_node(initial.clone());
-    node_indices.insert(initial, ix);
+    nodes_to_visit.push_back((m, None));
 
-    let mut terminals = HashSet::new();
-    let mut terminals_reached = !matches!(stop, StopCondition::Terminals(_));
-
-    let mut walks = 0;
     let mut total_steps = 0;
     let mut num_errors = 0;
     let mut num_terminations = 0;
 
-    'outer: loop {
-        let mut prev = ix;
-        let (transitions, errors, num_steps, terminated) = take_a_walk(m.clone(), &stop);
-        num_errors += errors.len();
-        num_terminations += terminated as usize;
-        if !errors.is_empty() {
-            tracing::debug!("errors: {:#?}", errors);
+    while let Some((node, origin)) = nodes_to_visit.pop_front() {
+        let ix = if let Some(ix) = visited_nodes.get(&node) {
+            *ix
+        } else {
+            // Add the node to the graph.
+            graph.add_node(node.clone())
+        };
+
+        // If this is a terminal state, no need to explore further.
+        if node.is_terminal() {
+            num_terminations += 1;
+            continue;
         }
-        total_steps += num_steps;
-        for (edge, node) in transitions {
-            let ix = if let Some(ix) = node_indices.get(&node) {
-                *ix
-            } else {
-                let ix = graph.add_node(node.clone());
-                node_indices.insert(node.clone(), ix);
-                ix
-            };
-            if edges.insert((prev, ix, edge.clone())) {
-                graph.add_edge(prev, ix, edge);
+
+        // Add an edge from the previous node to this node.
+        if let Some((prev_edge, prev_ix)) = origin {
+            if !(config.ignore_loopbacks && prev_ix == ix)
+                && edges.insert((prev_ix, ix, prev_edge.clone()))
+            {
+                graph.add_edge(prev_ix, ix, prev_edge);
             }
-            prev = ix;
-            if terminals.insert(node) {
-                if let StopCondition::Terminals(ref t) = stop {
-                    terminals_reached = terminals.intersection(t).count() == t.len();
+        }
+
+        // Don't explore the same node twice.
+        if visited_nodes.contains_key(&node) {
+            continue;
+        }
+
+        // Queue up visits to all nodes reachable from this node..
+        for edge in M::Action::iter_exhaustive(config.max_actions) {
+            total_steps += 1;
+            match node.clone().transition(edge.clone()).map(first) {
+                Ok(node) => {
+                    nodes_to_visit.push_back((node, Some((edge, ix))));
+                }
+                Err(_err) => {
+                    num_errors += 1;
                 }
             }
-            if walks >= MAX_WALKS || terminals_reached && walks >= min_walks {
-                break 'outer;
-            }
         }
-        walks += 1;
+
+        visited_nodes.insert(node.clone(), ix);
     }
 
     tracing::info!(
-        "constructed state diagram in {total_steps} total steps ({num_errors} errors, {num_terminations} terminations) over {walks} walks. nodes={}, edges={}",
+        "constructed state diagram in {total_steps} total steps ({num_errors} errors, {num_terminations} terminations). nodes={}, edges={}",
         graph.node_count(),
         graph.edge_count(),
     );
 
     graph
-}
-
-#[allow(clippy::type_complexity)]
-fn take_a_walk<M>(
-    mut m: M,
-    stop: &StopCondition<M>,
-) -> (Vec<(M::Event, M)>, Vec<M::Error>, usize, bool)
-where
-    M: Fsm + Debug + Clone + Hash + Eq,
-    M::Event: Exhaustive + Clone,
-{
-    use proptest::strategy::{Strategy, ValueTree};
-    use proptest::test_runner::TestRunner;
-    let mut runner = TestRunner::default();
-    let mut transitions = vec![];
-    let mut num_steps = 0;
-    let mut errors = vec![];
-    let mut terminated = false;
-    while match stop {
-        StopCondition::Steps { steps: n, .. } => num_steps < *n,
-        StopCondition::Terminals(terminals) => !terminals.contains(&m),
-    } {
-        num_steps += 1;
-        let event: M::Event = M::Event::arbitrary()
-            .new_tree(&mut runner)
-            .unwrap()
-            .current();
-
-        match m.clone().transition(event.clone()).map(first) {
-            Ok(mm) => {
-                m = mm;
-                transitions.push((event, m.clone()));
-            }
-            Err(err) => {
-                if err.is_terminal() {
-                    terminated = true;
-                    break;
-                } else {
-                    // TODO: would be better to exhaustively try each event in turn in the error case, so that if all events lead to error, we can halt early.
-                    errors.push(err);
-                }
-            }
-        };
-    }
-    (transitions, errors, num_steps, terminated)
 }
