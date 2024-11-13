@@ -5,7 +5,7 @@ use std::{
 };
 
 use itertools::Itertools;
-use polestar::actor::ActorRw;
+use polestar::actor::ShareRw;
 use rand::{seq::IteratorRandom, Rng};
 
 use super::*;
@@ -72,7 +72,7 @@ pub enum StoreDestination {
 pub struct Node {
     id: NodeId,
     #[deref]
-    state: ActorRw<NodeState>,
+    state: ShareRw<NodeState>,
     connections: NodeConnections,
     tee: mpsc::Sender<(NodeId, NodeEvent)>,
 }
@@ -90,7 +90,7 @@ impl Node {
     pub fn new(id: NodeId, state: NodeState, tee: mpsc::Sender<(NodeId, NodeEvent)>) -> Self {
         Self {
             id,
-            state: ActorRw::new(state),
+            state: ShareRw::new(state),
             connections: NodeConnections::new(),
             tee,
         }
@@ -354,7 +354,7 @@ pub enum OpOrigin {
 mod tests {
 
     use itertools::Itertools;
-    use polestar::{prelude::Projection, Fsm};
+    use polestar::{prelude::Projection, Machine};
     use projection::NetworkOpProjection;
     use rand::Rng;
     use system::{Node, NodeEvent, NodeState};

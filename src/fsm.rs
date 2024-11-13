@@ -12,7 +12,7 @@ use std::{convert::Infallible, sync::Arc};
 
 use proptest_derive::Arbitrary;
 
-pub trait Fsm
+pub trait Machine
 where
     Self: Sized,
 {
@@ -20,18 +20,18 @@ where
     type Fx;
     type Error: std::fmt::Debug;
 
-    fn transition(self, event: Self::Action) -> FsmResult<Self>;
+    fn transition(self, event: Self::Action) -> MachineResult<Self>;
 
     /// Perform a transition and ignore the effect, when the effect is `()`.
     fn transition_(self, event: Self::Action) -> Result<Self, Self::Error>
     where
-        Self: Fsm<Fx = ()>,
+        Self: Machine<Fx = ()>,
     {
         self.transition(event).map(|(fsm, _)| fsm)
     }
 
-    fn context<C>(self, context: C) -> FsmContext<Self, C> {
-        FsmContext {
+    fn context<C>(self, context: C) -> Contextual<Self, C> {
+        Contextual {
             fsm: self,
             context: Arc::new(context),
         }
@@ -45,14 +45,14 @@ where
     }
 }
 
-pub type FsmResult<S: Fsm> = Result<(S, S::Fx), S::Error>;
+pub type MachineResult<S> = Result<(S, <S as Machine>::Fx), <S as Machine>::Error>;
 
-impl Fsm for bool {
+impl Machine for bool {
     type Action = bool;
     type Fx = ();
     type Error = Infallible;
 
-    fn transition(self, event: Self::Action) -> FsmResult<Self> {
+    fn transition(self, event: Self::Action) -> MachineResult<Self> {
         Ok((event, ()))
     }
 

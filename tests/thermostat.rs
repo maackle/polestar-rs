@@ -87,7 +87,7 @@ enum HygrometerFsm {
     Humid,
 }
 
-impl Fsm for Thermostat {
+impl Machine for Thermostat {
     type Action = Temp;
     type Fx = ();
     type Error = Infallible;

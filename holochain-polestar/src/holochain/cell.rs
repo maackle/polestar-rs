@@ -1,6 +1,6 @@
 use std::convert::Infallible;
 
-use polestar::fsm::FsmResult;
+use polestar::fsm::MachineResult;
 
 use crate::*;
 
@@ -14,15 +14,15 @@ pub enum CellState {
     Uninit,
 }
 
-impl polestar::Fsm for CellState {
+impl polestar::Machine for CellState {
     type Action = CellEvent;
     type Fx = ();
     type Error = Infallible;
 
-    fn transition(mut self, _: Self::Action) -> FsmResult<Self> {
+    fn transition(mut self, _: Self::Action) -> MachineResult<Self> {
         todo!()
     }
 }
 
 pub type CellFsm = CellState;
-pub type CellActor = polestar::actor::ActorRead<CellFsm>;
+pub type CellActor = polestar::actor::ShareRead<CellFsm>;

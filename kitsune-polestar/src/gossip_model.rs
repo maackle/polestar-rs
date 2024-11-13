@@ -17,17 +17,17 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Eq, PartialEq, Arbitrary, derive_more::From)]
-pub struct GossipState {
+pub struct GossipModel {
     rounds: FsmHashMap<NodeCert, RoundFsm>,
     initiate_tgt: Option<Tgt>,
 }
 
-impl Fsm for GossipState {
+impl Machine for GossipModel {
     type Action = GossipEvent;
     type Fx = ();
     type Error = anyhow::Error;
 
-    fn transition(mut self, (node, event): Self::Action) -> FsmResult<Self> {
+    fn transition(mut self, (node, event): Self::Action) -> MachineResult<Self> {
         self.rounds
             .transition_mut(node.clone(), event)
             .ok_or(anyhow!("no round for {node:?}"))?
@@ -48,7 +48,7 @@ pub struct GossipProjection;
 
 impl Projection for GossipProjection {
     type System = ShardedGossipLocal;
-    type Model = GossipState;
+    type Model = GossipModel;
     type Event = (NodeCert, ShardedGossipWire);
 
     fn apply(&self, system: &mut Self::System, (node, msg): Self::Event) {
@@ -60,7 +60,7 @@ impl Projection for GossipProjection {
         crate::round_model::map_event(msg).map(|e| (node, e))
     }
 
-    fn map_state(&self, system: &Self::System) -> Option<GossipState> {
+    fn map_state(&self, system: &Self::System) -> Option<GossipModel> {
         let state = system
             .inner
             .share_mut(|s, _| {
@@ -83,7 +83,7 @@ impl Projection for GossipProjection {
                     cert: t.cert.clone(),
                     tie_break: t.tie_break,
                 });
-                Ok(GossipState {
+                Ok(GossipModel {
                     rounds,
                     initiate_tgt,
                 })
@@ -96,7 +96,7 @@ impl Projection for GossipProjection {
         unimplemented!("generation not implemented")
     }
 
-    fn gen_state(&self, generator: &mut impl Generator, state: GossipState) -> Self::System {
+    fn gen_state(&self, generator: &mut impl Generator, state: GossipModel) -> Self::System {
         unimplemented!("generation not implemented")
     }
 }

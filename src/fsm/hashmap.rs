@@ -1,4 +1,4 @@
-use crate::Fsm;
+use crate::Machine;
 use proptest_derive::Arbitrary;
 use std::collections::HashMap;
 
@@ -15,7 +15,7 @@ use std::collections::HashMap;
 )]
 pub struct FsmHashMap<K: Eq + std::hash::Hash, V>(HashMap<K, V>);
 
-impl<K: Eq + std::hash::Hash, V: Fsm> FsmHashMap<K, V> {
+impl<K: Eq + std::hash::Hash, V: Machine> FsmHashMap<K, V> {
     pub fn transition_mut(&mut self, k: K, event: V::Action) -> Option<Result<V::Fx, V::Error>> {
         let r = self.0.remove(&k)?.transition(event);
         match r {
@@ -28,7 +28,7 @@ impl<K: Eq + std::hash::Hash, V: Fsm> FsmHashMap<K, V> {
     }
 }
 
-impl<K: Eq + std::hash::Hash, V: Fsm> Default for FsmHashMap<K, V> {
+impl<K: Eq + std::hash::Hash, V: Machine> Default for FsmHashMap<K, V> {
     fn default() -> Self {
         Self(HashMap::default())
     }

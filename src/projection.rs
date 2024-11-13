@@ -24,7 +24,7 @@ use crate::{prelude::*, util::first};
 ///
 pub trait Projection
 where
-    Self::Model: Fsm,
+    Self::Model: Machine,
 {
     type System;
     type Model;
@@ -41,8 +41,8 @@ where
     ) -> Self::Event;
 }
 
-pub type ActionOf<M: Fsm> = <M as Fsm>::Action;
-pub type ErrorOf<M: Fsm> = <M as Fsm>::Error;
+pub type ActionOf<M> = <M as Machine>::Action;
+pub type ErrorOf<M> = <M as Machine>::Error;
 
 pub struct ProjectionRunner<P: Projection> {
     projection: P,
@@ -56,7 +56,7 @@ pub trait ProjectionTests: Sized + Projection
 where
     Self::System: Clone + Debug,
     Self::Event: Clone + Debug,
-    Self::Model: Fsm + Clone + Debug + Eq,
+    Self::Model: Machine + Clone + Debug + Eq,
     ActionOf<Self::Model>: Clone + Debug + Eq,
     ErrorOf<Self::Model>: Eq,
 {
@@ -191,7 +191,7 @@ where
     T: Projection,
     Self::System: Clone + Debug,
     Self::Event: Clone + Debug,
-    T::Model: Fsm + Clone + Debug + Eq,
+    T::Model: Machine + Clone + Debug + Eq,
     ActionOf<T::Model>: Clone + Debug + Eq,
     ErrorOf<T::Model>: Eq,
 {

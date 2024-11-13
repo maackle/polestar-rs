@@ -26,7 +26,7 @@ pub struct DiagramConfig {
 
 pub fn print_dot_state_diagram<M>(m: M, config: &DiagramConfig)
 where
-    M: Fsm + Clone + Eq + Debug + Hash,
+    M: Machine + Clone + Eq + Debug + Hash,
     M::Action: Arbitrary + Clone + Eq + Debug + Hash,
 {
     println!("{}", to_dot(state_diagram(m, config)));
@@ -45,7 +45,7 @@ where
 // TODO: stop early if graph is saturated (by random walking over node and edge space first).
 pub fn state_diagram<M>(m: M, config: &DiagramConfig) -> DiGraph<M, M::Action>
 where
-    M: Fsm + Clone + Eq + Hash + Debug,
+    M: Machine + Clone + Eq + Hash + Debug,
     M::Action: Arbitrary + Clone + Eq + Hash,
 {
     let mut graph = DiGraph::new();
@@ -125,7 +125,7 @@ impl<M: Eq + Hash> From<Vec<M>> for StopCondition<M> {
 #[allow(clippy::type_complexity)]
 fn take_a_walk<M>(mut m: M, steps: usize) -> (Vec<(M::Action, M)>, Vec<M::Error>, usize, bool)
 where
-    M: Fsm + Debug + Clone + Hash + Eq,
+    M: Machine + Debug + Clone + Hash + Eq,
     M::Action: Arbitrary + Clone,
 {
     use proptest::strategy::{Strategy, ValueTree};
@@ -183,7 +183,7 @@ mod tests {
         Two = 2,
     }
 
-    impl Fsm for Cycle {
+    impl Machine for Cycle {
         type Action = Turn;
         type Fx = ();
         type Error = Infallible;

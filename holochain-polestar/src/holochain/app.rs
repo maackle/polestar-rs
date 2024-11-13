@@ -8,7 +8,7 @@ use std::{
 use super::*;
 use crate::*;
 
-impl polestar::Fsm for AppState {
+impl polestar::Machine for AppState {
     type Action = (AppEvent, Arc<AppContext>);
     type Fx = Option<AppFx>;
     type Error = anyhow::Error;
@@ -131,7 +131,7 @@ pub struct AppManifest {
     roles: HashMap<RoleName, DnaHash>,
 }
 
-pub type AppFsm = polestar::fsm::FsmContext<AppState, AppContext>;
+pub type AppFsm = polestar::fsm::Contextual<AppState, AppContext>;
 
 #[derive(Debug)]
 pub struct InstallAppPayload {

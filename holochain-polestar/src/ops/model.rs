@@ -36,12 +36,12 @@ pub enum NodeOpEvent {
     Send(NodeId),
 }
 
-impl Fsm for NodeOpPhase {
+impl Machine for NodeOpPhase {
     type Action = NodeOpEvent;
     type Fx = ();
     type Error = anyhow::Error;
 
-    fn transition(mut self, t: Self::Action) -> FsmResult<Self> {
+    fn transition(mut self, t: Self::Action) -> MachineResult<Self> {
         use NodeOpEvent as E;
         use NodeOpPhase as S;
         let next = match (self, t) {
@@ -95,12 +95,12 @@ impl NetworkOp {
     }
 }
 
-impl Fsm for NetworkOp {
+impl Machine for NetworkOp {
     type Action = NetworkOpEvent;
     type Fx = ();
     type Error = String;
 
-    fn transition(mut self, NetworkOpEvent(node_id, event): Self::Action) -> FsmResult<Self> {
+    fn transition(mut self, NetworkOpEvent(node_id, event): Self::Action) -> MachineResult<Self> {
         if let NodeOpEvent::Send(id) = &event {
             if !self
                 .nodes

@@ -12,12 +12,17 @@ use crate::block_on;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Arbitrary)]
 pub enum RoundPhase {
-    Begin,
+    Initiated,
+    Accepted,
+
     AgentDiffReceived,
     AgentsReceived,
     OpDiffReceived,
+
     Finished,
 }
+
+pub use kitsune_p2p::gossip::sharded_gossip::RoundEvent;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Arbitrary)]
 pub enum RoundEvent {
@@ -32,19 +37,19 @@ pub enum RoundEvent {
 
 pub type RoundContext = GossipType;
 
-impl Fsm for RoundPhase {
+impl Machine for RoundPhase {
     type Action = (RoundEvent, Arc<RoundContext>);
     type Fx = ();
     type Error = Option<anyhow::Error>;
 
-    fn transition(mut self, (event, ctx): Self::Action) -> FsmResult<Self> {
+    fn transition(mut self, (event, ctx): Self::Action) -> MachineResult<Self> {
         use GossipType as T;
         use RoundEvent as E;
         use RoundPhase as P;
 
         let next = match (*ctx, self, event) {
-            (T::Recent, P::Begin, E::AgentDiff) => P::AgentDiffReceived,
-            (T::Historical, P::Begin, E::OpDiff) => P::OpDiffReceived,
+            (T::Recent, P::Initiated | P::Accepted, E::AgentDiff) => P::AgentDiffReceived,
+            (T::Historical, P::Initiated | P::Accepted, E::OpDiff) => P::OpDiffReceived,
             (T::Recent, P::AgentDiffReceived, E::Agents) => P::AgentsReceived,
             (T::Recent, P::AgentsReceived, E::OpDiff) => P::OpDiffReceived,
             (_, P::OpDiffReceived, E::Ops) => P::Finished,
