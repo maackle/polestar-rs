@@ -8,7 +8,6 @@ use std::collections::{BTreeMap, HashMap};
 use anyhow::bail;
 use itertools::Itertools;
 use polestar::{
-    diagram::montecarlo::{print_dot_state_diagram, DiagramConfig, StopCondition},
     fsm::FsmBTreeMap,
     prelude::*,
 };
@@ -174,9 +173,11 @@ impl std::fmt::Debug for NetworkOpEvent {
 #[test]
 #[ignore = "diagram"]
 fn test_diagram() {
+    use polestar::diagram::montecarlo::{print_dot_state_diagram, DiagramConfig, StopCondition};
+
     tracing::subscriber::set_global_default(tracing_subscriber::FmtSubscriber::new()).unwrap();
 
-    let num = 2;
+    let num = 3;
 
     let ids = (0..num).map(|i| Id::new().into()).collect_vec();
     let (initial, ()) = NetworkOp::new_empty(&ids)
