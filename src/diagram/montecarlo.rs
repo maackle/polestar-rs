@@ -10,7 +10,7 @@ use std::{
 };
 
 use petgraph::graph::DiGraph;
-use proptest::prelude::Arbitrary;
+use proptest::prelude::{Arbitrary, BoxedStrategy, Strategy};
 
 use crate::{diagram::to_dot, util::first};
 
@@ -28,18 +28,38 @@ pub struct DiagramConfig {
 pub fn print_dot_state_diagram<M>(m: M, config: &DiagramConfig)
 where
     M: Machine + Clone + Eq + Debug + Hash,
-    M::Action: Arbitrary + Clone + Eq + Debug + Hash,
+    M::Action: Arbitrary + Clone + Eq + Debug + Hash + 'static,
 {
-    println!("{}", to_dot(state_diagram(m, config)));
+    println!("{}", to_dot(state_diagram(m, &mut (), config)));
+}
+
+pub trait MonteCarloDiagramState<M>
+where
+    M: Machine,
+    M::Action: Arbitrary + 'static,
+{
+    fn on_action(&mut self, action: &M::Action) {}
+    fn on_state(&mut self, state: &M) {}
+    fn strategy(&self) -> BoxedStrategy<M::Action> {
+        M::Action::arbitrary().boxed()
+    }
+}
+
+impl<M> MonteCarloDiagramState<M> for ()
+where
+    M: Machine,
+    M::Action: Arbitrary + 'static,
+{
 }
 
 /// Generate a "Monte Carlo state diagram" of this state machine.
 // TODO: stop early if graph is saturated (by random walking over node and edge space first).
 // TODO: do more branching from intermediate state, not just from initial state (don't just do "walks", explore many actions at each state.)
-pub fn state_diagram<M>(m: M, config: &DiagramConfig) -> DiGraph<M, M::Action>
+pub fn state_diagram<M, S>(m: M, state: &mut S, config: &DiagramConfig) -> DiGraph<M, M::Action>
 where
     M: Machine + Clone + Eq + Hash + Debug,
-    M::Action: Arbitrary + Clone + Eq + Hash,
+    M::Action: Arbitrary + Clone + Eq + Hash + 'static,
+    S: MonteCarloDiagramState<M>,
 {
     let mut graph = DiGraph::new();
     let mut node_indices = HashMap::new();
@@ -58,11 +78,12 @@ where
 
     'outer: loop {
         let mut prev = ix;
-        let (transitions, errors, num_steps, terminated) = take_a_walk(m.clone(), config.steps);
+        let (transitions, errors, num_steps, terminated) = take_a_walk(m.clone(), state, config);
         num_errors += errors.len();
         num_terminations += terminated as usize;
         if !errors.is_empty() {
             tracing::debug!("errors: {:#?}", errors);
+            dbg!(&errors);
         }
         total_steps += num_steps;
         for (edge, node) in transitions {
@@ -116,29 +137,35 @@ impl<M: Eq + Hash> From<Vec<M>> for StopCondition<M> {
 }
 
 #[allow(clippy::type_complexity)]
-fn take_a_walk<M>(mut m: M, steps: usize) -> (Vec<(M::Action, M)>, Vec<M::Error>, usize, bool)
+fn take_a_walk<M, S>(
+    mut m: M,
+    state: &mut S,
+    config: &DiagramConfig,
+) -> (Vec<(M::Action, M)>, Vec<M::Error>, usize, bool)
 where
     M: Machine + Debug + Clone + Hash + Eq,
-    M::Action: Arbitrary + Clone,
+    M::Action: Arbitrary + Clone + 'static,
+    S: MonteCarloDiagramState<M>,
 {
     use proptest::strategy::{Strategy, ValueTree};
     use proptest::test_runner::TestRunner;
     let mut runner = TestRunner::default();
+    let steps = config.steps;
     let mut transitions = vec![];
     let mut num_steps = 0;
     let mut errors = vec![];
     let mut terminated = false;
     while num_steps < steps {
         num_steps += 1;
-        let event: M::Action = M::Action::arbitrary()
-            .new_tree(&mut runner)
-            .unwrap()
-            .current();
+        let action: M::Action = state.strategy().new_tree(&mut runner).unwrap().current();
 
-        match m.clone().transition(event.clone()).map(first) {
+        state.on_action(&action);
+
+        match m.clone().transition(action.clone()).map(first) {
             Ok(mm) => {
                 m = mm;
-                transitions.push((event, m.clone()));
+                transitions.push((action, m.clone()));
+                state.on_state(&m);
                 if m.is_terminal() {
                     terminated = true;
                     break;

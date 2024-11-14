@@ -65,11 +65,11 @@ mod tests {
                 walks: 10,
                 ignore_loopbacks: false,
             };
-            let graph1 = state_diagram(Cycle::D, &config);
+            let graph1 = state_diagram(Cycle::D, &mut (), &config);
             let nodes1: HashSet<_> = graph1.node_weights().cloned().collect();
             let edges1: HashSet<_> = graph1.edge_weights().cloned().collect();
 
-            let graph2 = state_diagram(Cycle::D, &config);
+            let graph2 = state_diagram(Cycle::D, &mut (), &config);
             let nodes2: HashSet<_> = graph2.node_weights().cloned().collect();
             let edges2: HashSet<_> = graph2.edge_weights().cloned().collect();
 
