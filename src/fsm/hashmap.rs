@@ -2,6 +2,7 @@ use crate::Machine;
 use proptest_derive::Arbitrary;
 use std::collections::HashMap;
 
+#[deprecated = "seems silly"]
 #[derive(
     Debug,
     Clone,
