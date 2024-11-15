@@ -12,6 +12,8 @@ use std::{convert::Infallible, sync::Arc};
 
 use proptest_derive::Arbitrary;
 
+use crate::util::first;
+
 pub trait Machine
 where
     Self: Sized,
@@ -35,6 +37,26 @@ where
             fsm: self,
             context: Arc::new(context),
         }
+    }
+
+    fn apply_actions(
+        mut self,
+        actions: impl IntoIterator<Item = Self::Action>,
+    ) -> Result<(Self, Vec<Self::Fx>), Self::Error> {
+        let mut fxs = vec![];
+        for action in actions.into_iter() {
+            let (m, fx) = self.transition(action)?;
+            fxs.push(fx);
+            self = m;
+        }
+        Ok((self, fxs))
+    }
+
+    fn apply_actions_(
+        self,
+        actions: impl IntoIterator<Item = Self::Action>,
+    ) -> Result<Self, Self::Error> {
+        self.apply_actions(actions).map(first)
     }
 
     /// Designates this state as a terminal state.
