@@ -1,4 +1,5 @@
 mod btreemap;
+pub mod checked;
 mod context;
 mod hashmap;
 mod refcell;
