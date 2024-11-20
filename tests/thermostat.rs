@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use proptest::prelude::*;
 use proptest::test_runner::TestRunner;
 

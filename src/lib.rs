@@ -4,6 +4,7 @@
 pub mod actor;
 pub mod fsm;
 pub mod generate;
+pub mod id;
 // pub mod lens;
 pub mod util;
 
@@ -15,6 +16,7 @@ pub mod diagram;
 
 pub use actor::Actor;
 pub use fsm::{Machine, MachineResult};
+use proptest::prelude::{BoxedStrategy, Strategy};
 
 pub mod prelude {
     pub use crate::actor::{Actor, ShareRead, ShareRw};

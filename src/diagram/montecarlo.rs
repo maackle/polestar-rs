@@ -16,8 +16,6 @@ use crate::{diagram::to_dot, util::first};
 
 use super::Machine;
 
-const MAX_WALKS: usize = 1000000;
-
 #[derive(Debug, Clone)]
 pub struct DiagramConfig {
     pub steps: usize,
@@ -38,8 +36,8 @@ where
     M: Machine,
     M::Action: Arbitrary + 'static,
 {
-    fn on_action(&mut self, action: &M::Action) {}
-    fn on_state(&mut self, state: &M) {}
+    fn on_action(&mut self, _action: &M::Action) {}
+    fn on_state(&mut self, _state: &M) {}
     fn strategy(&self) -> BoxedStrategy<M::Action> {
         M::Action::arbitrary().boxed()
     }
