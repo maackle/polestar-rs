@@ -8,7 +8,6 @@ use std::collections::{BTreeMap, HashMap};
 use anyhow::bail;
 use itertools::Itertools;
 use polestar::{
-    fsm::FsmBTreeMap,
     prelude::*,
 };
 use proptest_derive::Arbitrary;
@@ -73,13 +72,13 @@ impl Machine for NodeOpPhase {
 
 #[derive(Clone, Default, PartialEq, Eq, Hash, derive_more::Deref)]
 pub struct NetworkOp {
-    nodes: FsmBTreeMap<NodeId, NodeOpPhase>,
+    nodes: BTreeMap<NodeId, NodeOpPhase>,
 }
 
 impl NetworkOp {
     pub fn new(nodes: BTreeMap<NodeId, NodeOpPhase>) -> Self {
         Self {
-            nodes: FsmBTreeMap::from(nodes),
+            nodes: BTreeMap::from(nodes),
         }
     }
 
@@ -89,7 +88,7 @@ impl NetworkOp {
             .map(|id| (id.clone(), Default::default()))
             .collect();
         Self {
-            nodes: FsmBTreeMap::from(nodes),
+            nodes: BTreeMap::from(nodes),
         }
     }
 }

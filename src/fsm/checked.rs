@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::util::{first, first_ref};
+use crate::util::first_ref;
 
 use super::{Machine, MachineResult};
 

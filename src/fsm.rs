@@ -1,12 +1,9 @@
-mod btreemap;
 pub mod checked;
 mod context;
-mod hashmap;
+pub mod ext;
 mod refcell;
 
-pub use btreemap::*;
 pub use context::*;
-pub use hashmap::*;
 pub use refcell::*;
 
 use std::{convert::Infallible, sync::Arc};

@@ -18,7 +18,7 @@ pub use fsm::{Machine, MachineResult};
 
 pub mod prelude {
     pub use crate::actor::{Actor, ShareRead, ShareRw};
-    pub use crate::fsm::{Contextual, FsmRefCell, Machine, MachineResult};
+    pub use crate::fsm::{ext::*, Contextual, FsmRefCell, Machine, MachineResult};
     pub use crate::generate::Generator;
     pub use crate::projection::{Projection, ProjectionTests};
 

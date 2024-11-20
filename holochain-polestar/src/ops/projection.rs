@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use polestar::{fsm::FsmBTreeMap, prelude::*};
+use polestar::prelude::*;
 
 use crate::ops::model::NetworkOpEvent;
 

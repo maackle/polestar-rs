@@ -147,7 +147,7 @@ where
     M::Action: Arbitrary + Clone + 'static,
     S: MonteCarloDiagramState<M>,
 {
-    use proptest::strategy::{Strategy, ValueTree};
+    use proptest::strategy::ValueTree;
     use proptest::test_runner::TestRunner;
     let mut runner = TestRunner::default();
     let steps = config.steps;
