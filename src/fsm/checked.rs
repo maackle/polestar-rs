@@ -196,26 +196,41 @@ impl<M> Predicate<M> {
     }
 
     pub fn atom(name: String, f: impl Fn(&M) -> bool + 'static) -> Self {
-        Self::Atom(name, Arc::new(move |_, b| f(b)))
+        Self::atom2(name, move |_, b| f(b))
     }
 
     pub fn atom2(name: String, f: impl Fn(&M, &M) -> bool + 'static) -> Self {
+        assert!(!name.contains(' '), "no spaces allowed in predicate names");
         Self::Atom(name, Arc::new(f))
     }
 }
 
 impl<M> std::fmt::Debug for Predicate<M> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Predicate::Atom(name, _) => write!(f, "{}", name),
-            Predicate::And(p1, p2) => write!(f, "({:?} && {:?})", p1, p2),
-            Predicate::Or(p1, p2) => write!(f, "({:?} || {:?})", p1, p2),
-            Predicate::Not(p) => write!(f, "!{:?}", p),
-            Predicate::Implies(p1, p2) => write!(f, "({:?} -> {:?})", p1, p2),
+        if true {
+            match self {
+                Predicate::Atom(name, _) => write!(f, "{}", name),
+                Predicate::And(p1, p2) => write!(f, "({:?} & {:?})", p1, p2),
+                Predicate::Or(p1, p2) => write!(f, "({:?} | {:?})", p1, p2),
+                Predicate::Not(p) => write!(f, "~{:?}", p),
+                Predicate::Implies(p1, p2) => write!(f, "({:?} -> {:?})", p1, p2),
 
-            Predicate::Next(p) => write!(f, "next({:?})", p),
-            Predicate::Eventually(p) => write!(f, "eventually({:?})", p),
-            Predicate::Always(p) => write!(f, "always({:?})", p),
+                Predicate::Next(p) => write!(f, "X {:?}", p),
+                Predicate::Eventually(p) => write!(f, "F {:?}", p),
+                Predicate::Always(p) => write!(f, "G {:?}", p),
+            }
+        } else {
+            match self {
+                Predicate::Atom(name, _) => write!(f, "{}", name),
+                Predicate::And(p1, p2) => write!(f, "({:?} ∧ {:?})", p1, p2),
+                Predicate::Or(p1, p2) => write!(f, "({:?} ∨ {:?})", p1, p2),
+                Predicate::Not(p) => write!(f, "¬{:?}", p),
+                Predicate::Implies(p1, p2) => write!(f, "({:?} → {:?})", p1, p2),
+
+                Predicate::Next(p) => write!(f, "○{:?}", p),
+                Predicate::Eventually(p) => write!(f, "◇{:?}", p),
+                Predicate::Always(p) => write!(f, "□{:?}", p),
+            }
         }
     }
 }
@@ -246,8 +261,10 @@ mod tests {
 
         tracing_subscriber::fmt::init();
 
-        let even = P::atom("is_even".to_string(), |s: &Mach| s.state % 2 == 0);
-        let small = P::atom("single digit".to_string(), |s: &Mach| s.state < 10);
+        let even = P::atom("is-even".to_string(), |s: &Mach| s.state % 2 == 0);
+        let small = P::atom("single-digit".to_string(), |s: &Mach| s.state < 10);
+        let big = P::atom("20-and-up".to_string(), |s: &Mach| s.state >= 20);
+        let not_teens = small.clone().or(big.clone());
         let checker = Checker::new(Mach { state: 0 }, |s| s.to_string())
             .with(P::always(
                 even.clone().implies(P::next(P::not(even.clone()))),
@@ -255,7 +272,7 @@ mod tests {
             .with(P::always(
                 P::not(even.clone()).implies(P::next(even.clone())),
             ))
-            .with(P::always(small));
+            .with(P::always(not_teens));
 
         checker
             .transition_(1)
@@ -264,7 +281,9 @@ mod tests {
             .unwrap()
             .transition_(3)
             .unwrap()
-            .transition_(8)
+            .transition_(22)
+            .unwrap()
+            .transition_(21)
             .unwrap();
     }
 }
