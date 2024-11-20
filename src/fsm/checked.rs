@@ -8,7 +8,7 @@ pub struct Checker<M: Machine> {
 }
 
 impl<M: Machine> Checker<M> {
-    pub fn new(state: M, make_error: impl Fn(String) -> M::Error + 'static) -> Self {
+    pub fn new(state: M, make_error: impl Fn(anyhow::Error) -> M::Error + 'static) -> Self {
         Self {
             state,
             predicates: Predicates::new(make_error),
@@ -42,11 +42,11 @@ where
 
 pub struct Predicates<M, E> {
     next: Vec<(String, Predicate<M>)>,
-    make_error: Box<dyn Fn(String) -> E>,
+    make_error: Box<dyn Fn(anyhow::Error) -> E>,
 }
 
 impl<M, E> Predicates<M, E> {
-    fn new(make_error: impl Fn(String) -> E + 'static) -> Self {
+    fn new(make_error: impl Fn(anyhow::Error) -> E + 'static) -> Self {
         Self {
             next: vec![],
             make_error: Box::new(make_error),
@@ -57,10 +57,15 @@ impl<M, E> Predicates<M, E> {
 impl<M: Clone + std::fmt::Debug, E> Predicates<M, E> {
     pub fn step(mut self, state: (&M, &M)) -> Result<Self, E> {
         let mut next = vec![];
-        dbg!(state, &self.next);
+        tracing::debug!("");
+        tracing::debug!("------------------------------------------------");
+        tracing::debug!("STEP: {:?} -> {:?}", state.0, state.1);
+
         let now = self.next.drain(..).collect::<Vec<_>>();
         for (name, predicate) in now {
-            if let Some(false) = self.visit(
+            tracing::debug!("");
+            tracing::debug!("visiting {predicate:?}");
+            if !Self::visit(
                 &mut next,
                 false,
                 name.clone(),
@@ -68,8 +73,8 @@ impl<M: Clone + std::fmt::Debug, E> Predicates<M, E> {
                 state,
             ) {
                 let (old, new) = state;
-                return Err((self.make_error)(format!(
-                    "Predicate failed: {name}\nTransition: {old:?} -> {new:?}"
+                return Err((self.make_error)(anyhow::anyhow!(
+                    "Predicate failed: '{name}'   Transition: {old:?} -> {new:?}"
                 )));
             }
         }
@@ -78,67 +83,62 @@ impl<M: Clone + std::fmt::Debug, E> Predicates<M, E> {
     }
 
     fn visit(
-        &mut self,
         next: &mut Vec<(String, Predicate<M>)>,
         negated: bool,
         name: String,
         predicate: BoxPredicate<M>,
         s: (&M, &M),
-    ) -> Option<bool> {
+    ) -> bool {
         use Predicate::*;
-        let out = match dbg!(*predicate) {
+        let out = match *predicate.clone() {
             Next(p) => {
                 next.push((name, *p));
-                None
+                true
             }
 
-            // Eventually(Eventually(p)) => self.visit(next, negated, Eventually(p), s),
+            // Eventually(Eventually(p)) => Self::visit(next, negated, Eventually(p), s),
             Eventually(p) => {
-                if let Some(true) = self.visit(next, negated, name.clone(), p.clone(), s) {
-                    Some(true)
-                } else {
+                if !Self::visit(next, negated, name.clone(), p.clone(), s) {
                     next.push((name, Eventually(p.clone()).negate(negated)));
-                    None
                 }
+                true
             }
 
-            // Always(Always(p)) => self.visit(negated, Always(p), s),
+            // Always(Always(p)) => Self::visit(negated, Always(p), s),
             Always(p) => {
                 next.push((name.clone(), Always(p.clone()).negate(negated)));
-                self.visit(next, negated, name.clone(), p.clone(), s)
+                Self::visit(next, negated, name.clone(), p.clone(), s)
             }
 
-            Not(p) => self.visit(next, !negated, name, p, s),
+            Not(p) => Self::visit(next, !negated, name, p, s),
 
             And(p1, p2) => {
-                let x = self.visit(next, negated, name.clone(), p1, s);
-                let y = self.visit(next, negated, name, p2, s);
-                match (x, y) {
-                    (Some(a), Some(b)) => Some(a && b),
-                    (None, Some(false)) | (Some(false), None) => Some(false),
-                    _ => None,
-                }
+                Self::visit(next, negated, name.clone(), p1, s)
+                    && Self::visit(next, negated, name, p2, s)
             }
 
             Or(p1, p2) => {
-                let x = self.visit(next, negated, name.clone(), p1, s);
-                let y = self.visit(next, negated, name, p2, s);
-                match (x, y) {
-                    (Some(a), Some(b)) => Some(a || b),
-                    (None, b) => b,
-                    (a, None) => a,
-                }
+                Self::visit(next, negated, name.clone(), p1, s)
+                    || Self::visit(next, negated, name, p2, s)
             }
 
-            Implies(p1, p2) => match self.visit(next, negated, name.clone(), p1, s) {
-                Some(false) => Some(true),
-                Some(true) => self.visit(next, negated, name, p2, s),
-                None => None,
-            },
-
-            Atom(_, f) => Some(if negated { !f(s.0, s.1) } else { f(s.0, s.1) }),
+            Implies(p1, p2) => {
+                !Self::visit(next, negated, name.clone(), p1, s)
+                    || Self::visit(next, negated, name, p2, s)
+            }
+            Atom(_, f) => {
+                if negated {
+                    !f(s.0, s.1)
+                } else {
+                    f(s.0, s.1)
+                }
+            }
         };
-        dbg!(negated, out);
+        if negated {
+            tracing::debug!("NEG {predicate:?} = {out}");
+        } else {
+            tracing::debug!("    {predicate:?} = {out}");
+        }
         out
     }
 }
@@ -195,7 +195,11 @@ impl<M> Predicate<M> {
         Self::Or(Box::new(self), Box::new(p2))
     }
 
-    pub fn atom(name: String, f: impl Fn(&M, &M) -> bool + 'static) -> Self {
+    pub fn atom(name: String, f: impl Fn(&M) -> bool + 'static) -> Self {
+        Self::Atom(name, Arc::new(move |_, b| f(b)))
+    }
+
+    pub fn atom2(name: String, f: impl Fn(&M, &M) -> bool + 'static) -> Self {
         Self::Atom(name, Arc::new(f))
     }
 }
@@ -239,14 +243,19 @@ mod tests {
     #[test]
     fn test_checker() {
         use Predicate as P;
-        let even = P::atom("is_even".to_string(), |s: &Mach, _| s.state % 2 == 0);
+
+        tracing_subscriber::fmt::init();
+
+        let even = P::atom("is_even".to_string(), |s: &Mach| s.state % 2 == 0);
+        let small = P::atom("single digit".to_string(), |s: &Mach| s.state < 10);
         let checker = Checker::new(Mach { state: 0 }, |s| s.to_string())
             .with(P::always(
                 even.clone().implies(P::next(P::not(even.clone()))),
             ))
             .with(P::always(
                 P::not(even.clone()).implies(P::next(even.clone())),
-            ));
+            ))
+            .with(P::always(small));
 
         checker
             .transition_(1)
@@ -255,7 +264,7 @@ mod tests {
             .unwrap()
             .transition_(3)
             .unwrap()
-            .transition_(3)
+            .transition_(8)
             .unwrap();
     }
 }
