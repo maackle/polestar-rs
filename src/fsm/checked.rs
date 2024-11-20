@@ -1,29 +1,58 @@
 use std::sync::Arc;
 
+use crate::util::{first, first_ref};
+
 use super::{Machine, MachineResult};
 
-pub struct Checker<M: Machine> {
+#[derive(derive_more::Deref)]
+pub struct Checker<M, E: std::fmt::Debug> {
+    #[deref]
     state: M,
-    predicates: Predicates<M, M::Error>,
+    predicates: Predicates<M, E>,
 }
 
-impl<M: Machine> Checker<M> {
-    pub fn new(state: M, make_error: impl Fn(anyhow::Error) -> M::Error + 'static) -> Self {
+impl<M, E: std::fmt::Debug> Checker<M, E> {
+    pub fn new(state: M, make_error: impl Fn(anyhow::Error) -> E + 'static) -> Self {
         Self {
             state,
             predicates: Predicates::new(make_error),
         }
     }
 
-    pub fn with(mut self, predicate: Predicate<M>) -> Self {
+    pub fn predicate(mut self, predicate: Predicate<M>) -> Self {
         self.predicates
             .next
             .push((format!("{:?}", predicate), predicate));
         self
     }
+
+    pub fn finalize(self) -> Result<(), E> {
+        let eventuals = self
+            .predicates
+            .next
+            .iter()
+            .filter(|(_, p)| matches!(p, Predicate::Eventually(_)))
+            .map(first_ref)
+            .collect::<Vec<_>>();
+        if !eventuals.is_empty() {
+            return Err((self.predicates.make_error)(anyhow::anyhow!(
+                "Checker finalized with unsatisfied 'eventually' predicates: {eventuals:?}"
+            )));
+        }
+        Ok(())
+    }
 }
 
-impl<M> Machine for Checker<M>
+// impl<M, E> Drop for Checker<M, E>
+// where
+//     E: std::fmt::Debug,
+// {
+//     fn drop(&mut self) {
+//         self.finalize().unwrap();
+//     }
+// }
+
+impl<M> Machine for Checker<M, M::Error>
 where
     M: Machine + Clone + std::fmt::Debug,
 {
@@ -74,7 +103,7 @@ impl<M: Clone + std::fmt::Debug, E> Predicates<M, E> {
             ) {
                 let (old, new) = state;
                 return Err((self.make_error)(anyhow::anyhow!(
-                    "Predicate failed: '{name}'   Transition: {old:?} -> {new:?}"
+                    "Predicate failed: '{name}'. Transition: {old:?} -> {new:?}"
                 )));
             }
         }
@@ -247,7 +276,7 @@ mod tests {
     impl Machine for Mach {
         type Action = u8;
         type Fx = ();
-        type Error = String;
+        type Error = anyhow::Error;
 
         fn transition(mut self, action: u8) -> MachineResult<Self> {
             self.state = action;
@@ -265,14 +294,15 @@ mod tests {
         let small = P::atom("single-digit".to_string(), |s: &Mach| s.state < 10);
         let big = P::atom("20-and-up".to_string(), |s: &Mach| s.state >= 20);
         let not_teens = small.clone().or(big.clone());
-        let checker = Checker::new(Mach { state: 0 }, |s| s.to_string())
-            .with(P::always(
+        let checker = Mach { state: 0 }
+            .checked(|s| s)
+            .predicate(P::always(
                 even.clone().implies(P::next(P::not(even.clone()))),
             ))
-            .with(P::always(
+            .predicate(P::always(
                 P::not(even.clone()).implies(P::next(even.clone())),
             ))
-            .with(P::always(not_teens));
+            .predicate(P::always(not_teens));
 
         checker
             .transition_(1)
@@ -281,7 +311,7 @@ mod tests {
             .unwrap()
             .transition_(3)
             .unwrap()
-            .transition_(22)
+            .transition_(23)
             .unwrap()
             .transition_(21)
             .unwrap();

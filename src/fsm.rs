@@ -40,6 +40,13 @@ where
         }
     }
 
+    fn checked(
+        self,
+        make_error: impl Fn(anyhow::Error) -> Self::Error + 'static,
+    ) -> checked::Checker<Self, Self::Error> {
+        checked::Checker::new(self, make_error)
+    }
+
     fn apply_actions(
         mut self,
         actions: impl IntoIterator<Item = Self::Action>,
