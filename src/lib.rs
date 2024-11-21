@@ -7,6 +7,7 @@ pub mod generate;
 pub mod id;
 pub mod nfm;
 // pub mod lens;
+pub mod event_handler;
 pub mod util;
 
 #[cfg(feature = "testing")]
@@ -17,6 +18,7 @@ pub mod diagram;
 
 pub use actor::Actor;
 pub use dfa::{Machine, MachineResult};
+pub use event_handler::{EventHandler, EventSink};
 
 pub mod prelude {
     pub use crate::actor::{Actor, ShareRead, ShareRw};
