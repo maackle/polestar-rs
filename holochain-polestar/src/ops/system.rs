@@ -412,7 +412,7 @@ mod tests {
 
         {
             let op = nodes[0].read(|n| n.vault.values().next().unwrap().op.clone());
-            let projection = NetworkOpProjection { op };
+            let mut projection = NetworkOpProjection { op };
             let mut model = projection.map_state(&initial).unwrap();
 
             let events = event_rx.try_iter().collect_vec();

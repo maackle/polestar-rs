@@ -29,11 +29,11 @@ where
     type Event;
 
     fn apply(&self, system: &mut Self::System, event: Self::Event);
-    fn map_state(&self, system: &Self::System) -> Option<Self::Model>;
-    fn map_event(&self, event: Self::Event) -> Option<ActionOf<Self::Model>>;
-    fn gen_state(&self, generator: &mut impl Generator, state: Self::Model) -> Self::System;
+    fn map_state(&mut self, system: &Self::System) -> Option<Self::Model>;
+    fn map_event(&mut self, event: Self::Event) -> Option<ActionOf<Self::Model>>;
+    fn gen_state(&mut self, generator: &mut impl Generator, state: Self::Model) -> Self::System;
     fn gen_event(
-        &self,
+        &mut self,
         generator: &mut impl Generator,
         event: ActionOf<Self::Model>,
     ) -> Self::Event;
@@ -58,7 +58,7 @@ where
     ActionOf<Self::Model>: Clone + Debug + Eq,
     ErrorOf<Self::Model>: Eq,
 {
-    fn test_commutativity(&self, x: Self::System, event: Self::Event) {
+    fn test_commutativity(&mut self, x: Self::System, event: Self::Event) {
         let x_m = self.map_state(&x);
 
         let x_a = {
@@ -110,7 +110,7 @@ commutative diff : (system-transitioned and mapped) vs (mapped and model-transit
     }
 
     fn test_all_invariants(
-        self,
+        mut self,
         runner: &mut impl Generator,
         system: Self::System,
         event: Self::Event,
@@ -126,7 +126,7 @@ commutative diff : (system-transitioned and mapped) vs (mapped and model-transit
         // TODO: all other cases ok?
     }
 
-    fn map_state_is_a_retraction(&self, runner: &mut impl Generator, state: Self::Model) {
+    fn map_state_is_a_retraction(&mut self, runner: &mut impl Generator, state: Self::Model) {
         let generated = self.gen_state(runner, state.clone());
         let roundtrip = self.map_state(&generated);
         assert_eq!(
@@ -140,8 +140,13 @@ commutative diff : (system-transitioned and mapped) vs (mapped and model-transit
         )
     }
 
-    fn map_event_is_a_retraction(&self, runner: &mut impl Generator, event: ActionOf<Self::Model>) {
-        let roundtrip = self.map_event(self.gen_event(runner, event.clone()));
+    fn map_event_is_a_retraction(
+        &mut self,
+        runner: &mut impl Generator,
+        event: ActionOf<Self::Model>,
+    ) {
+        let e = self.gen_event(runner, event.clone());
+        let roundtrip = self.map_event(e);
         assert_eq!(
             Some(&event),
             roundtrip.as_ref(),
@@ -154,7 +159,7 @@ commutative diff : (system-transitioned and mapped) vs (mapped and model-transit
     }
 
     fn transition_commutes_with_generation(
-        self,
+        mut self,
         runner: &mut impl Generator,
         x: Self::Model,
         event: ActionOf<Self::Model>,
@@ -170,7 +175,8 @@ commutative diff : (system-transitioned and mapped) vs (mapped and model-transit
 
         let x_g = self.gen_state(runner, x);
         let mut x_gt = x_g.clone();
-        self.apply(&mut x_gt, self.gen_event(runner, event));
+        let e = self.gen_event(runner, event);
+        self.apply(&mut x_gt, e);
 
         let x_tgm = self.map_state(&x_tg);
         let x_gtm = self.map_state(&x_gt);

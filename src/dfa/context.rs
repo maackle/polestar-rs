@@ -3,7 +3,7 @@ use super::*;
 /// Wrapper around an FSM which carries a context that gets injected into each event.
 /// Useful for attaching some immutable context to the FSM which is not part of its own state.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Arbitrary, derive_more::Deref)]
-pub struct Contextual<S: Machine, C> {
+pub struct Contextual<S, C> {
     #[deref]
     pub(super) fsm: S,
     // TODO: C: Clone
@@ -12,7 +12,7 @@ pub struct Contextual<S: Machine, C> {
 
 impl<S, C> std::fmt::Debug for Contextual<S, C>
 where
-    S: Machine + std::fmt::Debug,
+    S: std::fmt::Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self.fsm)

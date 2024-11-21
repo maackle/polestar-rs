@@ -31,7 +31,7 @@ impl Projection for NetworkOpProjection {
         }
     }
 
-    fn map_state(&self, system: &Self::System) -> Option<model::NetworkOp> {
+    fn map_state(&mut self, system: &Self::System) -> Option<model::NetworkOp> {
         use model::NodeOpPhase as M;
         use system::OpState as S;
         Some(model::NetworkOp::new(
@@ -54,7 +54,7 @@ impl Projection for NetworkOpProjection {
         ))
     }
 
-    fn map_event(&self, (id, event): Self::Event) -> Option<model::NetworkOpEvent> {
+    fn map_event(&mut self, (id, event): Self::Event) -> Option<model::NetworkOpEvent> {
         use model::NodeOpEvent as M;
         use system::NodeEvent as S;
         use system::OpState as O;
@@ -74,7 +74,11 @@ impl Projection for NetworkOpProjection {
         Some(NetworkOpEvent(id, n))
     }
 
-    fn gen_state(&self, generator: &mut impl Generator, state: model::NetworkOp) -> Self::System {
+    fn gen_state(
+        &mut self,
+        generator: &mut impl Generator,
+        state: model::NetworkOp,
+    ) -> Self::System {
         // TODO: set up peers
         state
             .iter()
@@ -107,7 +111,7 @@ impl Projection for NetworkOpProjection {
     }
 
     fn gen_event(
-        &self,
+        &mut self,
         _generator: &mut impl Generator,
         model::NetworkOpEvent(id, event): model::NetworkOpEvent,
     ) -> Self::Event {
@@ -172,7 +176,7 @@ mod tests {
             let ids: Vec<_> = std::iter::repeat_with(Id::new).map(NodeId::from).take(3).collect();
             let mut gen = proptest::test_runner::TestRunner::default();
             let (mut system, op) = initial_state(&ids);
-            let projection = NetworkOpProjection { op };
+            let mut projection = NetworkOpProjection { op };
             for event in events {
                 let event = projection.gen_event(&mut gen, NetworkOpEvent(ids[0].clone(), event));
                 projection.test_commutativity(

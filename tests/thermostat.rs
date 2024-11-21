@@ -143,11 +143,11 @@ impl Projection for Instrument {
         }
     }
 
-    fn map_event(&self, event: Self::Event) -> Option<Temp> {
+    fn map_event(&mut self, event: Self::Event) -> Option<Temp> {
         Some(event.temp)
     }
 
-    fn map_state(&self, system: &Self) -> Option<Thermostat> {
+    fn map_state(&mut self, system: &Self) -> Option<Thermostat> {
         let s = Thermostat {
             setting: system.setting,
             state: ThermostatState::Idle,
@@ -155,14 +155,14 @@ impl Projection for Instrument {
         Some(s.transition_(system.current.temp).unwrap())
     }
 
-    fn gen_event(&self, g: &mut impl Generator, temp: Temp) -> InstrumentReading {
+    fn gen_event(&mut self, g: &mut impl Generator, temp: Temp) -> InstrumentReading {
         InstrumentReading {
             temp,
             hum: g.generate().unwrap(),
         }
     }
 
-    fn gen_state(&self, g: &mut impl Generator, state: Thermostat) -> Self {
+    fn gen_state(&mut self, g: &mut impl Generator, state: Thermostat) -> Self {
         let lo = self.setting.lo();
         let hi = self.setting.hi();
         let temp: Temp = match state.state {
