@@ -14,6 +14,12 @@ where
     format!("{:?}", Dot::with_config(&graph, &[]))
 }
 
+pub trait DiagramNode {
+    type Node: Eq + std::hash::Hash + std::fmt::Debug;
+
+    fn to_diagram_node(&self) -> Self::Node;
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
