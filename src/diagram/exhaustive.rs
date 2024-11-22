@@ -5,6 +5,7 @@ use std::{
     collections::{HashMap, HashSet, VecDeque},
     fmt::Debug,
     hash::Hash,
+    path::Path,
 };
 
 use crate::{util::first, Machine};
@@ -26,6 +27,23 @@ impl Default for DiagramConfig {
             ignore_loopbacks: false,
         }
     }
+}
+
+pub fn write_dot_state_diagram<M>(path: impl AsRef<Path>, initial: M, config: &DiagramConfig)
+where
+    M: Machine + Clone + Eq + Debug + Hash,
+    M::Action: Exhaustive + Clone + Eq + Hash + Debug,
+{
+    use std::fs::File;
+    use std::io::Write;
+    let mut file = File::create(&path).unwrap();
+    write!(
+        file,
+        "{}",
+        crate::diagram::to_dot(state_diagram(initial, config))
+    )
+    .unwrap();
+    println!("wrote DOT diagram to {}", path.as_ref().display());
 }
 
 pub fn print_dot_state_diagram<M>(initial: M, config: &DiagramConfig)
@@ -112,15 +130,18 @@ where
             }
         }
 
-        // If this is a terminal state, no need to explore further.
-        if state.is_terminal() {
-            num_terminations += 1;
-            continue;
-        }
-
         // Don't explore the same node twice.
         if distance > config.max_distance.unwrap_or(usize::MAX) || visited_states.contains(&state) {
             tracing::debug!("skipping node (dist={distance}) : {state:?}");
+            continue;
+        }
+
+        visited_states.insert(state.clone());
+        visited_nodes.insert(node.clone(), ix);
+
+        // If this is a terminal state, no need to explore further.
+        if state.is_terminal() {
+            num_terminations += 1;
             continue;
         }
 
@@ -136,9 +157,6 @@ where
                 }
             }
         }
-
-        visited_states.insert(state.clone());
-        visited_nodes.insert(node.clone(), ix);
     }
 
     tracing::info!(

@@ -79,10 +79,6 @@ where
         let (transitions, errors, num_steps, terminated) = take_a_walk(m.clone(), state, config);
         num_errors += errors.len();
         num_terminations += terminated as usize;
-        if !errors.is_empty() {
-            tracing::debug!("errors: {:#?}", errors);
-            dbg!(&errors);
-        }
         total_steps += num_steps;
         for (edge, node) in transitions {
             let ix = if let Some(ix) = node_indices.get(&node) {
