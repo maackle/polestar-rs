@@ -1,0 +1,17 @@
+[package]
+name = "holochain-model"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "*"
+derive_more = { version = "*" }
+exhaustive = { git = "https://github.com/maackle/exhaustive" }
+itertools = "*"
+polestar = { version = "*", path = "/home/michael/proj/polestar-rs" }
+proptest = "1"
+proptest-derive = "0"
+
+[patch.crates-io]
+proptest-derive = { git = "https://github.com/maackle/proptest.git", branch = "allow-non-local-definitions" }
+exhaustive_macros = { git = "https://github.com/maackle/exhaustive.git" }
