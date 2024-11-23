@@ -3,7 +3,6 @@ use std::{collections::BTreeSet, fmt::Debug, marker::PhantomData};
 use anyhow::bail;
 use exhaustive::Exhaustive;
 use polestar::{id::IdT, prelude::*};
-use proptest_derive::Arbitrary;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct OpMachine<NodeId: IdT, OpId: IdT> {
@@ -38,7 +37,7 @@ pub enum OpPhase<OpId: IdT> {
     Integrated,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Arbitrary, derive_more::Display, Exhaustive)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, derive_more::Display, Exhaustive)]
 pub enum ValidationType {
     Sys,
     App,
@@ -46,7 +45,7 @@ pub enum ValidationType {
 
 use ValidationType as VT;
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Arbitrary, /* derive_more::Display, */ Exhaustive)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, /* derive_more::Display, */ Exhaustive)]
 pub enum OpEvent<NodeId: IdT, OpId: IdT> {
     /// Author the op
     Author,

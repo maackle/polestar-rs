@@ -5,7 +5,6 @@ pub mod actor;
 pub mod dfa;
 pub mod generate;
 pub mod id;
-pub mod nfm;
 // pub mod lens;
 pub mod event_handler;
 pub mod util;
@@ -28,3 +27,7 @@ pub mod prelude {
 
     pub use std::convert::Infallible;
 }
+
+/// experimental
+#[allow(unused)]
+mod nondeterministic_automaton;

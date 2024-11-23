@@ -1,6 +1,6 @@
 use crate::util::first;
 
-pub trait Nfm
+trait Nfm
 where
     Self: Sized,
 {
@@ -54,4 +54,4 @@ where
     }
 }
 
-pub type NfmResult<S> = Result<Vec<(S, <S as Nfm>::Fx)>, <S as Nfm>::Error>;
+type NfmResult<S> = Result<Vec<(S, <S as Nfm>::Fx)>, <S as Nfm>::Error>;
