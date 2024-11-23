@@ -36,12 +36,16 @@ pub enum ValidationType {
     App,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Arbitrary, derive_more::Display, Exhaustive)]
+use ValidationType as VT;
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Arbitrary, /* derive_more::Display, */ Exhaustive)]
 pub enum OpEvent<NodeId: IdT> {
     /// Author the op
     Author,
     /// Validate the op (as valid)
     Validate(ValidationType),
+    /// Await these ops
+    Await(BTreeSet<NodeId>),
     /// Reject the op (as invalid)
     Reject,
     /// Integrate the op
@@ -68,6 +72,9 @@ impl<NodeId: IdT> Machine for OpPhase<NodeId> {
             (_, E::Author) => bail!("duplicate authorship"),
 
             (S::Pending | S::Validated(V::Sys), E::Reject) => S::Rejected,
+            (S::Pending, E::Await(deps)) => S::Awaiting(VT::Sys, deps),
+            (S::Validated(V::Sys), E::Await(deps)) => S::Awaiting(VT::App, deps),
+
             (S::Pending, E::Validate(V::Sys)) => S::Validated(V::Sys),
 
             (S::Validated(V::Sys), E::Validate(V::App)) => S::Validated(V::App),
@@ -101,9 +108,9 @@ mod tests {
         // TODO allow for strategy params
         write_dot_state_diagram(
             "single-op.dot",
-            OpPhase::<Id<3>>::None,
+            OpPhase::<Id<2>>::None,
             &DiagramConfig {
-                // ignore_loopbacks: true,
+                max_actions: Some(5),
                 ..Default::default()
             },
         );
