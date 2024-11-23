@@ -1,3 +1,9 @@
+use crate::Machine;
+use std::{
+    collections::{BTreeMap, HashMap},
+    hash::Hash,
+};
+
 /// Return the first element of a 2-tuple
 pub fn first<A, B>(tup: (A, B)) -> A {
     tup.0
@@ -53,4 +59,58 @@ where
     let (next, fx) = f(*s);
     *s = next;
     fx
+}
+
+/// When working with a HashMap whose values are the states of a Machine,
+/// this function updates the state of the machine at `k` with the result of
+/// applying `event` to the machine at that key.
+///
+/// If the state transition results in an error, the error is returned, and the
+/// key is removed from the map. If the same transition is attempted again,
+/// the function will return None.
+pub fn transition_hashmap<K, M>(
+    machine: &mut M,
+    k: K,
+    map: &mut HashMap<K, M::State>,
+    event: M::Action,
+) -> Option<Result<M::Fx, M::Error>>
+where
+    K: Eq + Hash,
+    M: Machine,
+{
+    let r = machine.transition(map.remove(&k)?, event);
+    match r {
+        Ok((state, fx)) => {
+            map.insert(k, state);
+            Some(Ok(fx))
+        }
+        Err(e) => Some(Err(e)),
+    }
+}
+
+/// When working with a BTreeMap whose values are the states of a Machine,
+/// this function updates the state of the machine at `k` with the result of
+/// applying `event` to the machine at that key.
+///
+/// If the state transition results in an error, the error is returned, and the
+/// key is removed from the map. If the same transition is attempted again,
+/// the function will return None.
+pub fn transition_btreemap<K, M>(
+    machine: &mut M,
+    k: K,
+    map: &mut BTreeMap<K, M::State>,
+    event: M::Action,
+) -> Option<Result<M::Fx, M::Error>>
+where
+    K: Ord,
+    M: Machine,
+{
+    let r = machine.transition(map.remove(&k)?, event);
+    match r {
+        Ok((state, fx)) => {
+            map.insert(k, state);
+            Some(Ok(fx))
+        }
+        Err(e) => Some(Err(e)),
+    }
 }

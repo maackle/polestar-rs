@@ -22,7 +22,7 @@ pub use event_handler::{EventHandler, EventSink};
 
 pub mod prelude {
     pub use crate::actor::{Actor, ShareRead, ShareRw};
-    pub use crate::dfa::{ext::*, Contextual, FsmRefCell, Machine, MachineResult};
+    pub use crate::dfa::{Machine, MachineResult};
     pub use crate::generate::Generator;
     pub use crate::projection::{Projection, ProjectionTests};
 

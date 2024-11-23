@@ -29,9 +29,13 @@ where
     type Event;
 
     fn apply(&self, system: &mut Self::System, event: Self::Event);
-    fn map_state(&mut self, system: &Self::System) -> Option<Self::Model>;
+    fn map_state(&mut self, system: &Self::System) -> Option<StateOf<Self::Model>>;
     fn map_event(&mut self, event: Self::Event) -> Option<ActionOf<Self::Model>>;
-    fn gen_state(&mut self, generator: &mut impl Generator, state: Self::Model) -> Self::System;
+    fn gen_state(
+        &mut self,
+        generator: &mut impl Generator,
+        state: StateOf<Self::Model>,
+    ) -> Self::System;
     fn gen_event(
         &mut self,
         generator: &mut impl Generator,
@@ -39,6 +43,7 @@ where
     ) -> Self::Event;
 }
 
+pub type StateOf<M> = <M as Machine>::State;
 pub type ActionOf<M> = <M as Machine>::Action;
 pub type ErrorOf<M> = <M as Machine>::Error;
 
@@ -54,11 +59,17 @@ pub trait ProjectionTests: Sized + Projection
 where
     Self::System: Clone + Debug,
     Self::Event: Clone + Debug,
-    Self::Model: Machine + Clone + Debug + Eq,
+    Self::Model: Machine + Clone,
+    StateOf<Self::Model>: Clone + Debug + Eq,
     ActionOf<Self::Model>: Clone + Debug + Eq,
     ErrorOf<Self::Model>: Eq,
 {
-    fn test_commutativity(&mut self, x: Self::System, event: Self::Event) {
+    fn test_commutativity(
+        &mut self,
+        mut machine: Self::Model,
+        x: Self::System,
+        event: Self::Event,
+    ) {
         let x_m = self.map_state(&x);
 
         let x_a = {
@@ -75,8 +86,8 @@ where
             if let (Some(x_m), Some(a)) = (&x_m, &a) {
                 // if error, return original state
                 Some(
-                    x_m.clone()
-                        .transition(a.clone())
+                    machine
+                        .transition(x_m.clone(), a.clone())
                         .map(first)
                         .unwrap_or(x_m.clone()),
                 )
@@ -112,6 +123,7 @@ commutative diff : (system-transitioned and mapped) vs (mapped and model-transit
     fn test_all_invariants(
         mut self,
         runner: &mut impl Generator,
+        machine: Self::Model,
         system: Self::System,
         event: Self::Event,
     ) {
@@ -120,13 +132,17 @@ commutative diff : (system-transitioned and mapped) vs (mapped and model-transit
         {
             self.map_state_is_a_retraction(runner, state.clone());
             self.map_event_is_a_retraction(runner, transition.clone());
-            self.test_commutativity(system, event);
-            self.transition_commutes_with_generation(runner, state, transition);
+            self.test_commutativity(machine.clone(), system, event);
+            self.transition_commutes_with_generation(runner, machine, state, transition);
         }
         // TODO: all other cases ok?
     }
 
-    fn map_state_is_a_retraction(&mut self, runner: &mut impl Generator, state: Self::Model) {
+    fn map_state_is_a_retraction(
+        &mut self,
+        runner: &mut impl Generator,
+        state: StateOf<Self::Model>,
+    ) {
         let generated = self.gen_state(runner, state.clone());
         let roundtrip = self.map_state(&generated);
         assert_eq!(
@@ -161,13 +177,13 @@ commutative diff : (system-transitioned and mapped) vs (mapped and model-transit
     fn transition_commutes_with_generation(
         mut self,
         runner: &mut impl Generator,
-        x: Self::Model,
+        mut machine: Self::Model,
+        x: StateOf<Self::Model>,
         event: ActionOf<Self::Model>,
     ) {
         // if error, return original state
-        let x_t = x
-            .clone()
-            .transition(event.clone())
+        let x_t = machine
+            .transition(x.clone(), event.clone())
             .map(first)
             .unwrap_or_else(|_| x.clone());
 
@@ -195,7 +211,8 @@ where
     T: Projection,
     Self::System: Clone + Debug,
     Self::Event: Clone + Debug,
-    T::Model: Machine + Clone + Debug + Eq,
+    T::Model: Machine + Clone,
+    StateOf<T::Model>: Clone + Debug + Eq,
     ActionOf<T::Model>: Clone + Debug + Eq,
     ErrorOf<T::Model>: Eq,
 {

@@ -1,27 +1,35 @@
-use std::{
-    collections::{BTreeSet, HashSet},
-    fmt::Debug,
-};
+use std::{collections::BTreeSet, fmt::Debug};
 
 use anyhow::bail;
 use exhaustive::Exhaustive;
 use polestar::{id::IdT, prelude::*};
 use proptest_derive::Arbitrary;
 
-pub struct OpState<NodeId: IdT, OpId: IdT> {
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct OpMachine<NodeId: IdT, OpId: IdT> {
     phase: OpPhase<NodeId>,
     deps: BTreeSet<OpId>,
 }
 
+impl<NodeId: IdT, OpId: IdT> OpMachine<NodeId, OpId> {
+    /// Create a new OpMachine with the given dependencies
+    pub fn new(deps: BTreeSet<OpId>) -> Self {
+        Self {
+            phase: OpPhase::None,
+            deps,
+        }
+    }
+}
+
 #[derive(Clone, Default, Debug, PartialEq, Eq, Hash)]
-pub enum OpPhase<NodeId: IdT> {
+pub enum OpPhase<OpId: IdT> {
     #[default]
     /// The op has not been seen by this node yet
     None,
     /// The op has been received and validation has not been attempted
     Pending,
     /// The last validation attempt could not complete due to missing dependencies
-    Awaiting(ValidationType, BTreeSet<NodeId>),
+    Awaiting(ValidationType, BTreeSet<OpId>),
     /// The op has been validated
     Validated(ValidationType),
     /// The op has been rejected
@@ -39,13 +47,13 @@ pub enum ValidationType {
 use ValidationType as VT;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Arbitrary, /* derive_more::Display, */ Exhaustive)]
-pub enum OpEvent<NodeId: IdT> {
+pub enum OpEvent<NodeId: IdT, OpId: IdT> {
     /// Author the op
     Author,
     /// Validate the op (as valid)
     Validate(ValidationType),
     /// Await these ops
-    Await(BTreeSet<NodeId>),
+    Await(BTreeSet<OpId>),
     /// Reject the op (as invalid)
     Reject,
     /// Integrate the op
@@ -54,17 +62,18 @@ pub enum OpEvent<NodeId: IdT> {
     Send(NodeId),
 }
 
-impl<NodeId: IdT> Machine for OpPhase<NodeId> {
-    type Action = OpEvent<NodeId>;
+impl<NodeId: IdT, OpId: IdT> Machine for OpMachine<NodeId, OpId> {
+    type State = OpPhase<OpId>;
+    type Action = OpEvent<NodeId, OpId>;
     type Fx = ();
     type Error = anyhow::Error;
 
-    fn transition(self, t: Self::Action) -> MachineResult<Self> {
+    fn transition(&mut self, state: Self::State, t: Self::Action) -> MachineResult<Self> {
         use OpEvent as E;
         use OpPhase as S;
         use ValidationType as V;
 
-        let next = match (self, t) {
+        let next = match (state, t) {
             // Receive the op
             (S::None, E::Author) => S::Pending,
 
@@ -88,8 +97,8 @@ impl<NodeId: IdT> Machine for OpPhase<NodeId> {
         Ok((next, ()))
     }
 
-    fn is_terminal(&self) -> bool {
-        matches!(self, OpPhase::Integrated | OpPhase::Rejected)
+    fn is_terminal(&self, state: &Self::State) -> bool {
+        matches!(state, OpPhase::Integrated | OpPhase::Rejected)
     }
 }
 
@@ -103,12 +112,16 @@ mod tests {
     fn test_diagram() {
         use polestar::diagram::exhaustive::DiagramConfig;
 
-        // tracing::subscriber::set_global_default(tracing_subscriber::FmtSubscriber::new()).unwrap();
+        type OpId = Id<2>;
+        type NodeId = Id<2>;
 
-        // TODO allow for strategy params
+        // Create an instance of OpMachine with empty dependencies
+        let machine = OpMachine::<NodeId, OpId>::new(BTreeSet::new());
+
         write_dot_state_diagram(
             "single-op.dot",
-            OpPhase::<Id<2>>::None,
+            machine,
+            OpPhase::<OpId>::None,
             &DiagramConfig {
                 max_actions: Some(5),
                 ..Default::default()

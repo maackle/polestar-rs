@@ -1,14 +1,10 @@
 pub mod checked;
-mod context;
-pub mod ext;
-mod refcell;
 
-pub use context::*;
-pub use refcell::*;
+// mod refcell;
 
-use std::{convert::Infallible, sync::Arc};
+// pub use refcell::*;
 
-use proptest_derive::Arbitrary;
+use std::sync::Arc;
 
 use crate::util::first;
 
@@ -16,74 +12,61 @@ pub trait Machine
 where
     Self: Sized,
 {
+    type State;
     type Action;
     type Fx;
     type Error: std::fmt::Debug;
 
-    fn transition(self, event: Self::Action) -> MachineResult<Self>;
+    fn transition(&mut self, state: Self::State, event: Self::Action) -> MachineResult<Self>;
 
     /// Perform a transition and ignore the effect, when the effect is `()`.
-    fn transition_(self, event: Self::Action) -> Result<Self, Self::Error>
+    fn transition_(
+        &mut self,
+        state: Self::State,
+        event: Self::Action,
+    ) -> Result<Self::State, Self::Error>
     where
         Self: Machine<Fx = ()>,
     {
-        self.transition(event).map(|(fsm, _)| fsm)
-    }
-
-    fn context<C>(self, context: C) -> Contextual<Self, C> {
-        Contextual {
-            fsm: self,
-            context: Arc::new(context),
-        }
+        self.transition(state, event).map(first)
     }
 
     fn checked(
         self,
         make_error: impl Fn(anyhow::Error) -> Self::Error + 'static,
-    ) -> checked::Checker<Self, Self::Error> {
+    ) -> checked::Checker<Self> {
         checked::Checker::new(self, make_error)
     }
 
     fn apply_actions(
-        mut self,
+        &mut self,
+        mut state: Self::State,
         actions: impl IntoIterator<Item = Self::Action>,
-    ) -> Result<(Self, Vec<Self::Fx>), Self::Error> {
+    ) -> Result<(Self::State, Vec<Self::Fx>), Self::Error> {
         let mut fxs = vec![];
         for action in actions.into_iter() {
-            let (m, fx) = self.transition(action)?;
+            let (s, fx) = self.transition(state, action)?;
             fxs.push(fx);
-            self = m;
+            state = s;
         }
-        Ok((self, fxs))
+        Ok((state, fxs))
     }
 
     fn apply_actions_(
-        self,
+        &mut self,
+        state: Self::State,
         actions: impl IntoIterator<Item = Self::Action>,
-    ) -> Result<Self, Self::Error> {
-        self.apply_actions(actions).map(first)
+    ) -> Result<Self::State, Self::Error> {
+        self.apply_actions(state, actions).map(first)
     }
 
     /// Designates this state as a terminal state.
     ///
     /// This is an optional hint, useful for generating diagrams from FSMs.
-    fn is_terminal(&self) -> bool {
+    fn is_terminal(&self, _: &Self::State) -> bool {
         false
     }
 }
 
-pub type MachineResult<S> = Result<(S, <S as Machine>::Fx), <S as Machine>::Error>;
-
-impl Machine for bool {
-    type Action = bool;
-    type Fx = ();
-    type Error = Infallible;
-
-    fn transition(self, event: Self::Action) -> MachineResult<Self> {
-        Ok((event, ()))
-    }
-
-    fn is_terminal(&self) -> bool {
-        false
-    }
-}
+pub type MachineResult<S> =
+    Result<(<S as Machine>::State, <S as Machine>::Fx), <S as Machine>::Error>;

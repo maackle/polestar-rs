@@ -30,6 +30,9 @@ mod tests {
     use num_traits::{FromPrimitive, ToPrimitive};
     use proptest_derive::Arbitrary;
 
+    #[derive(Clone)]
+    struct CycleMachine;
+
     #[derive(
         Copy, Clone, Debug, PartialEq, Eq, FromPrimitive, ToPrimitive, Hash, derive_more::Display,
     )]
@@ -46,18 +49,23 @@ mod tests {
         Two = 2,
     }
 
-    impl Machine for Cycle {
+    impl Machine for CycleMachine {
+        type State = Cycle;
         type Action = Turn;
         type Fx = ();
         type Error = Infallible;
 
-        fn transition(mut self, turn: Turn) -> Result<(Self, Self::Fx), Self::Error> {
+        fn transition(
+            &mut self,
+            mut state: Self::State,
+            turn: Turn,
+        ) -> Result<(Self::State, Self::Fx), Self::Error> {
             let n = turn.to_i8().unwrap();
-            self = Cycle::from_i8((self.to_i8().unwrap() + n).rem_euclid(4)).unwrap();
-            Ok((self, ()))
+            state = Cycle::from_i8((state.to_i8().unwrap() + n).rem_euclid(4)).unwrap();
+            Ok((state, ()))
         }
 
-        fn is_terminal(&self) -> bool {
+        fn is_terminal(&self, _: &Self::State) -> bool {
             false
         }
     }
@@ -71,11 +79,11 @@ mod tests {
                 walks: 10,
                 ignore_loopbacks: false,
             };
-            let graph1 = state_diagram(Cycle::D, &mut (), &config);
+            let graph1 = state_diagram(CycleMachine, Cycle::D, &mut (), &config);
             let nodes1: HashSet<_> = graph1.node_weights().cloned().collect();
             let edges1: HashSet<_> = graph1.edge_weights().cloned().collect();
 
-            let graph2 = state_diagram(Cycle::D, &mut (), &config);
+            let graph2 = state_diagram(CycleMachine, Cycle::D, &mut (), &config);
             let nodes2: HashSet<_> = graph2.node_weights().cloned().collect();
             let edges2: HashSet<_> = graph2.edge_weights().cloned().collect();
 
@@ -91,11 +99,11 @@ mod tests {
             use super::exhaustive::*;
             let config = DiagramConfig::default();
 
-            let graph1 = state_diagram(Cycle::D, &config);
+            let graph1 = state_diagram(CycleMachine, Cycle::D, &config);
             let nodes1: HashSet<_> = graph1.node_weights().cloned().collect();
             let edges1: HashSet<_> = graph1.edge_weights().cloned().collect();
 
-            let graph2 = state_diagram(Cycle::D, &config);
+            let graph2 = state_diagram(CycleMachine, Cycle::D, &config);
             let nodes2: HashSet<_> = graph2.node_weights().cloned().collect();
             let edges2: HashSet<_> = graph2.edge_weights().cloned().collect();
 
@@ -117,11 +125,11 @@ mod tests {
 
         let config = DiagramConfig::default();
 
-        let graph1 = state_diagram(Cycle::D, &config);
+        let graph1 = state_diagram(CycleMachine, Cycle::D, &config);
         let nodes1: HashSet<_> = graph1.node_weights().collect();
         let edges1: HashSet<_> = graph1.edge_weights().collect();
 
-        let graph2 = state_diagram(Cycle::D, &config);
+        let graph2 = state_diagram(CycleMachine, Cycle::D, &config);
         let nodes2: HashSet<_> = graph2.node_weights().collect();
         let edges2: HashSet<_> = graph2.edge_weights().collect();
 

@@ -1,32 +1,32 @@
-use std::sync::Arc;
+use std::{fmt::Debug, sync::Arc};
 
 use crate::util::first_ref;
 
 use super::{Machine, MachineResult};
 
 #[derive(derive_more::Deref)]
-pub struct Checker<M, E: std::fmt::Debug> {
+pub struct Checker<M: Machine> {
     #[deref]
-    state: M,
-    predicates: Predicates<M, E>,
+    machine: M,
+    predicates: Predicates<M::State, M::Error>,
 }
 
-impl<M, E: std::fmt::Debug> Checker<M, E> {
-    pub fn new(state: M, make_error: impl Fn(anyhow::Error) -> E + 'static) -> Self {
+impl<M: Machine> Checker<M> {
+    pub fn new(machine: M, make_error: impl Fn(anyhow::Error) -> M::Error + 'static) -> Self {
         Self {
-            state,
+            machine,
             predicates: Predicates::new(make_error),
         }
     }
 
-    pub fn predicate(mut self, predicate: Predicate<M>) -> Self {
+    pub fn predicate(mut self, predicate: Predicate<M::State>) -> Self {
         self.predicates
             .next
             .push((format!("{:?}", predicate), predicate));
         self
     }
 
-    pub fn finalize(self) -> Result<(), E> {
+    pub fn finalize(self) -> Result<(), M::Error> {
         let eventuals = self
             .predicates
             .next
@@ -52,20 +52,21 @@ impl<M, E: std::fmt::Debug> Checker<M, E> {
 //     }
 // }
 
-impl<M> Machine for Checker<M, M::Error>
+impl<M> Machine for Checker<M>
 where
-    M: Machine + Clone + std::fmt::Debug,
+    M: Machine,
+    M::State: Clone + Debug,
 {
+    type State = M::State;
     type Action = M::Action;
     type Fx = M::Fx;
     type Error = M::Error;
 
-    fn transition(mut self, action: Self::Action) -> MachineResult<Self> {
-        let prev = self.state.clone();
-        let (next, fx) = self.state.transition(action)?;
-        self.predicates = self.predicates.step((&prev, &next))?;
-        self.state = next;
-        Ok((self, fx))
+    fn transition(&mut self, state: Self::State, action: Self::Action) -> MachineResult<Self> {
+        let prev = state.clone();
+        let (next, fx) = self.machine.transition(state, action)?;
+        self.predicates.step((&prev, &next))?;
+        Ok((next, fx))
     }
 }
 
@@ -84,7 +85,7 @@ impl<M, E> Predicates<M, E> {
 }
 
 impl<M: Clone + std::fmt::Debug, E> Predicates<M, E> {
-    pub fn step(mut self, state: (&M, &M)) -> Result<Self, E> {
+    pub fn step(&mut self, state: (&M, &M)) -> Result<(), E> {
         let mut next = vec![];
         tracing::debug!("");
         tracing::debug!("------------------------------------------------");
@@ -108,7 +109,7 @@ impl<M: Clone + std::fmt::Debug, E> Predicates<M, E> {
             }
         }
         self.next = next;
-        Ok(self)
+        Ok(())
     }
 
     fn visit(
@@ -269,18 +270,16 @@ mod tests {
     use super::*;
 
     #[derive(Clone, Debug)]
-    struct Mach {
-        state: u8,
-    }
+    struct Mach;
 
     impl Machine for Mach {
+        type State = u8;
         type Action = u8;
         type Fx = ();
         type Error = anyhow::Error;
 
-        fn transition(mut self, action: u8) -> MachineResult<Self> {
-            self.state = action;
-            Ok((self, ()))
+        fn transition(&mut self, _state: u8, action: u8) -> MachineResult<Self> {
+            Ok((action, ()))
         }
     }
 
@@ -290,11 +289,11 @@ mod tests {
 
         tracing_subscriber::fmt::init();
 
-        let even = P::atom("is-even".to_string(), |s: &Mach| s.state % 2 == 0);
-        let small = P::atom("single-digit".to_string(), |s: &Mach| s.state < 10);
-        let big = P::atom("20-and-up".to_string(), |s: &Mach| s.state >= 20);
+        let even = P::atom("is-even".to_string(), |s: &u8| s % 2 == 0);
+        let small = P::atom("single-digit".to_string(), |s: &u8| *s < 10);
+        let big = P::atom("20-and-up".to_string(), |s: &u8| *s >= 20);
         let not_teens = small.clone().or(big.clone());
-        let checker = Mach { state: 0 }
+        let mut checker = Mach
             .checked(|s| s)
             .predicate(P::always(
                 even.clone().implies(P::next(P::not(even.clone()))),
@@ -304,16 +303,6 @@ mod tests {
             ))
             .predicate(P::always(not_teens));
 
-        checker
-            .transition_(1)
-            .unwrap()
-            .transition_(2)
-            .unwrap()
-            .transition_(3)
-            .unwrap()
-            .transition_(23)
-            .unwrap()
-            .transition_(21)
-            .unwrap();
+        checker.apply_actions_(0, [1, 2, 3, 23, 21]).unwrap();
     }
 }

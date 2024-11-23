@@ -29,9 +29,14 @@ impl Default for DiagramConfig {
     }
 }
 
-pub fn write_dot_state_diagram<M>(path: impl AsRef<Path>, initial: M, config: &DiagramConfig)
-where
-    M: Machine + Clone + Eq + Debug + Hash,
+pub fn write_dot_state_diagram<M>(
+    path: impl AsRef<Path>,
+    machine: M,
+    initial: M::State,
+    config: &DiagramConfig,
+) where
+    M: Machine,
+    M::State: Clone + Eq + Hash + Debug,
     M::Action: Exhaustive + Clone + Eq + Hash + Debug,
 {
     use std::fs::File;
@@ -40,60 +45,71 @@ where
     write!(
         file,
         "{}",
-        crate::diagram::to_dot(state_diagram(initial, config))
+        crate::diagram::to_dot(state_diagram(machine, initial, config))
     )
     .unwrap();
     println!("wrote DOT diagram to {}", path.as_ref().display());
 }
 
-pub fn print_dot_state_diagram<M>(initial: M, config: &DiagramConfig)
+pub fn print_dot_state_diagram<M>(machine: M, initial: M::State, config: &DiagramConfig)
 where
-    M: Machine + Clone + Eq + Debug + Hash,
+    M: Machine,
+    M::State: Clone + Eq + Hash + Debug,
     M::Action: Exhaustive + Clone + Eq + Hash + Debug,
 {
-    print_dot_state_diagram_mapped::<M, M>(initial, config, |m| m)
+    print_dot_state_diagram_mapped::<M, M::State>(machine, initial, config, |m| m)
 }
 
 pub fn print_dot_state_diagram_mapped<M, N>(
-    initial: M,
+    machine: M,
+    initial: M::State,
     config: &DiagramConfig,
-    map: impl Fn(M) -> N,
+    map: impl Fn(M::State) -> N,
 ) where
-    M: Machine + Clone + Eq + Debug + Hash,
+    M: Machine,
+    M::State: Clone + Eq + Hash + Debug,
     M::Action: Exhaustive + Clone + Eq + Hash + Debug,
     N: Clone + Eq + Hash + Debug,
 {
     println!(
         "{}",
-        crate::diagram::to_dot(state_diagram_mapped(initial, config, map))
+        crate::diagram::to_dot(state_diagram_mapped(machine, initial, config, map))
     );
 }
 
-pub fn state_diagram<M>(initial: M, config: &DiagramConfig) -> DiGraph<M, M::Action>
+pub fn state_diagram<M>(
+    machine: M,
+    initial: M::State,
+    config: &DiagramConfig,
+) -> DiGraph<M::State, M::Action>
 where
-    M: Machine + Clone + Eq + Hash + Debug,
+    M: Machine,
+    M::State: Clone + Eq + Hash + Debug,
     M::Action: Exhaustive + Clone + Eq + Hash + Debug,
 {
-    state_diagram_mapped::<M, M>(initial, config, |m| m)
+    state_diagram_mapped(machine, initial, config, |m| m)
 }
 
 /// Generate a state diagram of this state machine by exhaustively taking all possible actions
 /// at each visited state.
 pub fn state_diagram_mapped<M, N>(
-    initial: M,
+    mut machine: M,
+    initial: M::State,
     config: &DiagramConfig,
-    map_node: impl Fn(M) -> N,
+    map_node: impl Fn(M::State) -> N,
 ) -> DiGraph<N, M::Action>
 where
-    M: Machine + Clone + Eq + Hash + Debug,
+    M: Machine,
+    M::State: Clone + Eq + Hash + Debug,
     M::Action: Exhaustive + Clone + Eq + Hash + Debug,
     N: Clone + Eq + Hash + Debug,
 {
     dbg!();
     let mut graph = DiGraph::new();
-    let mut visited_states: HashSet<M> = HashSet::new();
+    let mut visited_states: HashSet<M::State> = HashSet::new();
     let mut visited_nodes: HashMap<N, NodeIndex> = HashMap::new();
-    let mut states_to_visit: VecDeque<(M, usize, Option<(M::Action, NodeIndex)>)> = VecDeque::new();
+    let mut states_to_visit: VecDeque<(M::State, usize, Option<(M::Action, NodeIndex)>)> =
+        VecDeque::new();
     let mut edges = HashSet::new();
 
     states_to_visit.push_back((initial, 0, None));
@@ -140,7 +156,7 @@ where
         visited_nodes.insert(node.clone(), ix);
 
         // If this is a terminal state, no need to explore further.
-        if state.is_terminal() {
+        if machine.is_terminal(&state) {
             num_terminations += 1;
             continue;
         }
@@ -148,7 +164,7 @@ where
         // Queue up visits to all nodes reachable from this node..
         for edge in M::Action::iter_exhaustive(config.max_actions) {
             total_steps += 1;
-            match state.clone().transition(edge.clone()).map(first) {
+            match machine.transition(state.clone(), edge.clone()).map(first) {
                 Ok(node) => {
                     states_to_visit.push_back((node, distance + 1, Some((edge, ix))));
                 }

@@ -118,32 +118,6 @@ impl<S> From<S> for Actor<S> {
     }
 }
 
-impl<S: Machine> Machine for Actor<S> {
-    type Action = S::Action;
-    type Fx = S::Fx;
-    type Error = S::Error;
-
-    fn transition(self, event: Self::Action) -> MachineResult<Self> {
-        let fx = {
-            let mut lock = self.0 .0.write();
-            let state = std::mem::take(&mut *lock).unwrap();
-            let (state, fx) = state.transition(event)?;
-            *lock = Some(state);
-            fx
-        };
-        Ok((self, fx))
-    }
-
-    fn is_terminal(&self) -> bool {
-        self.0
-             .0
-            .read()
-            .as_ref()
-            .map(|x| x.is_terminal())
-            .unwrap_or(false)
-    }
-}
-
 impl<S> Actor<S> {
     pub fn new(s: S) -> Self {
         Self::from(s)
@@ -152,18 +126,5 @@ impl<S> Actor<S> {
     /// Acquire read-only access to the shared state.
     pub fn read<R>(&self, f: impl FnOnce(&S) -> R) -> R {
         self.0.read(|x| x.as_ref().map(f).unwrap())
-    }
-}
-
-impl<S: Machine> Actor<S> {
-    pub fn transition_mut(&mut self, event: S::Action) -> Option<Result<S::Fx, S::Error>> {
-        let mut lock = self.0 .0.write();
-        match lock.take()?.transition(event) {
-            Err(e) => Some(Err(e)),
-            Ok((state, fx)) => {
-                *lock = Some(state);
-                Some(Ok(fx))
-            }
-        }
     }
 }

@@ -23,12 +23,13 @@ pub struct DiagramConfig {
     pub ignore_loopbacks: bool,
 }
 
-pub fn print_dot_state_diagram<M>(m: M, config: &DiagramConfig)
+pub fn print_dot_state_diagram<M>(m: M, initial: M::State, config: &DiagramConfig)
 where
-    M: Machine + Clone + Eq + Debug + Hash,
-    M::Action: Arbitrary + Clone + Eq + Debug + Hash + 'static,
+    M: Machine + Clone,
+    M::State: Clone + Eq + Hash + Debug,
+    M::Action: Arbitrary + Clone + Eq + Hash + 'static,
 {
-    println!("{}", to_dot(state_diagram(m, &mut (), config)));
+    println!("{}", to_dot(state_diagram(m, initial, &mut (), config)));
 }
 
 pub trait MonteCarloDiagramState<M>
@@ -37,7 +38,7 @@ where
     M::Action: Arbitrary + 'static,
 {
     fn on_action(&mut self, _action: &M::Action) {}
-    fn on_state(&mut self, _state: &M) {}
+    fn on_state(&mut self, _state: &M::State) {}
     fn strategy(&self) -> BoxedStrategy<M::Action> {
         M::Action::arbitrary().boxed()
     }
@@ -53,9 +54,15 @@ where
 /// Generate a "Monte Carlo state diagram" of this state machine.
 // TODO: stop early if graph is saturated (by random walking over node and edge space first).
 // TODO: do more branching from intermediate state, not just from initial state (don't just do "walks", explore many actions at each state.)
-pub fn state_diagram<M, S>(m: M, state: &mut S, config: &DiagramConfig) -> DiGraph<M, M::Action>
+pub fn state_diagram<M, S>(
+    machine: M,
+    initial: M::State,
+    state: &mut S,
+    config: &DiagramConfig,
+) -> DiGraph<M::State, M::Action>
 where
-    M: Machine + Clone + Eq + Hash + Debug,
+    M: Machine + Clone,
+    M::State: Clone + Eq + Hash + Debug,
     M::Action: Arbitrary + Clone + Eq + Hash + 'static,
     S: MonteCarloDiagramState<M>,
 {
@@ -63,9 +70,8 @@ where
     let mut node_indices = HashMap::new();
     let mut edges = HashSet::new();
 
-    let initial = m.clone();
     let ix = graph.add_node(initial.clone());
-    node_indices.insert(initial, ix);
+    node_indices.insert(initial.clone(), ix);
 
     let mut terminals = HashSet::new();
 
@@ -76,7 +82,8 @@ where
 
     'outer: loop {
         let mut prev = ix;
-        let (transitions, errors, num_steps, terminated) = take_a_walk(m.clone(), state, config);
+        let (transitions, errors, num_steps, terminated) =
+            take_a_walk(machine.clone(), initial.clone(), state, config);
         num_errors += errors.len();
         num_terminations += terminated as usize;
         total_steps += num_steps;
@@ -132,13 +139,15 @@ impl<M: Eq + Hash> From<Vec<M>> for StopCondition<M> {
 
 #[allow(clippy::type_complexity)]
 fn take_a_walk<M, S>(
-    mut m: M,
-    state: &mut S,
+    mut machine: M,
+    mut model_state: M::State,
+    diagram_state: &mut S,
     config: &DiagramConfig,
-) -> (Vec<(M::Action, M)>, Vec<M::Error>, usize, bool)
+) -> (Vec<(M::Action, M::State)>, Vec<M::Error>, usize, bool)
 where
-    M: Machine + Debug + Clone + Hash + Eq,
-    M::Action: Arbitrary + Clone + 'static,
+    M: Machine,
+    M::State: Clone + Eq + Hash + Debug,
+    M::Action: Arbitrary + Clone + Eq + Hash + 'static,
     S: MonteCarloDiagramState<M>,
 {
     use proptest::strategy::ValueTree;
@@ -151,16 +160,23 @@ where
     let mut terminated = false;
     while num_steps < steps {
         num_steps += 1;
-        let action: M::Action = state.strategy().new_tree(&mut runner).unwrap().current();
+        let action: M::Action = diagram_state
+            .strategy()
+            .new_tree(&mut runner)
+            .unwrap()
+            .current();
 
-        state.on_action(&action);
+        diagram_state.on_action(&action);
 
-        match m.clone().transition(action.clone()).map(first) {
+        match machine
+            .transition(model_state.clone(), action.clone())
+            .map(first)
+        {
             Ok(mm) => {
-                m = mm;
-                transitions.push((action, m.clone()));
-                state.on_state(&m);
-                if m.is_terminal() {
+                model_state = mm;
+                transitions.push((action, model_state.clone()));
+                diagram_state.on_state(&model_state);
+                if machine.is_terminal(&model_state) {
                     terminated = true;
                     break;
                 }
