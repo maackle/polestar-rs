@@ -29,7 +29,7 @@ diagrams = ["exhaustive", "petgraph"]
 testing = ["prettydiff"]
 
 [workspace]
-members = ["holochain-model", "holochain-polestar"]
+members = ["holochain-model"]
 
 [patch.crates-io]
 # holo_hash = { path = "/home/michael/Holo/chain/crates/holo_hash" }
