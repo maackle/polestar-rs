@@ -5,7 +5,7 @@ use std::{fmt::Debug, sync::Arc};
 use parking_lot::RwLock;
 use proptest::prelude::{Arbitrary, BoxedStrategy, Strategy};
 
-use crate::{dfa::MachineResult, Machine};
+use crate::Machine;
 
 /// Wrap a Fsm in a mutex for shared access.
 ///

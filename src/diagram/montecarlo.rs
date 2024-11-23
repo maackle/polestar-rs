@@ -139,7 +139,7 @@ impl<M: Eq + Hash> From<Vec<M>> for StopCondition<M> {
 
 #[allow(clippy::type_complexity)]
 fn take_a_walk<M, S>(
-    mut machine: M,
+    machine: M,
     mut model_state: M::State,
     diagram_state: &mut S,
     config: &DiagramConfig,

@@ -4,8 +4,6 @@ pub mod checked;
 
 // pub use refcell::*;
 
-use std::sync::Arc;
-
 use crate::util::first;
 
 pub trait Machine
@@ -17,11 +15,11 @@ where
     type Fx;
     type Error: std::fmt::Debug;
 
-    fn transition(&mut self, state: Self::State, event: Self::Action) -> MachineResult<Self>;
+    fn transition(&self, state: Self::State, event: Self::Action) -> MachineResult<Self>;
 
     /// Perform a transition and ignore the effect, when the effect is `()`.
     fn transition_(
-        &mut self,
+        &self,
         state: Self::State,
         event: Self::Action,
     ) -> Result<Self::State, Self::Error>
@@ -39,7 +37,7 @@ where
     }
 
     fn apply_actions(
-        &mut self,
+        &self,
         mut state: Self::State,
         actions: impl IntoIterator<Item = Self::Action>,
     ) -> Result<(Self::State, Vec<Self::Fx>), Self::Error> {
@@ -53,7 +51,7 @@ where
     }
 
     fn apply_actions_(
-        &mut self,
+        &self,
         state: Self::State,
         actions: impl IntoIterator<Item = Self::Action>,
     ) -> Result<Self::State, Self::Error> {

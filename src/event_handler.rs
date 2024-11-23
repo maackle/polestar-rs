@@ -1,11 +1,7 @@
 // mod inline_model_checker;
 // pub use inline_model_checker::*;
 
-use std::sync::Arc;
-
 use parking_lot::Mutex;
-
-use crate::{prelude::Projection, Machine};
 
 pub trait EventHandler<Event, Error>: Send + Sync + 'static {
     fn handle(&self, event: Event) -> Result<(), Error>;

@@ -93,7 +93,7 @@ where
 /// Generate a state diagram of this state machine by exhaustively taking all possible actions
 /// at each visited state.
 pub fn state_diagram_mapped<M, N>(
-    mut machine: M,
+    machine: M,
     initial: M::State,
     config: &DiagramConfig,
     map_node: impl Fn(M::State) -> N,

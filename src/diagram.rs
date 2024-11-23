@@ -56,7 +56,7 @@ mod tests {
         type Error = Infallible;
 
         fn transition(
-            &mut self,
+            &self,
             mut state: Self::State,
             turn: Turn,
         ) -> Result<(Self::State, Self::Fx), Self::Error> {

@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, fmt::Debug};
+use std::{collections::BTreeSet, fmt::Debug, marker::PhantomData};
 
 use anyhow::bail;
 use exhaustive::Exhaustive;
@@ -7,16 +7,16 @@ use proptest_derive::Arbitrary;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct OpMachine<NodeId: IdT, OpId: IdT> {
-    phase: OpPhase<NodeId>,
     deps: BTreeSet<OpId>,
+    _phantom: PhantomData<NodeId>,
 }
 
 impl<NodeId: IdT, OpId: IdT> OpMachine<NodeId, OpId> {
     /// Create a new OpMachine with the given dependencies
-    pub fn new(deps: BTreeSet<OpId>) -> Self {
+    pub fn new(deps: impl IntoIterator<Item = OpId>) -> Self {
         Self {
-            phase: OpPhase::None,
-            deps,
+            deps: deps.into_iter().collect(),
+            _phantom: PhantomData,
         }
     }
 }
@@ -68,7 +68,7 @@ impl<NodeId: IdT, OpId: IdT> Machine for OpMachine<NodeId, OpId> {
     type Fx = ();
     type Error = anyhow::Error;
 
-    fn transition(&mut self, state: Self::State, t: Self::Action) -> MachineResult<Self> {
+    fn transition(&self, state: Self::State, t: Self::Action) -> MachineResult<Self> {
         use OpEvent as E;
         use OpPhase as S;
         use ValidationType as V;
@@ -116,7 +116,7 @@ mod tests {
         type NodeId = Id<2>;
 
         // Create an instance of OpMachine with empty dependencies
-        let machine = OpMachine::<NodeId, OpId>::new(BTreeSet::new());
+        let machine = OpMachine::<NodeId, OpId>::new([OpId::modulo(0)]);
 
         write_dot_state_diagram(
             "single-op.dot",

@@ -1,7 +1,7 @@
 
 
 use std::collections::BTreeSet;
-use std::{collections::BTreeMap, marker::PhantomData};
+use std::collections::BTreeMap;
 
 use anyhow::bail;
 use exhaustive::Exhaustive;
@@ -57,7 +57,7 @@ impl<NodeId: IdT, OpId: IdT> Machine for NetworkMachine<NodeId, OpId>{
     type Error = String;
 
     fn transition(
-        &mut self,
+        &self,
         mut state: Self::State,
         NetworkOpEvent(node_id, event): Self::Action,
     ) -> MachineResult<Self> {
@@ -111,7 +111,7 @@ impl<NodeId: IdT, OpId: IdT> Machine for NetworkMachine<NodeId, OpId>{
             }
         }
 
-        transition_btreemap(&mut self.sub, node_id, &mut state.nodes, event)
+        transition_btreemap(&self.sub, node_id, &mut state.nodes, event)
             .ok_or_else(|| format!("no node {:?}", node_id))?
             .map_err(|e| format!("{:?}", e))?;
         Ok((state, ()))
@@ -168,7 +168,7 @@ mod tests {
         type OpId = Id<3>;
 
         let ids = Id::<3>::iter_exhaustive(None).collect_vec();
-        let mut machine = NetworkMachine::<NodeId, OpId>::new(BTreeSet::new());
+        let machine = NetworkMachine::<NodeId, OpId>::new(BTreeSet::new());
         let (initial, ()) = machine.transition(NetworkState::new_empty(&ids), NetworkOpEvent(ids[0].clone(), OpEvent::Author))
             .unwrap();
 

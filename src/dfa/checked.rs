@@ -4,29 +4,53 @@ use crate::util::first_ref;
 
 use super::{Machine, MachineResult};
 
-#[derive(derive_more::Deref)]
 pub struct Checker<M: Machine> {
-    #[deref]
     machine: M,
-    predicates: Predicates<M::State, M::Error>,
+    initial_predicates: Predicates<M::State>,
+    make_error: Box<dyn Fn(anyhow::Error) -> M::Error>,
+}
+
+pub struct CheckerState<T> {
+    predicates: Predicates<T>,
+    model: T,
 }
 
 impl<M: Machine> Checker<M> {
     pub fn new(machine: M, make_error: impl Fn(anyhow::Error) -> M::Error + 'static) -> Self {
         Self {
             machine,
-            predicates: Predicates::new(make_error),
+            initial_predicates: Predicates::new(),
+            make_error: Box::new(make_error),
         }
     }
 
     pub fn predicate(mut self, predicate: Predicate<M::State>) -> Self {
-        self.predicates
+        self.initial_predicates
             .next
             .push((format!("{:?}", predicate), predicate));
         self
     }
 
-    pub fn finalize(self) -> Result<(), M::Error> {
+    pub fn check_fold(
+        &self,
+        initial: M::State,
+        actions: impl IntoIterator<Item = M::Action>,
+    ) -> Result<(), M::Error>
+    where
+        M: Machine,
+        M::State: Clone + Debug,
+    {
+        let s = CheckerState {
+            predicates: self.initial_predicates.clone(),
+            model: initial,
+        };
+        let (end, _) = self.apply_actions(s, actions)?;
+        end.finalize().map_err(|e| (self.make_error)(e))
+    }
+}
+
+impl<T> CheckerState<T> {
+    pub fn finalize(self) -> Result<(), anyhow::Error> {
         let eventuals = self
             .predicates
             .next
@@ -35,9 +59,9 @@ impl<M: Machine> Checker<M> {
             .map(first_ref)
             .collect::<Vec<_>>();
         if !eventuals.is_empty() {
-            return Err((self.predicates.make_error)(anyhow::anyhow!(
+            return Err(anyhow::anyhow!(
                 "Checker finalized with unsatisfied 'eventually' predicates: {eventuals:?}"
-            )));
+            ));
         }
         Ok(())
     }
@@ -57,35 +81,41 @@ where
     M: Machine,
     M::State: Clone + Debug,
 {
-    type State = M::State;
+    type State = CheckerState<M::State>;
     type Action = M::Action;
     type Fx = M::Fx;
     type Error = M::Error;
 
-    fn transition(&mut self, state: Self::State, action: Self::Action) -> MachineResult<Self> {
-        let prev = state.clone();
-        let (next, fx) = self.machine.transition(state, action)?;
-        self.predicates.step((&prev, &next))?;
-        Ok((next, fx))
+    fn transition(&self, state: Self::State, action: Self::Action) -> MachineResult<Self> {
+        let prev = state.model;
+        let mut predicates = state.predicates;
+        let (next, fx) = self.machine.transition(prev.clone(), action)?;
+        predicates
+            .step((&prev, &next))
+            .map_err(|e| (self.make_error)(e))?;
+        Ok((
+            CheckerState {
+                predicates,
+                model: next,
+            },
+            fx,
+        ))
     }
 }
 
-pub struct Predicates<M, E> {
-    next: Vec<(String, Predicate<M>)>,
-    make_error: Box<dyn Fn(anyhow::Error) -> E>,
+#[derive(Clone)]
+pub struct Predicates<T> {
+    next: Vec<(String, Predicate<T>)>,
 }
 
-impl<M, E> Predicates<M, E> {
-    fn new(make_error: impl Fn(anyhow::Error) -> E + 'static) -> Self {
-        Self {
-            next: vec![],
-            make_error: Box::new(make_error),
-        }
+impl<T> Predicates<T> {
+    fn new() -> Self {
+        Self { next: vec![] }
     }
 }
 
-impl<M: Clone + std::fmt::Debug, E> Predicates<M, E> {
-    pub fn step(&mut self, state: (&M, &M)) -> Result<(), E> {
+impl<T: Clone + std::fmt::Debug> Predicates<T> {
+    pub fn step(&mut self, state: (&T, &T)) -> Result<(), anyhow::Error> {
         let mut next = vec![];
         tracing::debug!("");
         tracing::debug!("------------------------------------------------");
@@ -103,9 +133,9 @@ impl<M: Clone + std::fmt::Debug, E> Predicates<M, E> {
                 state,
             ) {
                 let (old, new) = state;
-                return Err((self.make_error)(anyhow::anyhow!(
+                return Err(anyhow::anyhow!(
                     "Predicate failed: '{name}'. Transition: {old:?} -> {new:?}"
-                )));
+                ));
             }
         }
         self.next = next;
@@ -113,11 +143,11 @@ impl<M: Clone + std::fmt::Debug, E> Predicates<M, E> {
     }
 
     fn visit(
-        next: &mut Vec<(String, Predicate<M>)>,
+        next: &mut Vec<(String, Predicate<T>)>,
         negated: bool,
         name: String,
-        predicate: BoxPredicate<M>,
-        s: (&M, &M),
+        predicate: BoxPredicate<T>,
+        s: (&T, &T),
     ) -> bool {
         use Predicate::*;
         let out = match *predicate.clone() {
@@ -278,7 +308,7 @@ mod tests {
         type Fx = ();
         type Error = anyhow::Error;
 
-        fn transition(&mut self, _state: u8, action: u8) -> MachineResult<Self> {
+        fn transition(&self, _state: u8, action: u8) -> MachineResult<Self> {
             Ok((action, ()))
         }
     }
@@ -293,7 +323,7 @@ mod tests {
         let small = P::atom("single-digit".to_string(), |s: &u8| *s < 10);
         let big = P::atom("20-and-up".to_string(), |s: &u8| *s >= 20);
         let not_teens = small.clone().or(big.clone());
-        let mut checker = Mach
+        let checker = Mach
             .checked(|s| s)
             .predicate(P::always(
                 even.clone().implies(P::next(P::not(even.clone()))),
@@ -303,6 +333,6 @@ mod tests {
             ))
             .predicate(P::always(not_teens));
 
-        checker.apply_actions_(0, [1, 2, 3, 23, 21]).unwrap();
+        checker.check_fold(0, [1, 2, 3, 23, 21]).unwrap();
     }
 }

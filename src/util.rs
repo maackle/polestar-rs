@@ -69,7 +69,7 @@ where
 /// key is removed from the map. If the same transition is attempted again,
 /// the function will return None.
 pub fn transition_hashmap<K, M>(
-    machine: &mut M,
+    machine: &M,
     k: K,
     map: &mut HashMap<K, M::State>,
     event: M::Action,
@@ -96,7 +96,7 @@ where
 /// key is removed from the map. If the same transition is attempted again,
 /// the function will return None.
 pub fn transition_btreemap<K, M>(
-    machine: &mut M,
+    machine: &M,
     k: K,
     map: &mut BTreeMap<K, M::State>,
     event: M::Action,
