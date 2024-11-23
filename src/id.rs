@@ -42,6 +42,23 @@ impl<const N: usize> proptest::arbitrary::Arbitrary for UpTo<N> {
     }
 }
 
+pub trait IdT:
+    Clone
+    + Copy
+    + PartialEq
+    + Eq
+    + PartialOrd
+    + Ord
+    + Hash
+    + std::fmt::Display
+    + std::fmt::Debug
+    + proptest::arbitrary::Arbitrary
+    + exhaustive::Exhaustive
+{
+}
+
+impl<const N: usize> IdT for Id<N> {}
+
 #[derive(
     Clone,
     Copy,
