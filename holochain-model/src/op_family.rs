@@ -263,14 +263,14 @@ mod tests {
         let machine: OpFamilyMachine<O> = OpFamilyMachine::new(o[0]);
 
         let awaiting = |a, b: O| {
-            P::atom(format!("{a} awaits {b}"), move |s: &OpFamilyState<O>| {
+            P::atom(format!("{a} awaits {b}"), move |_, s: &OpFamilyState<O>| {
                 s.get(&a)
                     .map(|p| matches!(p, OpFamilyPhase::Awaiting(_, x) if *x == b))
                     .unwrap_or(false)
             })
         };
         let integrated = |a| {
-            P::atom(format!("{a} integrated"), move |s: &OpFamilyState<O>| {
+            P::atom(format!("{a} integrated"), move |_, s: &OpFamilyState<O>| {
                 s.get(&a)
                     .map(|p| matches!(p, OpFamilyPhase::Op(OpPhase::Integrated)))
                     .unwrap_or(false)
@@ -289,7 +289,7 @@ mod tests {
 
         let initial = checker.initial(machine.initial(o));
 
-        if let Err(err) = traverse_checked(checker, initial) {
+        if let Err(err) = traverse_checked(&checker, initial) {
             eprintln!("{:#?}", err.path);
             eprintln!("{}", err.error);
             panic!("properties failed");

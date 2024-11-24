@@ -63,11 +63,11 @@ pub struct TraversalReport {
 // }
 
 pub fn traverse_checked<M>(
-    machine: Checker<M>,
-    initial: CheckerState<M::State, M::Action>,
+    machine: &Checker<M>,
+    initial: CheckerState<M>,
 ) -> Result<TraversalReport, PredicateError<M::Action>>
 where
-    M: Machine,
+    M: Machine + Debug,
     M::State: Clone + Eq + Hash + Debug,
     M::Action: Exhaustive + Clone + Eq + Hash + Debug,
 {
@@ -100,7 +100,7 @@ where
 }
 
 pub fn traverse<M>(
-    machine: M,
+    machine: &M,
     initial: M::State,
     config: &TraversalConfig<M::Error>,
 ) -> Result<(HashSet<M::State>, TraversalReport), M::Error>
@@ -175,6 +175,7 @@ mod tests {
 
     #[test]
     fn test_checked_traversal() {
+        #[derive(Clone, Debug)]
         struct SimpleMachine;
         use Predicate as P;
 
@@ -204,8 +205,8 @@ mod tests {
             }
         }
 
-        let divby = |n| P::atom(format!("div-by-{}", n), move |s| s % n == 0);
-        let big = P::atom("big".to_string(), |s| *s > TERMINAL);
+        let divby = |n| P::atom(format!("div-by-{}", n), move |_, s| s % n == 0);
+        let big = P::atom("big".to_string(), |_, s| *s > TERMINAL);
         let checker = SimpleMachine
             .checked()
             .predicate(P::always(big.clone().implies(P::next(P::not(big)))))
@@ -219,7 +220,7 @@ mod tests {
         assert!(err.unwrap_predicate().error.contains("div-by-3"));
 
         let initial = checker.initial(1);
-        let report = traverse_checked(checker, initial).unwrap();
+        let report = traverse_checked(&checker, initial).unwrap();
         dbg!(report);
     }
 }

@@ -8,37 +8,52 @@ use super::{Machine, MachineResult};
 
 pub struct Checker<M: Machine> {
     machine: M,
-    initial_predicates: Predicates<M::State>,
+    initial_predicates: Predicates<M, M::State>,
 }
 
-#[derive(Clone)]
-pub struct CheckerState<S, A> {
-    predicates: Predicates<S>,
-    pub state: S,
-    path: im::Vector<A>,
+pub struct CheckerState<M: Machine> {
+    predicates: Predicates<M, M::State>,
+    pub state: M::State,
+    path: im::Vector<M::Action>,
+}
+
+impl<M> Clone for CheckerState<M>
+where
+    M: Machine,
+    M::State: Clone,
+    M::Action: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            predicates: self.predicates.clone(),
+            state: self.state.clone(),
+            path: self.path.clone(),
+        }
+    }
 }
 
 // XXX: whoa there! be careful with this.
-impl<M, A> PartialEq for CheckerState<M, A>
+impl<M> PartialEq for CheckerState<M>
 where
-    M: PartialEq,
-    A: PartialEq,
+    M: Machine,
+    M::State: PartialEq,
 {
     fn eq(&self, other: &Self) -> bool {
         self.state == other.state
     }
 }
 
-impl<M, A> Eq for CheckerState<M, A>
+impl<M> Eq for CheckerState<M>
 where
-    M: Eq,
-    A: Eq,
+    M: Machine,
+    M::State: Eq,
 {
 }
 
-impl<M, A> std::hash::Hash for CheckerState<M, A>
+impl<M> std::hash::Hash for CheckerState<M>
 where
-    M: std::hash::Hash,
+    M: Machine,
+    M::State: std::hash::Hash,
 {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.state.hash(state)
@@ -67,14 +82,14 @@ impl<M: Machine> Checker<M> {
         }
     }
 
-    pub fn predicate(mut self, predicate: Predicate<M::State>) -> Self {
+    pub fn predicate(mut self, predicate: Predicate<M, M::State>) -> Self {
         self.initial_predicates
             .next
             .push_back((format!("{:?}", predicate), predicate));
         self
     }
 
-    pub fn initial(&self, s: M::State) -> CheckerState<M::State, M::Action>
+    pub fn initial(&self, s: M::State) -> CheckerState<M>
     where
         M::State: Clone + Debug,
         M::Action: Clone + Debug,
@@ -92,6 +107,7 @@ impl<M: Machine> Checker<M> {
         actions: impl IntoIterator<Item = M::Action>,
     ) -> Result<(), CheckerError<M::Action, M::Error>>
     where
+        M: Debug,
         M::State: Clone + Debug,
         M::Action: Clone + Debug,
     {
@@ -102,8 +118,8 @@ impl<M: Machine> Checker<M> {
     }
 }
 
-impl<M, A> CheckerState<M, A> {
-    pub fn finalize(self) -> Result<(), (String, im::Vector<A>)> {
+impl<M: Machine> CheckerState<M> {
+    pub fn finalize(self) -> Result<(), (String, im::Vector<M::Action>)> {
         let eventuals = self
             .predicates
             .next
@@ -134,11 +150,11 @@ impl<M, A> CheckerState<M, A> {
 
 impl<M> Machine for Checker<M>
 where
-    M: Machine,
+    M: Machine + Debug,
     M::State: Clone + Debug,
     M::Action: Clone + Debug,
 {
-    type State = CheckerState<M::State, M::Action>;
+    type State = CheckerState<M>;
     type Action = M::Action;
     type Fx = M::Fx;
     type Error = CheckerError<M::Action, M::Error>;
@@ -149,12 +165,14 @@ where
         let mut path = state.path;
         let (next, fx) = self.machine.transition(prev.clone(), action.clone())?;
         path.push_back(action);
-        predicates.step((&prev, &next)).map_err(|error| {
-            CheckerError::Predicate(PredicateError {
-                error,
-                path: path.clone(),
-            })
-        })?;
+        predicates
+            .step((&self.machine, &prev, &next))
+            .map_err(|error| {
+                CheckerError::Predicate(PredicateError {
+                    error,
+                    path: path.clone(),
+                })
+            })?;
         Ok((
             CheckerState {
                 predicates,
@@ -170,12 +188,19 @@ where
     }
 }
 
-#[derive(Clone)]
-pub struct Predicates<T> {
-    next: im::Vector<(String, Predicate<T>)>,
+pub struct Predicates<C, S> {
+    next: im::Vector<(String, Predicate<C, S>)>,
 }
 
-impl<T> Predicates<T> {
+impl<C, S> Clone for Predicates<C, S> {
+    fn clone(&self) -> Self {
+        Self {
+            next: self.next.clone(),
+        }
+    }
+}
+
+impl<C, S> Predicates<C, S> {
     fn new() -> Self {
         Self {
             next: im::vector![],
@@ -183,13 +208,13 @@ impl<T> Predicates<T> {
     }
 }
 
-impl<T: Clone + std::fmt::Debug> Predicates<T> {
-    pub fn step(&mut self, state: (&T, &T)) -> Result<(), String> {
+impl<C: std::fmt::Debug, S: std::fmt::Debug> Predicates<C, S> {
+    pub fn step(&mut self, state: (&C, &S, &S)) -> Result<(), String> {
         let mut next = vector![];
         let mut now = vector![];
         tracing::debug!("");
         tracing::debug!("------------------------------------------------");
-        tracing::debug!("STEP: {:?} -> {:?}", state.0, state.1);
+        tracing::debug!("STEP: {:?} -> {:?}", state.1, state.2);
 
         std::mem::swap(&mut self.next, &mut now);
         for (name, predicate) in now {
@@ -202,9 +227,9 @@ impl<T: Clone + std::fmt::Debug> Predicates<T> {
                 Box::new(predicate.clone()),
                 state,
             ) {
-                let (old, new) = state;
+                let (ctx, old, new) = state;
                 return Err(format!(
-                    "Predicate failed: '{name}'. Transition: {old:?} -> {new:?}"
+                    "Predicate failed: '{name}'. Context: {ctx:?}. Transition: {old:?} -> {new:?}"
                 ));
             }
         }
@@ -214,11 +239,11 @@ impl<T: Clone + std::fmt::Debug> Predicates<T> {
 
     // TODO: include the Machine?
     fn visit(
-        next: &mut Vector<(String, Predicate<T>)>,
+        next: &mut Vector<(String, Predicate<C, S>)>,
         negated: bool,
         name: String,
-        predicate: BoxPredicate<T>,
-        s: (&T, &T),
+        predicate: BoxPredicate<C, S>,
+        s: (&C, &S, &S),
     ) -> bool {
         use Predicate::*;
         let out = match *predicate.clone() {
@@ -259,9 +284,9 @@ impl<T: Clone + std::fmt::Debug> Predicates<T> {
             }
             Atom(_, f) => {
                 if negated {
-                    !f(s.0, s.1)
+                    !f(s.0, s.1, s.2)
                 } else {
-                    f(s.0, s.1)
+                    f(s.0, s.1, s.2)
                 }
             }
         };
@@ -274,21 +299,21 @@ impl<T: Clone + std::fmt::Debug> Predicates<T> {
     }
 }
 
-pub type BoxPredicate<M> = Box<Predicate<M>>;
+pub type BoxPredicate<C, S> = Box<Predicate<C, S>>;
 
-pub enum Predicate<M> {
-    Atom(String, Arc<dyn Fn(&M, &M) -> bool>),
-    And(BoxPredicate<M>, BoxPredicate<M>),
-    Or(BoxPredicate<M>, BoxPredicate<M>),
-    Not(BoxPredicate<M>),
-    Implies(BoxPredicate<M>, BoxPredicate<M>),
+pub enum Predicate<C, S> {
+    Atom(String, Arc<dyn Fn(&C, &S, &S) -> bool>),
+    And(BoxPredicate<C, S>, BoxPredicate<C, S>),
+    Or(BoxPredicate<C, S>, BoxPredicate<C, S>),
+    Not(BoxPredicate<C, S>),
+    Implies(BoxPredicate<C, S>, BoxPredicate<C, S>),
 
-    Next(BoxPredicate<M>),
-    Eventually(BoxPredicate<M>),
-    Always(BoxPredicate<M>),
+    Next(BoxPredicate<C, S>),
+    Eventually(BoxPredicate<C, S>),
+    Always(BoxPredicate<C, S>),
 }
 
-impl<M> Clone for Predicate<M> {
+impl<C, S> Clone for Predicate<C, S> {
     fn clone(&self) -> Self {
         match self {
             Self::Atom(name, f) => Self::Atom(name.clone(), f.clone()),
@@ -303,7 +328,7 @@ impl<M> Clone for Predicate<M> {
     }
 }
 
-impl<M> Predicate<M> {
+impl<C, S> Predicate<C, S> {
     pub fn next(self) -> Self {
         Self::Next(Box::new(self))
     }
@@ -328,29 +353,29 @@ impl<M> Predicate<M> {
         }
     }
 
-    pub fn implies(self: Predicate<M>, p2: Predicate<M>) -> Self {
+    pub fn implies(self: Predicate<C, S>, p2: Predicate<C, S>) -> Self {
         Self::Implies(Box::new(self), Box::new(p2))
     }
 
-    pub fn and(self: Predicate<M>, p2: Predicate<M>) -> Self {
+    pub fn and(self: Predicate<C, S>, p2: Predicate<C, S>) -> Self {
         Self::And(Box::new(self), Box::new(p2))
     }
 
-    pub fn or(self: Predicate<M>, p2: Predicate<M>) -> Self {
+    pub fn or(self: Predicate<C, S>, p2: Predicate<C, S>) -> Self {
         Self::Or(Box::new(self), Box::new(p2))
     }
 
-    pub fn atom(name: String, f: impl Fn(&M) -> bool + 'static) -> Self {
-        Self::atom2(name, move |_, b| f(b))
+    pub fn atom(name: String, f: impl Fn(&C, &S) -> bool + 'static) -> Self {
+        Self::atom2(name, move |c, _, b| f(c, b))
     }
 
-    pub fn atom2(name: String, f: impl Fn(&M, &M) -> bool + 'static) -> Self {
+    pub fn atom2(name: String, f: impl Fn(&C, &S, &S) -> bool + 'static) -> Self {
         // assert!(!name.contains(' '), "no spaces allowed in predicate names");
         Self::Atom(name, Arc::new(f))
     }
 }
 
-impl<M> std::fmt::Debug for Predicate<M> {
+impl<C, S> std::fmt::Debug for Predicate<C, S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if true {
             match self {
@@ -408,10 +433,10 @@ mod tests {
 
         tracing_subscriber::fmt::init();
 
-        let even = P::atom("is-even".to_string(), |s: &u8| s % 2 == 0);
-        let small = P::atom("single-digit".to_string(), |s: &u8| *s < 10);
-        let big = P::atom("20-and-up".to_string(), |s: &u8| *s >= 20);
-        let reallybig = P::atom("100-and-up".to_string(), |s: &u8| *s >= 100);
+        let even = P::atom("is-even".to_string(), |_, s: &u8| s % 2 == 0);
+        let small = P::atom("single-digit".to_string(), |_, s: &u8| *s < 10);
+        let big = P::atom("20-and-up".to_string(), |_, s: &u8| *s >= 20);
+        let reallybig = P::atom("100-and-up".to_string(), |_, s: &u8| *s >= 100);
         let not_teens = small.clone().or(big.clone());
         let checker = Mach
             .checked()
