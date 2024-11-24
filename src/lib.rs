@@ -14,6 +14,7 @@ pub mod projection;
 
 #[cfg(feature = "diagrams")]
 pub mod diagram;
+mod traversal;
 
 pub use actor::Actor;
 pub use dfa::{Machine, MachineResult};
