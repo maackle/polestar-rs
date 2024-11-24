@@ -17,6 +17,12 @@ pub struct OpFamilyMachine<O: Id> {
     pub focus: O,
 }
 
+impl<O: Id> OpFamilyMachine<O> {
+    pub fn initial(&self, ids: impl IntoIterator<Item = O>) -> OpFamilyState<O> {
+        OpFamilyState::new(ids)
+    }
+}
+
 #[derive(Deref, Clone, derive_more::From)]
 struct OpDeps<O: Id>(Vec<(O, OpDeps<O>)>);
 
@@ -242,7 +248,53 @@ impl<I: Id> Debug for OpFamilyStatePretty<I> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use polestar::{diagram::exhaustive::write_dot_state_diagram_mapped, id::IdU8};
+    use polestar::{
+        dfa::checked::Predicate, diagram::exhaustive::write_dot_state_diagram_mapped, id::IdU8,
+        traversal::traverse_checked,
+    };
+
+    #[test]
+    fn op_family_properties() {
+        use Predicate as P;
+
+        type O = IdU8<2>;
+        let o = O::iter_exhaustive(None).collect_vec();
+
+        let machine: OpFamilyMachine<O> = OpFamilyMachine::new(o[0]);
+
+        let awaiting = |a, b: O| {
+            P::atom(format!("{a} awaits {b}"), move |s: &OpFamilyState<O>| {
+                s.get(&a)
+                    .map(|p| matches!(p, OpFamilyPhase::Awaiting(_, x) if *x == b))
+                    .unwrap_or(false)
+            })
+        };
+        let integrated = |a| {
+            P::atom(format!("{a} integrated"), move |s: &OpFamilyState<O>| {
+                s.get(&a)
+                    .map(|p| matches!(p, OpFamilyPhase::Op(OpPhase::Integrated)))
+                    .unwrap_or(false)
+            })
+        };
+
+        let checker = machine
+            .clone()
+            .checked()
+            .predicate(P::always(
+                awaiting(o[0], o[1]).implies(P::not(awaiting(o[1], o[0]))),
+            ))
+            .predicate(P::always(
+                awaiting(o[0], o[1]).implies(P::not(integrated(o[1]))),
+            ));
+
+        let initial = checker.initial(machine.initial(o));
+
+        if let Err(err) = traverse_checked(checker, initial) {
+            eprintln!("{:#?}", err.path);
+            eprintln!("{}", err.error);
+            panic!("properties failed");
+        }
+    }
 
     #[test]
     #[ignore = "diagram"]

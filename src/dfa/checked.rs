@@ -55,8 +55,8 @@ pub enum CheckerError<A: Clone, E> {
 
 #[derive(Debug)]
 pub struct PredicateError<A: Clone> {
-    pub(crate) error: String,
-    pub(crate) path: im::Vector<A>,
+    pub error: String,
+    pub path: im::Vector<A>,
 }
 
 impl<M: Machine> Checker<M> {
@@ -212,6 +212,7 @@ impl<T: Clone + std::fmt::Debug> Predicates<T> {
         Ok(())
     }
 
+    // TODO: include the Machine?
     fn visit(
         next: &mut Vector<(String, Predicate<T>)>,
         negated: bool,
@@ -344,7 +345,7 @@ impl<M> Predicate<M> {
     }
 
     pub fn atom2(name: String, f: impl Fn(&M, &M) -> bool + 'static) -> Self {
-        assert!(!name.contains(' '), "no spaces allowed in predicate names");
+        // assert!(!name.contains(' '), "no spaces allowed in predicate names");
         Self::Atom(name, Arc::new(f))
     }
 }

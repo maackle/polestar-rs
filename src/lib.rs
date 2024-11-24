@@ -7,6 +7,7 @@ pub mod generate;
 pub mod id;
 // pub mod lens;
 pub mod event_handler;
+pub mod traversal;
 pub mod util;
 
 #[cfg(feature = "testing")]
@@ -14,7 +15,6 @@ pub mod projection;
 
 #[cfg(feature = "diagrams")]
 pub mod diagram;
-mod traversal;
 
 pub use actor::Actor;
 pub use dfa::{Machine, MachineResult};

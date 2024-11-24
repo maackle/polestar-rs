@@ -65,19 +65,22 @@ pub struct TraversalReport {
 pub fn traverse_checked<M>(
     machine: Checker<M>,
     initial: CheckerState<M::State, M::Action>,
-) -> Result<TraversalReport, CheckerError<M::Action, M::Error>>
+) -> Result<TraversalReport, PredicateError<M::Action>>
 where
     M: Machine,
     M::State: Clone + Eq + Hash + Debug,
     M::Action: Exhaustive + Clone + Eq + Hash + Debug,
 {
     let config = TraversalConfig::default().stop_on_checker_error();
-    let (terminals, report) = traverse(machine, initial, &config)?;
+    let (terminals, report) = traverse(machine, initial, &config).map_err(|e| match e {
+        CheckerError::Predicate(e) => e,
+        CheckerError::Machine(_) => unreachable!(),
+    })?;
     if terminals.is_empty() {
-        return Err(CheckerError::Predicate(PredicateError {
+        return Err(PredicateError {
             error: "no states visited".into(),
             path: Default::default(),
-        }));
+        });
     }
     let results: Vec<_> = terminals.into_iter().map(|s| s.finalize()).collect();
     if results.iter().all(|r| r.is_err()) {
@@ -90,7 +93,7 @@ where
             .collect();
         errors.sort_by_key(|(e, p)| p.len());
         let (error, path) = errors.pop().unwrap();
-        return Err(CheckerError::Predicate(PredicateError { error, path }));
+        return Err(PredicateError { error, path });
     }
 
     Ok(report)
