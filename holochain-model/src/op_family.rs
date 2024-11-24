@@ -1,127 +1,91 @@
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    fmt::Debug,
-    marker::PhantomData,
-};
+use std::{collections::BTreeMap, fmt::Debug};
 
 use anyhow::bail;
-use automap::{AutoBTreeMap, AutoMapped};
 use exhaustive::Exhaustive;
 use polestar::{id::IdT, prelude::*};
 
+use crate::op_single::{OpEvent, OpPhase, OpSingleMachine, ValidationType as VT};
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct OpMachine<NodeId: IdT, OpId: IdT> {
+pub struct OpMachine<OpId: IdT> {
     id: OpId,
-    deps: BTreeMap<OpId, OpMachine<NodeId, OpId>>,
-    _phantom: PhantomData<NodeId>,
+    deps: BTreeMap<OpId, OpMachine<OpId>>,
 }
 
-impl<NodeId: IdT, OpId: IdT> OpMachine<NodeId, OpId> {
+impl<OpId: IdT> OpMachine<OpId> {
     /// Create a new OpMachine with the given dependencies
-    pub fn new(id: OpId, deps: impl IntoIterator<Item = OpMachine<NodeId, OpId>>) -> Self {
+    pub fn new(id: OpId, deps: impl IntoIterator<Item = OpMachine<OpId>>) -> Self {
         Self {
             id,
             deps: deps.into_iter().map(|d| (d.id, d)).collect(),
-            _phantom: PhantomData,
         }
     }
 }
 
 #[derive(Clone, Default, Debug, PartialEq, Eq, Hash)]
 pub struct OpState<OpId: IdT> {
-    phase: OpPhase<OpId>,
-    deps: BTreeMap<OpId, OpPhase<OpId>>,
+    phase: OpFamilyPhase<OpId>,
+    deps: BTreeMap<OpId, OpFamilyPhase<OpId>>,
 }
 
-#[derive(Clone, Default, Debug, PartialEq, Eq, Hash)]
-pub enum OpPhase<OpId: IdT> {
-    #[default]
-    /// The op has not been seen by this node yet
-    None,
-    /// The op has been received and validation has not been attempted
-    Pending,
-    /// The op has been validated.
-    /// If the optional OpId is Some, validation is in limbo, awaiting the ops in the set.
-    /// If it's None, then the validation of this type is complete.
-    Validated(ValidationType, Option<OpId>),
-    /// The op has been rejected
-    Rejected,
-    /// The op has been integrated
-    Integrated,
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum OpFamilyPhase<OpId: IdT> {
+    Op(OpPhase),
+    Awaiting(VT, OpId),
 }
 
-impl<OpId: IdT> OpPhase<OpId> {
+impl<OpId: IdT> Default for OpFamilyPhase<OpId> {
+    fn default() -> Self {
+        Self::Op(Default::default())
+    }
+}
+
+impl<OpId: IdT> OpFamilyPhase<OpId> {
     pub fn is_definitely_valid(&self) -> bool {
         matches!(
             self,
-            OpPhase::Validated(VT::App, None) | OpPhase::Integrated
+            OpFamilyPhase::Op(OpPhase::Validated(VT::App)) | OpFamilyPhase::Op(OpPhase::Integrated)
         )
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, derive_more::Display, Exhaustive)]
-pub enum ValidationType {
-    Sys,
-    App,
-}
-
-use ValidationType as VT;
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash, /* derive_more::Display, */ Exhaustive)]
-pub enum OpEvent<NodeId: IdT, OpId: IdT> {
-    /// Author the op
-    Author,
-    /// Validate the op (as valid)
-    Validate(ValidationType),
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, /* derive_more::Display, */ Exhaustive)]
+pub enum OpFamilyEvent<OpId: IdT> {
+    Op(OpEvent),
     /// Await these ops
-    Await(ValidationType, OpId),
-    /// Reject the op (as invalid)
-    Reject,
-    /// Integrate the op
-    Integrate,
-    /// Send the op to another node
-    Send(NodeId),
+    Await(VT, OpId),
 }
 
-impl<NodeId: IdT, OpId: IdT> Machine for OpMachine<NodeId, OpId> {
-    type State = OpPhase<OpId>;
-    type Action = OpEvent<NodeId, OpId>;
+impl<OpId: IdT> Machine for OpMachine<OpId> {
+    type State = OpFamilyPhase<OpId>;
+    type Action = OpFamilyEvent<OpId>;
     type Fx = ();
     type Error = anyhow::Error;
 
-    fn transition(&self, state: Self::State, t: Self::Action) -> MachineResult<Self> {
-        use OpEvent as E;
-        use OpPhase as S;
-        use ValidationType as V;
+    fn transition(&self, state: Self::State, action: Self::Action) -> MachineResult<Self> {
+        use OpFamilyEvent as E;
+        use OpFamilyPhase as S;
 
-        if let E::Await(_, dep) = t {
+        if let E::Await(_, dep) = action {
             if dep == self.id {
                 bail!("can't depend on self")
             }
         }
 
-        let next = match (state, t) {
-            // Receive the op
-            (S::None, E::Author) => S::Pending,
+        let next = match (state, action) {
+            (S::Op(s), E::Op(e)) => S::Op(OpSingleMachine.transition_(s, e)?),
 
-            // Duplicate authorship is an error
-            (_, E::Author) => bail!("duplicate authorship"),
+            (S::Op(s), E::Await(vt, dep)) => match (vt, s) {
+                (VT::Sys, OpPhase::Pending) => S::Awaiting(VT::Sys, dep),
+                (VT::App, OpPhase::Validated(VT::Sys)) => S::Awaiting(VT::App, dep),
+                _ => bail!("invalid transition: {state:?} -> {action:?}"),
+            },
 
-            (S::Pending | S::Validated(V::Sys, _), E::Reject) => S::Rejected,
-            (S::Pending, E::Await(V::Sys, dep)) => S::Validated(VT::Sys, Some(dep)),
-            (S::Validated(V::Sys, Some(_)), E::Await(V::App, dep)) => {
-                S::Validated(VT::App, Some(dep))
-            }
-
-            (S::Pending, E::Validate(V::Sys)) => S::Validated(VT::Sys, None),
-
-            (S::Validated(V::Sys, Some(_)), E::Validate(V::Sys)) => S::Validated(V::Sys, None),
-            (S::Validated(V::Sys, None), E::Validate(V::App)) => S::Validated(V::App, None),
-
-            (S::Validated(V::App, Some(_)), E::Validate(V::App)) => S::Validated(V::App, None),
-            (S::Validated(V::App, None), E::Integrate) => S::Integrated,
-
-            (S::Integrated, E::Send(_)) => S::Integrated,
+            (S::Awaiting(vt, _), E::Op(a)) => match (vt, a) {
+                (VT::Sys, OpEvent::Validate(VT::Sys)) => S::Op(OpPhase::Validated(VT::Sys)),
+                (VT::App, OpEvent::Validate(VT::App)) => S::Op(OpPhase::Validated(VT::App)),
+                _ => bail!("invalid transition: {state:?} -> {action:?}"),
+            },
 
             (state, action) => bail!("invalid transition: {state:?} -> {action:?}"),
         };
@@ -129,39 +93,41 @@ impl<NodeId: IdT, OpId: IdT> Machine for OpMachine<NodeId, OpId> {
     }
 
     fn is_terminal(&self, state: &Self::State) -> bool {
-        matches!(state, OpPhase::Integrated | OpPhase::Rejected)
+        matches!(
+            state,
+            OpFamilyPhase::Op(OpPhase::Integrated | OpPhase::Rejected)
+        )
     }
 }
 
-impl<NodeId: IdT, OpId: IdT> AutoMapped for OpMachine<NodeId, OpId> {
-    type Key = OpId;
+// impl<OpId: IdT> AutoMapped for OpMachine<OpId> {
+//     type Key = OpId;
 
-    fn key(&self) -> &Self::Key {
-        &self.id
-    }
-}
+//     fn key(&self) -> &Self::Key {
+//         &self.id
+//     }
+// }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use polestar::{diagram::exhaustive::write_dot_state_diagram, id::Id};
+    use polestar::{diagram::exhaustive::write_dot_state_diagram, id::IdU8};
 
     #[test]
     #[ignore = "diagram"]
     fn test_diagram() {
         use polestar::diagram::exhaustive::DiagramConfig;
 
-        type OpId = Id<2>;
-        type NodeId = Id<2>;
+        type OpId = IdU8<2>;
 
         // Create an instance of OpMachine with 1 dependency
-        let machine: OpMachine<NodeId, OpId> =
+        let machine: OpMachine<OpId> =
             OpMachine::new(OpId::new(0), [OpMachine::new(OpId::new(1), [])]);
 
         write_dot_state_diagram(
-            "single-op.dot",
+            "op-family.dot",
             machine,
-            OpPhase::<OpId>::None,
+            OpFamilyPhase::default(),
             &DiagramConfig {
                 max_actions: Some(5),
                 ..Default::default()

@@ -9,18 +9,18 @@ use itertools::Itertools;
 use polestar::{id::IdT, util::transition_btreemap};
 use polestar::prelude::*;
 
-use crate::op_single::OpMachine;
+use crate::op_single::OpSingleMachine;
 
 use super::op_single::{OpPhase, OpEvent, ValidationType as VT};
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone)]
 pub struct NetworkMachine<NodeId: IdT, OpId: IdT> {
-    sub: OpMachine<NodeId, OpId>,
+    sub: OpSingleMachine<NodeId, OpId>,
 }
 
 impl<NodeId: IdT, OpId: IdT> NetworkMachine<NodeId, OpId> {
     /// Create a new OpMachine with the given dependencies
-    pub fn new(sub: OpMachine<NodeId, OpId>) -> Self {
+    pub fn new(sub: OpSingleMachine<NodeId, OpId>) -> Self {
         Self {  
             sub,
         }
@@ -154,7 +154,7 @@ impl<NodeId: IdT, OpId: IdT> std::fmt::Debug for NetworkOpEvent<NodeId, OpId> {
 
 #[cfg(test)]
 mod tests {
-    use polestar::{diagram::exhaustive::write_dot_state_diagram, id::Id};
+    use polestar::{diagram::exhaustive::write_dot_state_diagram, id::IdU8};
     use super::*;
 
     #[test]
@@ -164,11 +164,11 @@ mod tests {
 
         // tracing::subscriber::set_global_default(tracing_subscriber::FmtSubscriber::new()).unwrap();
 
-        type NodeId = Id<3>;
-        type OpId = Id<3>;
+        type NodeId = IdU8<3>;
+        type OpId = IdU8<3>;
 
-        let ids = Id::<3>::iter_exhaustive(None).collect_vec();
-        let machine = NetworkMachine::new(OpMachine::new(OpId::new(0), [OpMachine::new(OpId::new(1), []), OpMachine::new(OpId::new(2), [])]));
+        let ids = IdU8::<3>::iter_exhaustive(None).collect_vec();
+        let machine = NetworkMachine::new(OpSingleMachine::new(OpId::new(0), [OpSingleMachine::new(OpId::new(1), []), OpSingleMachine::new(OpId::new(2), [])]));
         let (initial, ()) = machine.transition(NetworkState::new_empty(&ids), NetworkOpEvent(ids[0].clone(), OpEvent::Author))
             .unwrap();
 

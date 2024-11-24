@@ -1,17 +1,12 @@
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    fmt::Debug,
-    marker::PhantomData,
-};
+use std::fmt::Debug;
 
 use anyhow::bail;
-use automap::{AutoBTreeMap, AutoMapped};
 use exhaustive::Exhaustive;
-use polestar::{id::IdT, prelude::*};
+use polestar::prelude::*;
 
-pub struct OpMachine;
+pub struct OpSingleMachine;
 
-#[derive(Clone, Default, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq, Hash)]
 pub enum OpPhase {
     #[default]
     /// The op has not been seen by this node yet
@@ -32,7 +27,7 @@ impl OpPhase {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, derive_more::Display, Exhaustive)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, derive_more::Display, Exhaustive)]
 pub enum ValidationType {
     Sys,
     App,
@@ -40,7 +35,7 @@ pub enum ValidationType {
 
 use ValidationType as VT;
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, /* derive_more::Display, */ Exhaustive)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, /* derive_more::Display, */ Exhaustive)]
 pub enum OpEvent {
     /// Author the op
     Author,
@@ -52,7 +47,7 @@ pub enum OpEvent {
     Integrate,
 }
 
-impl Machine for OpMachine {
+impl Machine for OpSingleMachine {
     type State = OpPhase;
     type Action = OpEvent;
     type Fx = ();
@@ -97,7 +92,7 @@ mod tests {
 
         write_dot_state_diagram(
             "op-single.dot",
-            OpMachine,
+            OpSingleMachine,
             OpPhase::None,
             &DiagramConfig {
                 max_actions: Some(5),

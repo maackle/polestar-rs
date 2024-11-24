@@ -57,7 +57,7 @@ pub trait IdT:
 {
 }
 
-impl<const N: usize> IdT for Id<N> {}
+impl<const N: usize> IdT for IdU8<N> {}
 
 #[derive(
     Clone,
@@ -71,9 +71,9 @@ impl<const N: usize> IdT for Id<N> {}
     derive_more::Into,
     derive_more::Deref,
 )]
-pub struct Id<const N: usize>(usize);
+pub struct IdU8<const N: usize>(usize);
 
-impl<const N: usize> Id<N> {
+impl<const N: usize> IdU8<N> {
     pub fn new(n: usize) -> Self {
         Self::try_from(n).expect("Attempted to initialize Id<{N}> with {n}")
     }
@@ -83,13 +83,13 @@ impl<const N: usize> Id<N> {
     }
 }
 
-impl<const N: usize> exhaustive::Exhaustive for Id<N> {
+impl<const N: usize> exhaustive::Exhaustive for IdU8<N> {
     fn generate(u: &mut exhaustive::DataSourceTaker) -> exhaustive::Result<Self> {
         u.choice(N).map(Self)
     }
 }
 
-impl<const N: usize> TryFrom<usize> for Id<N> {
+impl<const N: usize> TryFrom<usize> for IdU8<N> {
     type Error = String;
     fn try_from(value: usize) -> Result<Self, Self::Error> {
         if value < N {
@@ -100,13 +100,13 @@ impl<const N: usize> TryFrom<usize> for Id<N> {
     }
 }
 
-impl<const N: usize> std::fmt::Debug for Id<N> {
+impl<const N: usize> std::fmt::Debug for IdU8<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Id({})", self.0)
     }
 }
 
-impl<const N: usize> std::fmt::Display for Id<N> {
+impl<const N: usize> std::fmt::Display for IdU8<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Id({})", self.0)
     }
@@ -114,7 +114,7 @@ impl<const N: usize> std::fmt::Display for Id<N> {
 
 #[derive(Debug)]
 pub struct IdMap<const N: usize, V> {
-    map: HashMap<V, Id<N>>,
+    map: HashMap<V, IdU8<N>>,
 }
 
 impl<V, const N: usize> Default for IdMap<N, V>
@@ -132,12 +132,12 @@ impl<V, const N: usize> IdMap<N, V>
 where
     V: Hash + Eq,
 {
-    pub fn lookup(&mut self, k: V) -> Result<Id<N>, String> {
+    pub fn lookup(&mut self, k: V) -> Result<IdU8<N>, String> {
         let len = self.map.len();
         match self.map.entry(k) {
             std::collections::hash_map::Entry::Occupied(e) => Ok(e.get().clone()),
             std::collections::hash_map::Entry::Vacant(e) => {
-                let id = Id::try_from(len)?;
+                let id = IdU8::try_from(len)?;
                 e.insert(id);
                 Ok(id)
             }
@@ -153,11 +153,11 @@ mod tests {
     #[test]
     fn test_id_map() {
         let mut m = IdMap::<3, _>::default();
-        assert_eq!(m.lookup("c"), Ok(Id(0)));
-        assert_eq!(m.lookup("m"), Ok(Id(1)));
-        assert_eq!(m.lookup("c"), Ok(Id(0)));
-        assert_eq!(m.lookup("y"), Ok(Id(2)));
-        assert_eq!(m.lookup("y"), Ok(Id(2)));
+        assert_eq!(m.lookup("c"), Ok(IdU8(0)));
+        assert_eq!(m.lookup("m"), Ok(IdU8(1)));
+        assert_eq!(m.lookup("c"), Ok(IdU8(0)));
+        assert_eq!(m.lookup("y"), Ok(IdU8(2)));
+        assert_eq!(m.lookup("y"), Ok(IdU8(2)));
         assert!(matches!(m.lookup("k"), Err(_)));
     }
 }
