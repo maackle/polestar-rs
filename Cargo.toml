@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "*"
-derive_more = "0.99"
+derive_more = { version = "1", features = ["full"] }
 num-derive = "0.4"
 num-traits = "0.2"
 parking_lot = "*"

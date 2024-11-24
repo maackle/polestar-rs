@@ -9,9 +9,9 @@ use itertools::Itertools;
 use polestar::{id::IdT, util::transition_btreemap};
 use polestar::prelude::*;
 
-use crate::single_op::OpMachine;
+use crate::op_single::OpMachine;
 
-use super::single_op::{OpPhase, OpEvent, ValidationType as VT};
+use super::op_single::{OpPhase, OpEvent, ValidationType as VT};
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct NetworkMachine<NodeId: IdT, OpId: IdT> {
@@ -20,10 +20,9 @@ pub struct NetworkMachine<NodeId: IdT, OpId: IdT> {
 
 impl<NodeId: IdT, OpId: IdT> NetworkMachine<NodeId, OpId> {
     /// Create a new OpMachine with the given dependencies
-    pub fn new(deps: BTreeSet<OpId>) -> Self {
-        let id = todo!();
+    pub fn new(sub: OpMachine<NodeId, OpId>) -> Self {
         Self {  
-            sub: OpMachine::new(id, deps),
+            sub,
         }
     }
 }
@@ -169,7 +168,7 @@ mod tests {
         type OpId = Id<3>;
 
         let ids = Id::<3>::iter_exhaustive(None).collect_vec();
-        let machine = NetworkMachine::<NodeId, OpId>::new(BTreeSet::new());
+        let machine = NetworkMachine::new(OpMachine::new(OpId::new(0), [OpMachine::new(OpId::new(1), []), OpMachine::new(OpId::new(2), [])]));
         let (initial, ()) = machine.transition(NetworkState::new_empty(&ids), NetworkOpEvent(ids[0].clone(), OpEvent::Author))
             .unwrap();
 

@@ -4,7 +4,7 @@
 // - this model might not even be a diagrammable state machine, maybe it needs to be further abstracted into something visually comprehensible
 
 pub mod network_single_op;
-pub mod single_op;
+pub mod op_single;
 
 pub const N: usize = 3;
 pub const O: usize = 3;

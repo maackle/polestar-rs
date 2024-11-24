@@ -1,25 +1,36 @@
-use std::{collections::BTreeSet, fmt::Debug, marker::PhantomData};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt::Debug,
+    marker::PhantomData,
+};
 
 use anyhow::bail;
+use automap::{AutoBTreeMap, AutoMapped};
 use exhaustive::Exhaustive;
 use polestar::{id::IdT, prelude::*};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct OpMachine<NodeId: IdT, OpId: IdT> {
     id: OpId,
-    deps: BTreeSet<OpId>,
+    deps: BTreeMap<OpId, OpMachine<NodeId, OpId>>,
     _phantom: PhantomData<NodeId>,
 }
 
 impl<NodeId: IdT, OpId: IdT> OpMachine<NodeId, OpId> {
     /// Create a new OpMachine with the given dependencies
-    pub fn new(id: OpId, deps: impl IntoIterator<Item = OpId>) -> Self {
+    pub fn new(id: OpId, deps: impl IntoIterator<Item = OpMachine<NodeId, OpId>>) -> Self {
         Self {
             id,
-            deps: deps.into_iter().collect(),
+            deps: deps.into_iter().map(|d| (d.id, d)).collect(),
             _phantom: PhantomData,
         }
     }
+}
+
+#[derive(Clone, Default, Debug, PartialEq, Eq, Hash)]
+pub struct OpState<OpId: IdT> {
+    phase: OpPhase<OpId>,
+    deps: BTreeMap<OpId, OpPhase<OpId>>,
 }
 
 #[derive(Clone, Default, Debug, PartialEq, Eq, Hash)]
@@ -122,6 +133,14 @@ impl<NodeId: IdT, OpId: IdT> Machine for OpMachine<NodeId, OpId> {
     }
 }
 
+impl<NodeId: IdT, OpId: IdT> AutoMapped for OpMachine<NodeId, OpId> {
+    type Key = OpId;
+
+    fn key(&self) -> &Self::Key {
+        &self.id
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -136,7 +155,8 @@ mod tests {
         type NodeId = Id<2>;
 
         // Create an instance of OpMachine with 1 dependency
-        let machine = OpMachine::<NodeId, OpId>::new(OpId::new(0), [OpId::new(1)]);
+        let machine: OpMachine<NodeId, OpId> =
+            OpMachine::new(OpId::new(0), [OpMachine::new(OpId::new(1), [])]);
 
         write_dot_state_diagram(
             "single-op.dot",
