@@ -39,13 +39,28 @@ pub fn write_dot_state_diagram<M>(
     M::State: Clone + Eq + Hash + Debug,
     M::Action: Exhaustive + Clone + Eq + Hash + Debug,
 {
+    write_dot_state_diagram_mapped(path, machine, initial, config, |m| m)
+}
+
+pub fn write_dot_state_diagram_mapped<M, N>(
+    path: impl AsRef<Path>,
+    machine: M,
+    initial: M::State,
+    config: &DiagramConfig,
+    map: impl Fn(M::State) -> N,
+) where
+    M: Machine,
+    M::State: Clone + Eq + Hash + Debug,
+    M::Action: Exhaustive + Clone + Eq + Hash + Debug,
+    N: Clone + Eq + Hash + Debug,
+{
     use std::fs::File;
     use std::io::Write;
     let mut file = File::create(&path).unwrap();
     write!(
         file,
         "{}",
-        crate::diagram::to_dot(state_diagram(machine, initial, config))
+        crate::diagram::to_dot(state_diagram_mapped(machine, initial, config, map))
     )
     .unwrap();
     println!("wrote DOT diagram to {}", path.as_ref().display());

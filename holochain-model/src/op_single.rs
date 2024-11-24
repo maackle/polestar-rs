@@ -6,7 +6,7 @@ use polestar::prelude::*;
 
 pub struct OpSingleMachine;
 
-#[derive(Clone, Copy, Default, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq, Hash, derive_more::Display)]
 pub enum OpPhase {
     #[default]
     /// The op has not been seen by this node yet
@@ -14,6 +14,7 @@ pub enum OpPhase {
     /// The op has been received and validation has not been attempted
     Pending,
     /// The op has been validated.
+    #[display("Validated({})", _0)]
     Validated(ValidationType),
     /// The op has been rejected
     Rejected,

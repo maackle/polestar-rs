@@ -42,7 +42,7 @@ impl<const N: usize> proptest::arbitrary::Arbitrary for UpTo<N> {
     }
 }
 
-pub trait IdT:
+pub trait Id:
     Clone
     + Copy
     + PartialEq
@@ -57,7 +57,7 @@ pub trait IdT:
 {
 }
 
-impl<const N: usize> IdT for IdU8<N> {}
+impl<const N: usize> Id for IdU8<N> {}
 
 #[derive(
     Clone,
@@ -108,7 +108,7 @@ impl<const N: usize> std::fmt::Debug for IdU8<N> {
 
 impl<const N: usize> std::fmt::Display for IdU8<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Id({})", self.0)
+        write!(f, "#{}", self.0)
     }
 }
 
