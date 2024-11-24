@@ -208,6 +208,10 @@ impl<O: Id> Machine for OpFamilyKnownDepsMachine<O> {
 
         self.machine.transition(state, (target, action))
     }
+
+    fn is_terminal(&self, s: &Self::State) -> bool {
+        self.machine.is_terminal(s)
+    }
 }
 
 /// Given a btreemap of ops to their dependencies, detect if there are any loops

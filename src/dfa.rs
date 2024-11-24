@@ -58,9 +58,7 @@ where
     /// Designates this state as a terminal state.
     ///
     /// This is an optional hint, useful for generating diagrams from FSMs.
-    fn is_terminal(&self, _: &Self::State) -> bool {
-        false
-    }
+    fn is_terminal(&self, _: &Self::State) -> bool;
 }
 
 pub type MachineResult<S> =

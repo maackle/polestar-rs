@@ -14,7 +14,7 @@ pub struct Checker<M: Machine> {
 #[derive(Clone)]
 pub struct CheckerState<S, A> {
     predicates: Predicates<S>,
-    state: S,
+    pub state: S,
     path: im::Vector<A>,
 }
 
@@ -55,8 +55,8 @@ pub enum CheckerError<A: Clone, E> {
 
 #[derive(Debug)]
 pub struct PredicateError<A: Clone> {
-    error: anyhow::Error,
-    path: im::Vector<A>,
+    pub(crate) error: String,
+    pub(crate) path: im::Vector<A>,
 }
 
 impl<M: Machine> Checker<M> {
@@ -74,21 +74,28 @@ impl<M: Machine> Checker<M> {
         self
     }
 
+    pub fn initial(&self, s: M::State) -> CheckerState<M::State, M::Action>
+    where
+        M::State: Clone + Debug,
+        M::Action: Clone + Debug,
+    {
+        CheckerState {
+            predicates: self.initial_predicates.clone(),
+            state: s,
+            path: vector![],
+        }
+    }
+
     pub fn check_fold(
         &self,
         initial: M::State,
         actions: impl IntoIterator<Item = M::Action>,
     ) -> Result<(), CheckerError<M::Action, M::Error>>
     where
-        M: Machine,
         M::State: Clone + Debug,
         M::Action: Clone + Debug,
     {
-        let s = CheckerState {
-            predicates: self.initial_predicates.clone(),
-            state: initial,
-            path: vector![],
-        };
+        let s = self.initial(initial);
         let (end, _) = self.apply_actions(s, actions)?;
         end.finalize()
             .map_err(|(error, path)| CheckerError::Predicate(PredicateError { error, path }))
@@ -96,7 +103,7 @@ impl<M: Machine> Checker<M> {
 }
 
 impl<M, A> CheckerState<M, A> {
-    pub fn finalize(self) -> Result<(), (anyhow::Error, im::Vector<A>)> {
+    pub fn finalize(self) -> Result<(), (String, im::Vector<A>)> {
         let eventuals = self
             .predicates
             .next
@@ -106,7 +113,7 @@ impl<M, A> CheckerState<M, A> {
             .collect::<Vec<_>>();
         if !eventuals.is_empty() {
             return Err((
-                anyhow::anyhow!(
+                format!(
                     "Checker finalized with unsatisfied 'eventually' predicates: {eventuals:?}"
                 ),
                 self.path,
@@ -157,6 +164,10 @@ where
             fx,
         ))
     }
+
+    fn is_terminal(&self, s: &Self::State) -> bool {
+        self.machine.is_terminal(&s.state)
+    }
 }
 
 #[derive(Clone)]
@@ -173,7 +184,7 @@ impl<T> Predicates<T> {
 }
 
 impl<T: Clone + std::fmt::Debug> Predicates<T> {
-    pub fn step(&mut self, state: (&T, &T)) -> Result<(), anyhow::Error> {
+    pub fn step(&mut self, state: (&T, &T)) -> Result<(), String> {
         let mut next = vector![];
         let mut now = vector![];
         tracing::debug!("");
@@ -192,7 +203,7 @@ impl<T: Clone + std::fmt::Debug> Predicates<T> {
                 state,
             ) {
                 let (old, new) = state;
-                return Err(anyhow::anyhow!(
+                return Err(format!(
                     "Predicate failed: '{name}'. Transition: {old:?} -> {new:?}"
                 ));
             }
@@ -384,6 +395,10 @@ mod tests {
         fn transition(&self, _state: u8, action: u8) -> MachineResult<Self> {
             Ok((action, ()))
         }
+
+        fn is_terminal(&self, _: &Self::State) -> bool {
+            false
+        }
     }
 
     #[test]
@@ -395,6 +410,7 @@ mod tests {
         let even = P::atom("is-even".to_string(), |s: &u8| s % 2 == 0);
         let small = P::atom("single-digit".to_string(), |s: &u8| *s < 10);
         let big = P::atom("20-and-up".to_string(), |s: &u8| *s >= 20);
+        let reallybig = P::atom("100-and-up".to_string(), |s: &u8| *s >= 100);
         let not_teens = small.clone().or(big.clone());
         let checker = Mach
             .checked()
@@ -404,9 +420,10 @@ mod tests {
             .predicate(P::always(
                 P::not(even.clone()).implies(P::next(even.clone())),
             ))
-            .predicate(P::always(not_teens));
+            .predicate(P::always(not_teens))
+            .predicate(P::eventually(reallybig));
 
-        checker.check_fold(0, [1, 2, 3, 22, 21]).unwrap();
+        checker.check_fold(0, [1, 2, 3, 108, 21]).unwrap();
 
         let err = checker.check_fold(0, [1, 2, 3, 23, 21]).unwrap_err();
         assert_eq!(err.unwrap_predicate().path, vector![1, 2, 3, 23]);
