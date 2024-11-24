@@ -29,14 +29,23 @@ pub enum OpPhase<OpId: IdT> {
     None,
     /// The op has been received and validation has not been attempted
     Pending,
-    /// The last validation attempt could not complete due to missing dependencies
-    Awaiting(ValidationType, BTreeSet<OpId>),
-    /// The op has been validated
-    Validated(ValidationType),
+    /// The op has been validated.
+    /// If the optional OpId is Some, validation is in limbo, awaiting the ops in the set.
+    /// If it's None, then the validation of this type is complete.
+    Validated(ValidationType, Option<OpId>),
     /// The op has been rejected
     Rejected,
     /// The op has been integrated
     Integrated,
+}
+
+impl<OpId: IdT> OpPhase<OpId> {
+    pub fn is_definitely_valid(&self) -> bool {
+        matches!(
+            self,
+            OpPhase::Validated(VT::App, None) | OpPhase::Integrated
+        )
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, derive_more::Display, Exhaustive)]
@@ -54,7 +63,7 @@ pub enum OpEvent<NodeId: IdT, OpId: IdT> {
     /// Validate the op (as valid)
     Validate(ValidationType),
     /// Await these ops
-    Await(BTreeSet<OpId>),
+    Await(ValidationType, OpId),
     /// Reject the op (as invalid)
     Reject,
     /// Integrate the op
@@ -74,6 +83,12 @@ impl<NodeId: IdT, OpId: IdT> Machine for OpMachine<NodeId, OpId> {
         use OpPhase as S;
         use ValidationType as V;
 
+        if let E::Await(_, dep) = t {
+            if dep == self.id {
+                bail!("can't depend on self")
+            }
+        }
+
         let next = match (state, t) {
             // Receive the op
             (S::None, E::Author) => S::Pending,
@@ -81,27 +96,19 @@ impl<NodeId: IdT, OpId: IdT> Machine for OpMachine<NodeId, OpId> {
             // Duplicate authorship is an error
             (_, E::Author) => bail!("duplicate authorship"),
 
-            (S::Pending | S::Validated(V::Sys), E::Reject) => S::Rejected,
-            (S::Pending, E::Await(deps)) => {
-                if deps.contains(&self.id) {
-                    bail!("can't depend on self")
-                } else {
-                    S::Awaiting(VT::Sys, deps)
-                }
-            }
-            (S::Validated(V::Sys), E::Await(deps)) => {
-                if deps.contains(&self.id) {
-                    bail!("can't depend on self")
-                } else {
-                    S::Awaiting(VT::App, deps)
-                }
+            (S::Pending | S::Validated(V::Sys, _), E::Reject) => S::Rejected,
+            (S::Pending, E::Await(V::Sys, dep)) => S::Validated(VT::Sys, Some(dep)),
+            (S::Validated(V::Sys, Some(_)), E::Await(V::App, dep)) => {
+                S::Validated(VT::App, Some(dep))
             }
 
-            (S::Pending, E::Validate(V::Sys)) => S::Validated(V::Sys),
+            (S::Pending, E::Validate(V::Sys)) => S::Validated(VT::Sys, None),
 
-            (S::Validated(V::Sys), E::Validate(V::App)) => S::Validated(V::App),
+            (S::Validated(V::Sys, Some(_)), E::Validate(V::Sys)) => S::Validated(V::Sys, None),
+            (S::Validated(V::Sys, None), E::Validate(V::App)) => S::Validated(V::App, None),
 
-            (S::Validated(V::App), E::Integrate) => S::Integrated,
+            (S::Validated(V::App, Some(_)), E::Validate(V::App)) => S::Validated(V::App, None),
+            (S::Validated(V::App, None), E::Integrate) => S::Integrated,
 
             (S::Integrated, E::Send(_)) => S::Integrated,
 

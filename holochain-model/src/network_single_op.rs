@@ -98,7 +98,7 @@ impl<NodeId: IdT, OpId: IdT> Machine for NetworkMachine<NodeId, OpId>{
             if matches!(event, OpEvent::Reject) && state
                     .nodes
                 .values()
-                .any(|n| matches!(n, OpPhase::Validated(VT::App) | OpPhase::Integrated))
+                .any(|n| n.is_definitely_valid())
             {
                 return Err("No honest node will reject if other nodes have validated".to_string());
             }
