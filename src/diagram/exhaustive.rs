@@ -57,13 +57,14 @@ pub fn write_dot_state_diagram_mapped<M, N>(
     use std::fs::File;
     use std::io::Write;
     let mut file = File::create(&path).unwrap();
-    write!(
-        file,
-        "{}",
-        crate::diagram::to_dot(state_diagram_mapped(machine, initial, config, map))
-    )
-    .unwrap();
-    println!("wrote DOT diagram to {}", path.as_ref().display());
+    let graph = state_diagram_mapped(machine, initial, config, map);
+    let nodes = graph.node_count();
+    let edges = graph.edge_count();
+    write!(file, "{}", crate::diagram::to_dot(graph)).unwrap();
+    println!(
+        "wrote DOT diagram to '{}'. nodes={nodes}, edges={edges}",
+        path.as_ref().display(),
+    );
 }
 
 pub fn print_dot_state_diagram<M>(machine: M, initial: M::State, config: &DiagramConfig)
