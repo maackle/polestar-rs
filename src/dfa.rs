@@ -29,11 +29,8 @@ where
         self.transition(state, event).map(first)
     }
 
-    fn checked(
-        self,
-        make_error: impl Fn(anyhow::Error) -> Self::Error + 'static,
-    ) -> checked::Checker<Self> {
-        checked::Checker::new(self, make_error)
+    fn checked(self) -> checked::Checker<Self> {
+        checked::Checker::new(self)
     }
 
     fn apply_actions(

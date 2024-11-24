@@ -1,5 +1,7 @@
 use std::{fmt::Debug, sync::Arc};
 
+use im::{vector, Vector};
+
 use crate::util::first_ref;
 
 use super::{Machine, MachineResult};
@@ -7,27 +9,40 @@ use super::{Machine, MachineResult};
 pub struct Checker<M: Machine> {
     machine: M,
     initial_predicates: Predicates<M::State>,
-    make_error: Box<dyn Fn(anyhow::Error) -> M::Error>,
 }
 
-pub struct CheckerState<T> {
-    predicates: Predicates<T>,
-    model: T,
+pub struct CheckerState<M, A> {
+    predicates: Predicates<M>,
+    model: M,
+    path: im::Vector<A>,
+}
+
+#[derive(Debug, derive_more::From)]
+#[cfg_attr(test, derive(derive_more::Unwrap))]
+pub enum CheckerError<A: Clone, E> {
+    Predicate(PredicateError<A>),
+    #[from]
+    Machine(E),
+}
+
+#[derive(Debug)]
+pub struct PredicateError<A: Clone> {
+    error: anyhow::Error,
+    path: im::Vector<A>,
 }
 
 impl<M: Machine> Checker<M> {
-    pub fn new(machine: M, make_error: impl Fn(anyhow::Error) -> M::Error + 'static) -> Self {
+    pub fn new(machine: M) -> Self {
         Self {
             machine,
             initial_predicates: Predicates::new(),
-            make_error: Box::new(make_error),
         }
     }
 
     pub fn predicate(mut self, predicate: Predicate<M::State>) -> Self {
         self.initial_predicates
             .next
-            .push((format!("{:?}", predicate), predicate));
+            .push_back((format!("{:?}", predicate), predicate));
         self
     }
 
@@ -35,22 +50,25 @@ impl<M: Machine> Checker<M> {
         &self,
         initial: M::State,
         actions: impl IntoIterator<Item = M::Action>,
-    ) -> Result<(), M::Error>
+    ) -> Result<(), CheckerError<M::Action, M::Error>>
     where
         M: Machine,
         M::State: Clone + Debug,
+        M::Action: Clone + Debug,
     {
         let s = CheckerState {
             predicates: self.initial_predicates.clone(),
             model: initial,
+            path: vector![],
         };
         let (end, _) = self.apply_actions(s, actions)?;
-        end.finalize().map_err(|e| (self.make_error)(e))
+        end.finalize()
+            .map_err(|(error, path)| CheckerError::Predicate(PredicateError { error, path }))
     }
 }
 
-impl<T> CheckerState<T> {
-    pub fn finalize(self) -> Result<(), anyhow::Error> {
+impl<M, A> CheckerState<M, A> {
+    pub fn finalize(self) -> Result<(), (anyhow::Error, im::Vector<A>)> {
         let eventuals = self
             .predicates
             .next
@@ -59,8 +77,11 @@ impl<T> CheckerState<T> {
             .map(first_ref)
             .collect::<Vec<_>>();
         if !eventuals.is_empty() {
-            return Err(anyhow::anyhow!(
-                "Checker finalized with unsatisfied 'eventually' predicates: {eventuals:?}"
+            return Err((
+                anyhow::anyhow!(
+                    "Checker finalized with unsatisfied 'eventually' predicates: {eventuals:?}"
+                ),
+                self.path,
             ));
         }
         Ok(())
@@ -80,23 +101,30 @@ impl<M> Machine for Checker<M>
 where
     M: Machine,
     M::State: Clone + Debug,
+    M::Action: Clone + Debug,
 {
-    type State = CheckerState<M::State>;
+    type State = CheckerState<M::State, M::Action>;
     type Action = M::Action;
     type Fx = M::Fx;
-    type Error = M::Error;
+    type Error = CheckerError<M::Action, M::Error>;
 
     fn transition(&self, state: Self::State, action: Self::Action) -> MachineResult<Self> {
         let prev = state.model;
         let mut predicates = state.predicates;
-        let (next, fx) = self.machine.transition(prev.clone(), action)?;
-        predicates
-            .step((&prev, &next))
-            .map_err(|e| (self.make_error)(e))?;
+        let mut path = state.path;
+        let (next, fx) = self.machine.transition(prev.clone(), action.clone())?;
+        path.push_back(action);
+        predicates.step((&prev, &next)).map_err(|error| {
+            CheckerError::Predicate(PredicateError {
+                error,
+                path: path.clone(),
+            })
+        })?;
         Ok((
             CheckerState {
                 predicates,
                 model: next,
+                path,
             },
             fx,
         ))
@@ -105,23 +133,26 @@ where
 
 #[derive(Clone)]
 pub struct Predicates<T> {
-    next: Vec<(String, Predicate<T>)>,
+    next: im::Vector<(String, Predicate<T>)>,
 }
 
 impl<T> Predicates<T> {
     fn new() -> Self {
-        Self { next: vec![] }
+        Self {
+            next: im::vector![],
+        }
     }
 }
 
 impl<T: Clone + std::fmt::Debug> Predicates<T> {
     pub fn step(&mut self, state: (&T, &T)) -> Result<(), anyhow::Error> {
-        let mut next = vec![];
+        let mut next = vector![];
+        let mut now = vector![];
         tracing::debug!("");
         tracing::debug!("------------------------------------------------");
         tracing::debug!("STEP: {:?} -> {:?}", state.0, state.1);
 
-        let now = self.next.drain(..).collect::<Vec<_>>();
+        std::mem::swap(&mut self.next, &mut now);
         for (name, predicate) in now {
             tracing::debug!("");
             tracing::debug!("visiting {predicate:?}");
@@ -143,7 +174,7 @@ impl<T: Clone + std::fmt::Debug> Predicates<T> {
     }
 
     fn visit(
-        next: &mut Vec<(String, Predicate<T>)>,
+        next: &mut Vector<(String, Predicate<T>)>,
         negated: bool,
         name: String,
         predicate: BoxPredicate<T>,
@@ -152,21 +183,21 @@ impl<T: Clone + std::fmt::Debug> Predicates<T> {
         use Predicate::*;
         let out = match *predicate.clone() {
             Next(p) => {
-                next.push((name, *p));
+                next.push_back((name, *p));
                 true
             }
 
             // Eventually(Eventually(p)) => Self::visit(next, negated, Eventually(p), s),
             Eventually(p) => {
                 if !Self::visit(next, negated, name.clone(), p.clone(), s) {
-                    next.push((name, Eventually(p.clone()).negate(negated)));
+                    next.push_back((name, Eventually(p.clone()).negate(negated)));
                 }
                 true
             }
 
             // Always(Always(p)) => Self::visit(negated, Always(p), s),
             Always(p) => {
-                next.push((name.clone(), Always(p.clone()).negate(negated)));
+                next.push_back((name.clone(), Always(p.clone()).negate(negated)));
                 Self::visit(next, negated, name.clone(), p.clone(), s)
             }
 
@@ -205,7 +236,6 @@ impl<T: Clone + std::fmt::Debug> Predicates<T> {
 
 pub type BoxPredicate<M> = Box<Predicate<M>>;
 
-#[derive(Clone)]
 pub enum Predicate<M> {
     Atom(String, Arc<dyn Fn(&M, &M) -> bool>),
     And(BoxPredicate<M>, BoxPredicate<M>),
@@ -216,6 +246,21 @@ pub enum Predicate<M> {
     Next(BoxPredicate<M>),
     Eventually(BoxPredicate<M>),
     Always(BoxPredicate<M>),
+}
+
+impl<M> Clone for Predicate<M> {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Atom(name, f) => Self::Atom(name.clone(), f.clone()),
+            Self::And(p1, p2) => Self::And(p1.clone(), p2.clone()),
+            Self::Or(p1, p2) => Self::Or(p1.clone(), p2.clone()),
+            Self::Not(p) => Self::Not(p.clone()),
+            Self::Implies(p1, p2) => Self::Implies(p1.clone(), p2.clone()),
+            Self::Next(p) => Self::Next(p.clone()),
+            Self::Eventually(p) => Self::Eventually(p.clone()),
+            Self::Always(p) => Self::Always(p.clone()),
+        }
+    }
 }
 
 impl<M> Predicate<M> {
@@ -324,7 +369,7 @@ mod tests {
         let big = P::atom("20-and-up".to_string(), |s: &u8| *s >= 20);
         let not_teens = small.clone().or(big.clone());
         let checker = Mach
-            .checked(|s| s)
+            .checked()
             .predicate(P::always(
                 even.clone().implies(P::next(P::not(even.clone()))),
             ))
@@ -333,6 +378,12 @@ mod tests {
             ))
             .predicate(P::always(not_teens));
 
-        checker.check_fold(0, [1, 2, 3, 23, 21]).unwrap();
+        checker.check_fold(0, [1, 2, 3, 22, 21]).unwrap();
+
+        let err = checker.check_fold(0, [1, 2, 3, 23, 21]).unwrap_err();
+        assert_eq!(err.unwrap_predicate().path, vector![1, 2, 3, 23]);
+
+        let err = checker.check_fold(1, [2, 12, 33]).unwrap_err();
+        assert_eq!(err.unwrap_predicate().path, vector![2, 12]);
     }
 }
