@@ -108,7 +108,7 @@ impl<const N: usize> std::fmt::Debug for IdU8<N> {
 
 impl<const N: usize> std::fmt::Display for IdU8<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "#{}", self.0)
+        write!(f, "{}", self.0)
     }
 }
 

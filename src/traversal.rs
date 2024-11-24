@@ -205,13 +205,13 @@ mod tests {
             }
         }
 
-        let divby = |n| P::atom(format!("div-by-{}", n), move |_, s| s % n == 0);
-        let big = P::atom("big".to_string(), |_, s| *s > TERMINAL);
-        let checker = SimpleMachine
-            .checked()
-            .predicate(P::always(big.clone().implies(P::next(P::not(big)))))
-            // .predicate(P::always(divby(2).or(divby(3))))
-            .predicate(P::eventually(divby(3)));
+        let divby = |n| P::atom(format!("div-by-{}", n), move |s| s % n == 0);
+        let big = P::atom("big".to_string(), |s| *s > TERMINAL);
+        let checker = SimpleMachine.checked().with_predicates([
+            P::always(big.clone().implies(P::next(P::not(big)))),
+            P::always(divby(2).or(divby(3))),
+            P::eventually(divby(3)),
+        ]);
 
         let err = checker
             .check_fold(1, [Action::Double, Action::Double])
@@ -221,6 +221,6 @@ mod tests {
 
         let initial = checker.initial(1);
         let report = traverse_checked(&checker, initial).unwrap();
-        dbg!(report);
+        dbg!(report, checker);
     }
 }

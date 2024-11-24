@@ -39,6 +39,7 @@ impl<O: Id> OpDeps<O> {
 }
 
 /// Machine that tracks the state of an op and all its dependencies
+#[derive(Clone, Debug)]
 pub struct OpFamilyKnownDepsMachine<O: Id> {
     pub machine: OpFamilyMachine<O>,
     pub allowed_pairs: HashSet<(O, O)>,
@@ -260,40 +261,41 @@ mod tests {
         type O = IdU8<2>;
         let o = O::iter_exhaustive(None).collect_vec();
 
-        let machine: OpFamilyMachine<O> = OpFamilyMachine::new(o[0]);
+        let machine: OpFamilyKnownDepsMachine<O> =
+            OpFamilyKnownDepsMachine::new(o[0], [(o[0], o[1])]);
 
         let awaiting = |a, b: O| {
-            P::atom(format!("{a} awaits {b}"), move |_, s: &OpFamilyState<O>| {
+            P::atom(format!("{a} awaits {b}"), move |s: &OpFamilyState<O>| {
                 s.get(&a)
                     .map(|p| matches!(p, OpFamilyPhase::Awaiting(_, x) if *x == b))
                     .unwrap_or(false)
             })
         };
+
         let integrated = |a| {
-            P::atom(format!("{a} integrated"), move |_, s: &OpFamilyState<O>| {
+            P::atom(format!("{a} integrated"), move |s: &OpFamilyState<O>| {
                 s.get(&a)
                     .map(|p| matches!(p, OpFamilyPhase::Op(OpPhase::Integrated)))
                     .unwrap_or(false)
             })
         };
 
-        let checker = machine
-            .clone()
-            .checked()
-            .predicate(P::always(
-                awaiting(o[0], o[1]).implies(P::not(awaiting(o[1], o[0]))),
-            ))
-            .predicate(P::always(
-                awaiting(o[0], o[1]).implies(P::not(integrated(o[1]))),
-            ));
+        let checker = machine.clone().checked().with_predicates([
+            P::always(awaiting(o[0], o[1]).implies(P::not(awaiting(o[1], o[0])))),
+            P::always(
+                awaiting(o[0], o[1]).implies(P::always(integrated(o[0]).implies(integrated(o[1])))),
+            ),
+        ]);
 
-        let initial = checker.initial(machine.initial(o));
+        let initial = checker.initial(machine.initial());
 
         if let Err(err) = traverse_checked(&checker, initial) {
             eprintln!("{:#?}", err.path);
             eprintln!("{}", err.error);
             panic!("properties failed");
         }
+
+        println!("{:#?}", checker);
     }
 
     #[test]

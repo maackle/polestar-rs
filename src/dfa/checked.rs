@@ -6,9 +6,10 @@ use crate::util::first_ref;
 
 use super::{Machine, MachineResult};
 
+#[derive(Debug)]
 pub struct Checker<M: Machine> {
     machine: M,
-    initial_predicates: Predicates<M, M::State>,
+    initial_predicates: Vec<Predicate<M, M::State>>,
 }
 
 pub struct CheckerState<M: Machine> {
@@ -78,14 +79,15 @@ impl<M: Machine> Checker<M> {
     pub fn new(machine: M) -> Self {
         Self {
             machine,
-            initial_predicates: Predicates::new(),
+            initial_predicates: Vec::new(),
         }
     }
 
-    pub fn predicate(mut self, predicate: Predicate<M, M::State>) -> Self {
-        self.initial_predicates
-            .next
-            .push_back((format!("{:?}", predicate), predicate));
+    pub fn with_predicates(
+        mut self,
+        predicates: impl IntoIterator<Item = Predicate<M, M::State>>,
+    ) -> Self {
+        self.initial_predicates.extend(predicates.into_iter());
         self
     }
 
@@ -95,7 +97,7 @@ impl<M: Machine> Checker<M> {
         M::Action: Clone + Debug,
     {
         CheckerState {
-            predicates: self.initial_predicates.clone(),
+            predicates: Predicates::new(self.initial_predicates.clone().into_iter()),
             state: s,
             path: vector![],
         }
@@ -115,6 +117,10 @@ impl<M: Machine> Checker<M> {
         let (end, _) = self.apply_actions(s, actions)?;
         end.finalize()
             .map_err(|(error, path)| CheckerError::Predicate(PredicateError { error, path }))
+    }
+
+    pub fn get_predicates(&self) -> &[Predicate<M, M::State>] {
+        &self.initial_predicates
     }
 }
 
@@ -188,6 +194,7 @@ where
     }
 }
 
+#[derive(Default, derive_more::From)]
 pub struct Predicates<C, S> {
     next: im::Vector<(String, Predicate<C, S>)>,
 }
@@ -201,9 +208,9 @@ impl<C, S> Clone for Predicates<C, S> {
 }
 
 impl<C, S> Predicates<C, S> {
-    fn new() -> Self {
+    fn new(ps: impl Iterator<Item = Predicate<C, S>>) -> Self {
         Self {
-            next: im::vector![],
+            next: ps.map(|p| (format!("{:?}", p), p)).collect(),
         }
     }
 }
@@ -365,19 +372,22 @@ impl<C, S> Predicate<C, S> {
         Self::Or(Box::new(self), Box::new(p2))
     }
 
-    pub fn atom(name: String, f: impl Fn(&C, &S) -> bool + 'static) -> Self {
-        Self::atom2(name, move |c, _, b| f(c, b))
+    pub fn atom(name: String, f: impl Fn(&S) -> bool + 'static) -> Self {
+        Self::atom3(name, move |_, _, s| f(s))
     }
 
-    pub fn atom2(name: String, f: impl Fn(&C, &S, &S) -> bool + 'static) -> Self {
-        // assert!(!name.contains(' '), "no spaces allowed in predicate names");
+    pub fn atom2(name: String, f: impl Fn(&S, &S) -> bool + 'static) -> Self {
+        Self::atom3(name, move |_, a, b| f(a, b))
+    }
+
+    pub fn atom3(name: String, f: impl Fn(&C, &S, &S) -> bool + 'static) -> Self {
         Self::Atom(name, Arc::new(f))
     }
 }
 
 impl<C, S> std::fmt::Debug for Predicate<C, S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if true {
+        if false {
             match self {
                 Predicate::Atom(name, _) => write!(f, "{}", name),
                 Predicate::And(p1, p2) => write!(f, "({:?} & {:?})", p1, p2),
@@ -433,21 +443,17 @@ mod tests {
 
         tracing_subscriber::fmt::init();
 
-        let even = P::atom("is-even".to_string(), |_, s: &u8| s % 2 == 0);
-        let small = P::atom("single-digit".to_string(), |_, s: &u8| *s < 10);
-        let big = P::atom("20-and-up".to_string(), |_, s: &u8| *s >= 20);
-        let reallybig = P::atom("100-and-up".to_string(), |_, s: &u8| *s >= 100);
+        let even = P::atom("is-even".to_string(), |s: &u8| s % 2 == 0);
+        let small = P::atom("single-digit".to_string(), |s: &u8| *s < 10);
+        let big = P::atom("20-and-up".to_string(), |s: &u8| *s >= 20);
+        let reallybig = P::atom("100-and-up".to_string(), |s: &u8| *s >= 100);
         let not_teens = small.clone().or(big.clone());
-        let checker = Mach
-            .checked()
-            .predicate(P::always(
-                even.clone().implies(P::next(P::not(even.clone()))),
-            ))
-            .predicate(P::always(
-                P::not(even.clone()).implies(P::next(even.clone())),
-            ))
-            .predicate(P::always(not_teens))
-            .predicate(P::eventually(reallybig));
+        let checker = Mach.checked().with_predicates([
+            P::always(even.clone().implies(P::next(P::not(even.clone())))),
+            P::always(P::not(even.clone()).implies(P::next(even.clone()))),
+            P::always(not_teens),
+            P::eventually(reallybig),
+        ]);
 
         checker.check_fold(0, [1, 2, 3, 108, 21]).unwrap();
 
