@@ -11,10 +11,38 @@ pub struct Checker<M: Machine> {
     initial_predicates: Predicates<M::State>,
 }
 
-pub struct CheckerState<M, A> {
-    predicates: Predicates<M>,
-    model: M,
+#[derive(Clone)]
+pub struct CheckerState<S, A> {
+    predicates: Predicates<S>,
+    state: S,
     path: im::Vector<A>,
+}
+
+// XXX: whoa there! be careful with this.
+impl<M, A> PartialEq for CheckerState<M, A>
+where
+    M: PartialEq,
+    A: PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.state == other.state
+    }
+}
+
+impl<M, A> Eq for CheckerState<M, A>
+where
+    M: Eq,
+    A: Eq,
+{
+}
+
+impl<M, A> std::hash::Hash for CheckerState<M, A>
+where
+    M: std::hash::Hash,
+{
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.state.hash(state)
+    }
 }
 
 #[derive(Debug, derive_more::From)]
@@ -58,7 +86,7 @@ impl<M: Machine> Checker<M> {
     {
         let s = CheckerState {
             predicates: self.initial_predicates.clone(),
-            model: initial,
+            state: initial,
             path: vector![],
         };
         let (end, _) = self.apply_actions(s, actions)?;
@@ -109,7 +137,7 @@ where
     type Error = CheckerError<M::Action, M::Error>;
 
     fn transition(&self, state: Self::State, action: Self::Action) -> MachineResult<Self> {
-        let prev = state.model;
+        let prev = state.state;
         let mut predicates = state.predicates;
         let mut path = state.path;
         let (next, fx) = self.machine.transition(prev.clone(), action.clone())?;
@@ -123,7 +151,7 @@ where
         Ok((
             CheckerState {
                 predicates,
-                model: next,
+                state: next,
                 path,
             },
             fx,

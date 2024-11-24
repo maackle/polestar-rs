@@ -9,7 +9,11 @@ use std::{
     sync::Arc,
 };
 
-use crate::{util::first, Machine};
+use crate::{
+    dfa::checked::{Checker, CheckerError, CheckerState},
+    util::first,
+    Machine,
+};
 
 #[derive(Clone)]
 pub struct TraversalConfig<E> {
@@ -20,16 +24,47 @@ pub struct TraversalConfig<E> {
     pub is_fatal_error: Option<Arc<dyn Fn(&E) -> bool>>,
 }
 
-pub fn traverse<M, N>(
+impl<E> Default for TraversalConfig<E> {
+    fn default() -> Self {
+        Self {
+            max_actions: None,
+            max_depth: None,
+            max_iters: None,
+            ignore_loopbacks: false,
+            is_fatal_error: None,
+        }
+    }
+}
+
+impl<A: Clone, E> TraversalConfig<CheckerError<A, E>> {
+    pub fn stop_on_checker_error(mut self) -> Self {
+        self.is_fatal_error = Some(Arc::new(|err| matches!(err, CheckerError::Predicate(_))));
+        self
+    }
+}
+
+pub fn traverse_checked<M>(
+    machine: Checker<M>,
+    initial: CheckerState<M::State, M::Action>,
+) -> Result<(), CheckerError<M::Action, M::Error>>
+where
+    M: Machine,
+    M::State: Clone + Eq + Hash + Debug,
+    M::Action: Exhaustive + Clone + Eq + Hash + Debug,
+{
+    let config = TraversalConfig::default().stop_on_checker_error();
+    traverse(machine, initial, &config)
+}
+
+pub fn traverse<M>(
     machine: M,
     initial: M::State,
     config: &TraversalConfig<M::Error>,
 ) -> Result<(), M::Error>
 where
     M: Machine,
-    M::State: Clone + Eq + Hash + Debug,
+    M::State: Clone + Eq + Hash,
     M::Action: Exhaustive + Clone + Eq + Hash + Debug,
-    N: Clone + Eq + Hash + Debug,
 {
     let mut visited: HashSet<M::State> = HashSet::new();
     let mut to_visit: VecDeque<(M::State, usize, im::Vector<M::Action>)> = VecDeque::new();
@@ -52,7 +87,6 @@ where
 
         // Don't explore the same node twice, and respect the depth limit
         if distance > config.max_depth.unwrap_or(usize::MAX) || visited.contains(&state) {
-            tracing::debug!("skipping node (dist={distance}) : {state:?}");
             continue;
         }
 
