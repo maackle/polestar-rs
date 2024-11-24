@@ -6,14 +6,16 @@ use polestar::{id::IdT, prelude::*};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct OpMachine<NodeId: IdT, OpId: IdT> {
+    id: OpId,
     deps: BTreeSet<OpId>,
     _phantom: PhantomData<NodeId>,
 }
 
 impl<NodeId: IdT, OpId: IdT> OpMachine<NodeId, OpId> {
     /// Create a new OpMachine with the given dependencies
-    pub fn new(deps: impl IntoIterator<Item = OpId>) -> Self {
+    pub fn new(id: OpId, deps: impl IntoIterator<Item = OpId>) -> Self {
         Self {
+            id,
             deps: deps.into_iter().collect(),
             _phantom: PhantomData,
         }
@@ -80,8 +82,20 @@ impl<NodeId: IdT, OpId: IdT> Machine for OpMachine<NodeId, OpId> {
             (_, E::Author) => bail!("duplicate authorship"),
 
             (S::Pending | S::Validated(V::Sys), E::Reject) => S::Rejected,
-            (S::Pending, E::Await(deps)) => S::Awaiting(VT::Sys, deps),
-            (S::Validated(V::Sys), E::Await(deps)) => S::Awaiting(VT::App, deps),
+            (S::Pending, E::Await(deps)) => {
+                if deps.contains(&self.id) {
+                    bail!("can't depend on self")
+                } else {
+                    S::Awaiting(VT::Sys, deps)
+                }
+            }
+            (S::Validated(V::Sys), E::Await(deps)) => {
+                if deps.contains(&self.id) {
+                    bail!("can't depend on self")
+                } else {
+                    S::Awaiting(VT::App, deps)
+                }
+            }
 
             (S::Pending, E::Validate(V::Sys)) => S::Validated(V::Sys),
 
@@ -114,8 +128,8 @@ mod tests {
         type OpId = Id<2>;
         type NodeId = Id<2>;
 
-        // Create an instance of OpMachine with empty dependencies
-        let machine = OpMachine::<NodeId, OpId>::new([OpId::modulo(0)]);
+        // Create an instance of OpMachine with 1 dependency
+        let machine = OpMachine::<NodeId, OpId>::new(OpId::new(0), [OpId::new(1)]);
 
         write_dot_state_diagram(
             "single-op.dot",

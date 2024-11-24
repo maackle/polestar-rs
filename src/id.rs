@@ -74,6 +74,10 @@ impl<const N: usize> IdT for Id<N> {}
 pub struct Id<const N: usize>(usize);
 
 impl<const N: usize> Id<N> {
+    pub fn new(n: usize) -> Self {
+        Self::try_from(n).expect("Attempted to initialize Id<{N}> with {n}")
+    }
+
     pub fn modulo(n: usize) -> Self {
         Self(n % N)
     }

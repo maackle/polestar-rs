@@ -21,8 +21,9 @@ pub struct NetworkMachine<NodeId: IdT, OpId: IdT> {
 impl<NodeId: IdT, OpId: IdT> NetworkMachine<NodeId, OpId> {
     /// Create a new OpMachine with the given dependencies
     pub fn new(deps: BTreeSet<OpId>) -> Self {
+        let id = todo!();
         Self {  
-            sub: OpMachine::new(deps),
+            sub: OpMachine::new(id, deps),
         }
     }
 }
