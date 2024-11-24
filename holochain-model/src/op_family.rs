@@ -258,11 +258,9 @@ mod tests {
     fn op_family_properties() {
         use Predicate as P;
 
-        type O = IdU8<2>;
+        const N: usize = 3;
+        type O = IdU8<N>;
         let o = O::iter_exhaustive(None).collect_vec();
-
-        let machine: OpFamilyKnownDepsMachine<O> =
-            OpFamilyKnownDepsMachine::new(o[0], [(o[0], o[1])]);
 
         let awaiting = |a, b: O| {
             P::atom(format!("{a} awaits {b}"), move |s: &OpFamilyState<O>| {
@@ -280,22 +278,63 @@ mod tests {
             })
         };
 
-        let checker = machine.clone().checked().with_predicates([
-            P::always(awaiting(o[0], o[1]).implies(P::not(awaiting(o[1], o[0])))),
-            P::always(
-                awaiting(o[0], o[1]).implies(P::always(integrated(o[0]).implies(integrated(o[1])))),
-            ),
-        ]);
+        {
+            let machine: OpFamilyMachine<O> = OpFamilyMachine::new(o[0]);
 
-        let initial = checker.initial(machine.initial());
+            let predicates = (0..N).map(O::new).flat_map(|a| {
+                (0..N).map(O::new).flat_map(move |b| {
+                    [
+                        P::always(awaiting(a, b).implies(P::not(awaiting(b, a)))),
+                        P::always(
+                            awaiting(a, b).implies(P::always(integrated(a).implies(integrated(b)))),
+                        ),
+                    ]
+                })
+            });
 
-        if let Err(err) = traverse_checked(&checker, initial) {
-            eprintln!("{:#?}", err.path);
-            eprintln!("{}", err.error);
-            panic!("properties failed");
+            let checker = machine.clone().checked().with_predicates(predicates);
+
+            let initial = checker.initial(machine.initial(o));
+
+            if let Err(err) = traverse_checked(&checker, initial) {
+                eprintln!("{:#?}", err.path);
+                eprintln!("{}", err.error);
+                panic!("properties failed");
+            }
+
+            println!("{:#?}", checker);
         }
 
-        println!("{:#?}", checker);
+        {
+            let machine_kd: OpFamilyKnownDepsMachine<O> =
+                OpFamilyKnownDepsMachine::new(o[0], [(o[0], o[1]), (o[0], o[2])]);
+
+            let predicates_kd: Vec<_> = machine_kd
+                .allowed_pairs
+                .iter()
+                .copied()
+                .flat_map(|(a, b)| {
+                    [
+                        P::always(awaiting(a, b).implies(P::not(awaiting(b, a)))),
+                        P::always(
+                            awaiting(a, b).implies(P::always(integrated(a).implies(integrated(b)))),
+                        ),
+                    ]
+                })
+                .collect();
+
+            let checker = machine_kd.clone().checked().with_predicates(predicates_kd);
+
+            let initial = checker.initial(machine_kd.initial());
+
+            if let Err(err) = traverse_checked(&checker, initial) {
+                eprintln!("{:#?}", err.path);
+                eprintln!("{}", err.error);
+                panic!("properties failed");
+            }
+
+            println!("{:#?}", checker);
+        }
     }
 
     #[test]

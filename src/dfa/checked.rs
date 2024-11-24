@@ -308,6 +308,7 @@ impl<C: std::fmt::Debug, S: std::fmt::Debug> Predicates<C, S> {
 
 pub type BoxPredicate<C, S> = Box<Predicate<C, S>>;
 
+// TODO: implementing an ordering would be nice
 pub enum Predicate<C, S> {
     Atom(String, Arc<dyn Fn(&C, &S, &S) -> bool>),
     And(BoxPredicate<C, S>, BoxPredicate<C, S>),
