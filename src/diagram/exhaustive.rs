@@ -51,8 +51,8 @@ pub fn write_dot_state_diagram_mapped<M, N, E>(
     map_edge: impl Fn(M::Action) -> E,
 ) where
     M: Machine,
-    M::State: Clone + Eq + Hash + Debug,
-    M::Action: Exhaustive + Clone + Eq + Hash + Debug,
+    M::State: Clone + Eq + Hash,
+    M::Action: Exhaustive + Clone + Eq + Hash,
     N: Clone + Eq + Hash + Debug,
     E: Clone + Eq + Hash + Debug,
 {
@@ -86,8 +86,8 @@ pub fn print_dot_state_diagram_mapped<M, N, E>(
     map_edge: impl Fn(M::Action) -> E,
 ) where
     M: Machine,
-    M::State: Clone + Eq + Hash + Debug,
-    M::Action: Exhaustive + Clone + Eq + Hash + Debug,
+    M::State: Clone + Eq + Hash,
+    M::Action: Exhaustive + Clone + Eq + Hash,
     N: Clone + Eq + Hash + Debug,
     E: Clone + Eq + Hash + Debug,
 {
@@ -123,9 +123,10 @@ pub fn state_diagram_mapped<M, N, E>(
 ) -> DiGraph<N, E>
 where
     M: Machine,
-    M::State: Clone + Eq + Hash + Debug,
-    M::Action: Exhaustive + Clone + Eq + Hash + Debug,
+    M::State: Clone + Eq + Hash,
+    M::Action: Exhaustive + Clone + Eq + Hash,
     N: Clone + Eq + Hash + Debug,
+    E: Debug,
 {
     dbg!();
     let mut graph = DiGraph::new();
@@ -133,7 +134,7 @@ where
     let mut visited_nodes: HashMap<N, NodeIndex> = HashMap::new();
     let mut states_to_visit: VecDeque<(M::State, usize, Option<(M::Action, NodeIndex)>)> =
         VecDeque::new();
-    let mut edges = HashSet::new();
+    let mut actions = HashSet::new();
 
     states_to_visit.push_back((initial, 0, None));
 
@@ -160,18 +161,19 @@ where
         };
 
         // Add an edge from the previous node to this node.
-        if let Some((prev_edge, prev_ix)) = origin {
+        if let Some((prev_action, prev_ix)) = origin {
             if !(config.ignore_loopbacks && prev_ix == ix)
-                && edges.insert((prev_ix, ix, prev_edge.clone()))
+                && actions.insert((prev_ix, ix, prev_action.clone()))
             {
-                tracing::debug!("new edge : {prev_edge:?}");
-                graph.add_edge(prev_ix, ix, map_edge(prev_edge));
+                let edge = map_edge(prev_action);
+                tracing::debug!("new edge : {edge:?}");
+                graph.add_edge(prev_ix, ix, edge);
             }
         }
 
         // Don't explore the same node twice.
         if distance > config.max_distance.unwrap_or(usize::MAX) || visited_states.contains(&state) {
-            tracing::debug!("skipping node (dist={distance}) : {state:?}");
+            tracing::debug!("skipping node (dist={distance}) : {node:?}");
             continue;
         }
 

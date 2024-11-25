@@ -68,8 +68,10 @@ impl<N: Id, O: Id> Machine for OpNetworkMachine<N, O> {
         Ok((state, ()))
     }
 
-    fn is_terminal(&self, _: &Self::State) -> bool {
-        false
+    fn is_terminal(&self, s: &Self::State) -> bool {
+        s.nodes
+            .values()
+            .all(|node_state| self.inner.is_terminal(node_state))
     }
 }
 
@@ -185,7 +187,9 @@ impl<N: Id, I: Id> Debug for OpNetworkEdgePretty<N, I> {
 
 #[cfg(test)]
 mod tests {
-    use polestar::{diagram::exhaustive::write_dot_state_diagram_mapped, id::IdU8};
+    use polestar::{
+        dfa::checked::Predicate as P, diagram::exhaustive::write_dot_state_diagram_mapped, id::IdU8,
+    };
 
     use super::*;
 
@@ -202,8 +206,16 @@ mod tests {
 
         // Create an instance of OpMachine with 1 dependency
         let machine: OpNetworkMachine<N, O> = OpNetworkMachine::new(n, o[0], o);
-
         let initial = machine.initial();
+
+        // let all_integrated = {
+        //     let m = machine.clone();
+        //     P::atom("integrated", move |s| m.is_terminal(s))
+        // };
+        // let predicates = [P::not(P::eventually(all_integrated))];
+        // // let predicates = [];
+        // let machine = machine.checked().with_predicates(predicates);
+        // let initial = machine.initial(initial);
 
         write_dot_state_diagram_mapped(
             "op-network.dot",

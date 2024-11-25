@@ -370,12 +370,12 @@ impl<S> Predicate<S> {
         Self::Or(Box::new(self), Box::new(p2))
     }
 
-    pub fn atom(name: String, f: impl Fn(&S) -> bool + 'static) -> Self {
+    pub fn atom(name: impl ToString, f: impl Fn(&S) -> bool + 'static) -> Self {
         Self::atom2(name, move |_, s| f(s))
     }
 
-    pub fn atom2(name: String, f: impl Fn(&S, &S) -> bool + 'static) -> Self {
-        Self::Atom(name, Arc::new(f))
+    pub fn atom2(name: impl ToString, f: impl Fn(&S, &S) -> bool + 'static) -> Self {
+        Self::Atom(name.to_string(), Arc::new(f))
     }
 
     // pub fn map_context<C2>(self, m: impl Fn(&C2) -> C + Clone + 'static) -> Predicate<C2, S>
