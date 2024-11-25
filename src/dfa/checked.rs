@@ -9,11 +9,11 @@ use super::{Machine, MachineResult};
 #[derive(Debug)]
 pub struct Checker<M: Machine> {
     machine: M,
-    initial_predicates: Vec<Predicate<M, M::State>>,
+    initial_predicates: Vec<Predicate<M::State>>,
 }
 
 pub struct CheckerState<M: Machine> {
-    predicates: Predicates<M, M::State>,
+    predicates: Predicates<M::State>,
     pub state: M::State,
     path: im::Vector<M::Action>,
 }
@@ -85,7 +85,7 @@ impl<M: Machine> Checker<M> {
 
     pub fn with_predicates(
         mut self,
-        predicates: impl IntoIterator<Item = Predicate<M, M::State>>,
+        predicates: impl IntoIterator<Item = Predicate<M::State>>,
     ) -> Self {
         self.initial_predicates.extend(predicates.into_iter());
         self
@@ -119,7 +119,7 @@ impl<M: Machine> Checker<M> {
             .map_err(|(error, path)| CheckerError::Predicate(PredicateError { error, path }))
     }
 
-    pub fn get_predicates(&self) -> &[Predicate<M, M::State>] {
+    pub fn get_predicates(&self) -> &[Predicate<M::State>] {
         &self.initial_predicates
     }
 }
@@ -171,14 +171,12 @@ where
         let mut path = state.path;
         let (next, fx) = self.machine.transition(prev.clone(), action.clone())?;
         path.push_back(action);
-        predicates
-            .step((&self.machine, &prev, &next))
-            .map_err(|error| {
-                CheckerError::Predicate(PredicateError {
-                    error,
-                    path: path.clone(),
-                })
-            })?;
+        predicates.step((&prev, &next)).map_err(|error| {
+            CheckerError::Predicate(PredicateError {
+                error,
+                path: path.clone(),
+            })
+        })?;
         Ok((
             CheckerState {
                 predicates,
@@ -195,11 +193,11 @@ where
 }
 
 #[derive(Default, derive_more::From)]
-pub struct Predicates<C, S> {
-    next: im::Vector<(String, Predicate<C, S>)>,
+pub struct Predicates<S> {
+    next: im::Vector<(String, Predicate<S>)>,
 }
 
-impl<C, S> Clone for Predicates<C, S> {
+impl<S> Clone for Predicates<S> {
     fn clone(&self) -> Self {
         Self {
             next: self.next.clone(),
@@ -207,21 +205,21 @@ impl<C, S> Clone for Predicates<C, S> {
     }
 }
 
-impl<C, S> Predicates<C, S> {
-    fn new(ps: impl Iterator<Item = Predicate<C, S>>) -> Self {
+impl<S> Predicates<S> {
+    fn new(ps: impl Iterator<Item = Predicate<S>>) -> Self {
         Self {
             next: ps.map(|p| (format!("{:?}", p), p)).collect(),
         }
     }
 }
 
-impl<C: std::fmt::Debug, S: std::fmt::Debug> Predicates<C, S> {
-    pub fn step(&mut self, state: (&C, &S, &S)) -> Result<(), String> {
+impl<S: std::fmt::Debug> Predicates<S> {
+    pub fn step(&mut self, (old, new): (&S, &S)) -> Result<(), String> {
         let mut next = vector![];
         let mut now = vector![];
         tracing::debug!("");
         tracing::debug!("------------------------------------------------");
-        tracing::debug!("STEP: {:?} -> {:?}", state.1, state.2);
+        tracing::debug!("STEP: {:?} -> {:?}", old, new);
 
         std::mem::swap(&mut self.next, &mut now);
         for (name, predicate) in now {
@@ -232,11 +230,10 @@ impl<C: std::fmt::Debug, S: std::fmt::Debug> Predicates<C, S> {
                 false,
                 name.clone(),
                 Box::new(predicate.clone()),
-                state,
+                (old, new),
             ) {
-                let (ctx, old, new) = state;
                 return Err(format!(
-                    "Predicate failed: '{name}'. Context: {ctx:?}. Transition: {old:?} -> {new:?}"
+                    "Predicate failed: '{name}'. Transition: {old:?} -> {new:?}"
                 ));
             }
         }
@@ -246,11 +243,11 @@ impl<C: std::fmt::Debug, S: std::fmt::Debug> Predicates<C, S> {
 
     // TODO: include the Machine?
     fn visit(
-        next: &mut Vector<(String, Predicate<C, S>)>,
+        next: &mut Vector<(String, Predicate<S>)>,
         negated: bool,
         name: String,
-        predicate: BoxPredicate<C, S>,
-        s: (&C, &S, &S),
+        predicate: BoxPredicate<S>,
+        s: (&S, &S),
     ) -> bool {
         use Predicate::*;
         let out = match *predicate.clone() {
@@ -291,9 +288,9 @@ impl<C: std::fmt::Debug, S: std::fmt::Debug> Predicates<C, S> {
             }
             Atom(_, f) => {
                 if negated {
-                    !f(s.0, s.1, s.2)
+                    !f(s.0, s.1)
                 } else {
-                    f(s.0, s.1, s.2)
+                    f(s.0, s.1)
                 }
             }
         };
@@ -306,22 +303,22 @@ impl<C: std::fmt::Debug, S: std::fmt::Debug> Predicates<C, S> {
     }
 }
 
-pub type BoxPredicate<C, S> = Box<Predicate<C, S>>;
+pub type BoxPredicate<S> = Box<Predicate<S>>;
 
 // TODO: implementing an ordering would be nice
-pub enum Predicate<C, S> {
-    Atom(String, Arc<dyn Fn(&C, &S, &S) -> bool>),
-    And(BoxPredicate<C, S>, BoxPredicate<C, S>),
-    Or(BoxPredicate<C, S>, BoxPredicate<C, S>),
-    Not(BoxPredicate<C, S>),
-    Implies(BoxPredicate<C, S>, BoxPredicate<C, S>),
+pub enum Predicate<S> {
+    Atom(String, Arc<dyn Fn(&S, &S) -> bool>),
+    And(BoxPredicate<S>, BoxPredicate<S>),
+    Or(BoxPredicate<S>, BoxPredicate<S>),
+    Not(BoxPredicate<S>),
+    Implies(BoxPredicate<S>, BoxPredicate<S>),
 
-    Next(BoxPredicate<C, S>),
-    Eventually(BoxPredicate<C, S>),
-    Always(BoxPredicate<C, S>),
+    Next(BoxPredicate<S>),
+    Eventually(BoxPredicate<S>),
+    Always(BoxPredicate<S>),
 }
 
-impl<C, S> Clone for Predicate<C, S> {
+impl<S> Clone for Predicate<S> {
     fn clone(&self) -> Self {
         match self {
             Self::Atom(name, f) => Self::Atom(name.clone(), f.clone()),
@@ -336,7 +333,7 @@ impl<C, S> Clone for Predicate<C, S> {
     }
 }
 
-impl<C, S> Predicate<C, S> {
+impl<S> Predicate<S> {
     pub fn next(self) -> Self {
         Self::Next(Box::new(self))
     }
@@ -361,32 +358,54 @@ impl<C, S> Predicate<C, S> {
         }
     }
 
-    pub fn implies(self: Predicate<C, S>, p2: Predicate<C, S>) -> Self {
+    pub fn implies(self: Predicate<S>, p2: Predicate<S>) -> Self {
         Self::Implies(Box::new(self), Box::new(p2))
     }
 
-    pub fn and(self: Predicate<C, S>, p2: Predicate<C, S>) -> Self {
+    pub fn and(self: Predicate<S>, p2: Predicate<S>) -> Self {
         Self::And(Box::new(self), Box::new(p2))
     }
 
-    pub fn or(self: Predicate<C, S>, p2: Predicate<C, S>) -> Self {
+    pub fn or(self: Predicate<S>, p2: Predicate<S>) -> Self {
         Self::Or(Box::new(self), Box::new(p2))
     }
 
     pub fn atom(name: String, f: impl Fn(&S) -> bool + 'static) -> Self {
-        Self::atom3(name, move |_, _, s| f(s))
+        Self::atom2(name, move |_, s| f(s))
     }
 
     pub fn atom2(name: String, f: impl Fn(&S, &S) -> bool + 'static) -> Self {
-        Self::atom3(name, move |_, a, b| f(a, b))
-    }
-
-    pub fn atom3(name: String, f: impl Fn(&C, &S, &S) -> bool + 'static) -> Self {
         Self::Atom(name, Arc::new(f))
     }
+
+    // pub fn map_context<C2>(self, m: impl Fn(&C2) -> C + Clone + 'static) -> Predicate<C2, S>
+    // where
+    //     C: 'static,
+    //     S: 'static,
+    // {
+    //     match self {
+    //         Self::Atom(name, f) => Predicate::Atom(name, Arc::new(move |c, a, b| f(&m(c), a, b))),
+    //         Self::And(p1, p2) => Predicate::And(
+    //             Box::new(p1.map_context(m.clone())),
+    //             Box::new(p2.map_context(m)),
+    //         ),
+    //         Self::Or(p1, p2) => Predicate::Or(
+    //             Box::new(p1.map_context(m.clone())),
+    //             Box::new(p2.map_context(m)),
+    //         ),
+    //         Self::Not(p) => Predicate::Not(Box::new(p.map_context(m))),
+    //         Self::Implies(p1, p2) => Predicate::Implies(
+    //             Box::new(p1.map_context(m.clone())),
+    //             Box::new(p2.map_context(m)),
+    //         ),
+    //         Self::Next(p) => Predicate::Next(Box::new(p.map_context(m))),
+    //         Self::Eventually(p) => Predicate::Eventually(Box::new(p.map_context(m))),
+    //         Self::Always(p) => Predicate::Always(Box::new(p.map_context(m))),
+    //     }
+    // }
 }
 
-impl<C, S> std::fmt::Debug for Predicate<C, S> {
+impl<S> std::fmt::Debug for Predicate<S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if false {
             match self {

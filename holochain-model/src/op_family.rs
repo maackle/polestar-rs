@@ -260,7 +260,7 @@ mod tests {
 
         const N: usize = 3;
         type O = IdU8<N>;
-        let o = O::iter_exhaustive(None).collect_vec();
+        let o = O::all_values();
 
         let awaiting = |a, b: O| {
             P::atom(format!("{a} awaits {b}"), move |s: &OpFamilyState<O>| {
@@ -309,19 +309,14 @@ mod tests {
             let machine_kd: OpFamilyKnownDepsMachine<O> =
                 OpFamilyKnownDepsMachine::new(o[0], [(o[0], o[1]), (o[0], o[2])]);
 
-            let predicates_kd: Vec<_> = machine_kd
-                .allowed_pairs
-                .iter()
-                .copied()
-                .flat_map(|(a, b)| {
-                    [
-                        P::always(awaiting(a, b).implies(P::not(awaiting(b, a)))),
-                        P::always(
-                            awaiting(a, b).implies(P::always(integrated(a).implies(integrated(b)))),
-                        ),
-                    ]
-                })
-                .collect();
+            let predicates_kd = machine_kd.allowed_pairs.iter().copied().flat_map(|(a, b)| {
+                [
+                    P::always(awaiting(a, b).implies(P::not(awaiting(b, a)))),
+                    P::always(
+                        awaiting(a, b).implies(P::always(integrated(a).implies(integrated(b)))),
+                    ),
+                ]
+            });
 
             let checker = machine_kd.clone().checked().with_predicates(predicates_kd);
 
@@ -343,7 +338,7 @@ mod tests {
         use polestar::diagram::exhaustive::DiagramConfig;
 
         type O = IdU8<2>;
-        let o = O::iter_exhaustive(None).collect_vec();
+        let o = O::all_values();
 
         // Create an instance of OpMachine with 1 dependency
         let machine: OpFamilyMachine<O> = OpFamilyMachine::new(o[0]);
@@ -367,7 +362,7 @@ mod tests {
         use polestar::diagram::exhaustive::DiagramConfig;
 
         type O = IdU8<3>;
-        let o = O::iter_exhaustive(None).collect_vec();
+        let o = O::all_values();
 
         let pairs = [(o[0], o[1]), (o[1], o[2])];
 
@@ -392,7 +387,7 @@ mod tests {
     #[ignore = "wrong"]
     fn test_all_pairs() {
         type O = IdU8<4>;
-        let o = O::iter_exhaustive(None).collect_vec();
+        let o = O::all_values();
 
         let deps = OpDeps(vec![(
             o[0],
@@ -421,7 +416,7 @@ mod tests {
     #[test]
     fn test_loop() {
         type O = IdU8<3>;
-        let o = O::iter_exhaustive(None).collect_vec();
+        let o = O::all_values();
 
         let v = VT::Sys;
 

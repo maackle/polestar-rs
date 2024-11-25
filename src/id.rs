@@ -81,6 +81,14 @@ impl<const N: usize> IdU8<N> {
     pub fn modulo(n: usize) -> Self {
         Self(n % N)
     }
+
+    pub fn all_values() -> [Self; N] {
+        (0..N)
+            .map(Self::new)
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap()
+    }
 }
 
 impl<const N: usize> exhaustive::Exhaustive for IdU8<N> {
