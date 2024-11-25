@@ -15,19 +15,28 @@ where
     type Fx = ();
     type Error: std::fmt::Debug = anyhow::Error;
 
-    fn transition(&self, state: Self::State, event: Self::Action) -> TransitionResult<Self>;
+    fn transition(&self, state: Self::State, action: Self::Action) -> TransitionResult<Self>;
+
+    /// Designates this state as a terminal state.
+    ///
+    /// This is an optional hint, useful for generating diagrams from FSMs.
+    fn is_terminal(&self, _: &Self::State) -> bool;
 
     /// Perform a transition and ignore the effect, when the effect is `()`.
     fn transition_(
         &self,
         state: Self::State,
-        event: Self::Action,
+        action: Self::Action,
     ) -> Result<Self::State, Self::Error>
     where
         Self: Machine<Fx = ()>,
     {
-        self.transition(state, event).map(first)
+        self.transition(state, action).map(first)
     }
+
+    // fn mutable(&self, state: Self::State, action: Self::Action, f: impl FnOnce(&mut Self::State, Self::Action)) -> TransitionResult<Self> {
+
+    // }
 
     fn checked(self) -> checked::Checker<Self> {
         checked::Checker::new(self)
@@ -54,11 +63,6 @@ where
     ) -> Result<Self::State, Self::Error> {
         self.apply_actions(state, actions).map(first)
     }
-
-    /// Designates this state as a terminal state.
-    ///
-    /// This is an optional hint, useful for generating diagrams from FSMs.
-    fn is_terminal(&self, _: &Self::State) -> bool;
 }
 
 pub type TransitionResult<S> =

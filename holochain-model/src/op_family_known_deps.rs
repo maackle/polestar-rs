@@ -87,6 +87,7 @@ mod tests {
                 ..Default::default()
             },
             |state| OpFamilyStatePretty(state),
+            |action| action,
         );
     }
 }

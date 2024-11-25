@@ -39,8 +39,8 @@ use ValidationType as VT;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, /* derive_more::Display, */ Exhaustive)]
 pub enum OpAction {
-    /// Author the op
-    Author,
+    /// Store the op
+    Store,
     /// Validate the op (as valid)
     Validate(ValidationType),
     /// Reject the op (as invalid)
@@ -62,10 +62,10 @@ impl Machine for OpSingleMachine {
 
         let next = match (state, t) {
             // Receive the op
-            (S::None, E::Author) => S::Stored,
+            (S::None, E::Store) => S::Stored,
 
             // Duplicate authorship is an error
-            (_, E::Author) => bail!("duplicate authorship"),
+            (_, E::Store) => bail!("duplicate authorship"),
 
             (S::Stored | S::Validated(V::Sys), E::Reject) => S::Rejected,
             (S::Stored, E::Validate(V::Sys)) => S::Validated(VT::Sys),

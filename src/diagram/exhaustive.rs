@@ -39,25 +39,27 @@ pub fn write_dot_state_diagram<M>(
     M::State: Clone + Eq + Hash + Debug,
     M::Action: Exhaustive + Clone + Eq + Hash + Debug,
 {
-    write_dot_state_diagram_mapped(path, machine, initial, config, |m| m)
+    write_dot_state_diagram_mapped(path, machine, initial, config, |m| m, |a| a)
 }
 
-pub fn write_dot_state_diagram_mapped<M, N>(
+pub fn write_dot_state_diagram_mapped<M, N, E>(
     path: impl AsRef<Path>,
     machine: M,
     initial: M::State,
     config: &DiagramConfig,
-    map: impl Fn(M::State) -> N,
+    map_node: impl Fn(M::State) -> N,
+    map_edge: impl Fn(M::Action) -> E,
 ) where
     M: Machine,
     M::State: Clone + Eq + Hash + Debug,
     M::Action: Exhaustive + Clone + Eq + Hash + Debug,
     N: Clone + Eq + Hash + Debug,
+    E: Clone + Eq + Hash + Debug,
 {
     use std::fs::File;
     use std::io::Write;
     let mut file = File::create(&path).unwrap();
-    let graph = state_diagram_mapped(machine, initial, config, map);
+    let graph = state_diagram_mapped(machine, initial, config, map_node, map_edge);
     let nodes = graph.node_count();
     let edges = graph.edge_count();
     write!(file, "{}", crate::diagram::to_dot(graph)).unwrap();
@@ -73,23 +75,27 @@ where
     M::State: Clone + Eq + Hash + Debug,
     M::Action: Exhaustive + Clone + Eq + Hash + Debug,
 {
-    print_dot_state_diagram_mapped::<M, M::State>(machine, initial, config, |m| m)
+    print_dot_state_diagram_mapped::<M, M::State, M::Action>(machine, initial, config, |m| m, |a| a)
 }
 
-pub fn print_dot_state_diagram_mapped<M, N>(
+pub fn print_dot_state_diagram_mapped<M, N, E>(
     machine: M,
     initial: M::State,
     config: &DiagramConfig,
-    map: impl Fn(M::State) -> N,
+    map_node: impl Fn(M::State) -> N,
+    map_edge: impl Fn(M::Action) -> E,
 ) where
     M: Machine,
     M::State: Clone + Eq + Hash + Debug,
     M::Action: Exhaustive + Clone + Eq + Hash + Debug,
     N: Clone + Eq + Hash + Debug,
+    E: Clone + Eq + Hash + Debug,
 {
     println!(
         "{}",
-        crate::diagram::to_dot(state_diagram_mapped(machine, initial, config, map))
+        crate::diagram::to_dot(state_diagram_mapped(
+            machine, initial, config, map_node, map_edge
+        ))
     );
 }
 
@@ -103,17 +109,18 @@ where
     M::State: Clone + Eq + Hash + Debug,
     M::Action: Exhaustive + Clone + Eq + Hash + Debug,
 {
-    state_diagram_mapped(machine, initial, config, |m| m)
+    state_diagram_mapped(machine, initial, config, |m| m, |a| a)
 }
 
 /// Generate a state diagram of this state machine by exhaustively taking all possible actions
 /// at each visited state.
-pub fn state_diagram_mapped<M, N>(
+pub fn state_diagram_mapped<M, N, E>(
     machine: M,
     initial: M::State,
     config: &DiagramConfig,
     map_node: impl Fn(M::State) -> N,
-) -> DiGraph<N, M::Action>
+    map_edge: impl Fn(M::Action) -> E,
+) -> DiGraph<N, E>
 where
     M: Machine,
     M::State: Clone + Eq + Hash + Debug,
@@ -158,7 +165,7 @@ where
                 && edges.insert((prev_ix, ix, prev_edge.clone()))
             {
                 tracing::debug!("new edge : {prev_edge:?}");
-                graph.add_edge(prev_ix, ix, prev_edge);
+                graph.add_edge(prev_ix, ix, map_edge(prev_edge));
             }
         }
 

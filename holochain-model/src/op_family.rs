@@ -196,8 +196,9 @@ impl<O: Id> OpFamilyPhase<O> {
 
 
 */
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, /* derive_more::Display, */ Exhaustive)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, derive_more::From, Exhaustive)]
 pub enum OpFamilyAction<O: Id> {
+    #[from]
     Op(OpAction),
     /// Await these ops
     Await(VT, O),
@@ -216,18 +217,6 @@ fn detect_loop<O: Id>(state: &BTreeMap<O, OpFamilyPhase<O>>, mut id: O) -> bool 
     false
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, derive_more::From)]
-pub struct OpFamilyStatePretty<I: Id>(pub OpFamilyState<I>);
-
-impl<I: Id> Debug for OpFamilyStatePretty<I> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for (id, state) in self.0.iter() {
-            writeln!(f, "{id} = {state}")?;
-        }
-        Ok(())
-    }
-}
-
 /*
   █████                      █████
  ░░███                      ░░███
@@ -241,6 +230,18 @@ impl<I: Id> Debug for OpFamilyStatePretty<I> {
 
 
 */
+
+#[derive(Clone, PartialEq, Eq, Hash, derive_more::From)]
+pub struct OpFamilyStatePretty<I: Id>(pub OpFamilyState<I>);
+
+impl<I: Id> Debug for OpFamilyStatePretty<I> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (id, state) in self.0.iter() {
+            writeln!(f, "{id} = {state}")?;
+        }
+        Ok(())
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -321,6 +322,7 @@ mod tests {
                 ..Default::default()
             },
             |state| OpFamilyStatePretty(state),
+            |action| action,
         );
     }
 
