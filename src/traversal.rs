@@ -169,7 +169,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::{dfa::checked::Predicate, MachineResult};
+    use crate::{dfa::checked::Predicate, TransitionResult};
 
     use super::*;
 
@@ -193,7 +193,11 @@ mod tests {
             type Fx = ();
             type Error = anyhow::Error;
 
-            fn transition(&self, state: Self::State, action: Self::Action) -> MachineResult<Self> {
+            fn transition(
+                &self,
+                state: Self::State,
+                action: Self::Action,
+            ) -> TransitionResult<Self> {
                 match action {
                     Action::Double => Ok((state.saturating_mul(2), ())),
                     Action::Triple => Ok((state.saturating_mul(3), ())),

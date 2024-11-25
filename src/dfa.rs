@@ -12,10 +12,10 @@ where
 {
     type State;
     type Action;
-    type Fx;
-    type Error: std::fmt::Debug;
+    type Fx = ();
+    type Error: std::fmt::Debug = anyhow::Error;
 
-    fn transition(&self, state: Self::State, event: Self::Action) -> MachineResult<Self>;
+    fn transition(&self, state: Self::State, event: Self::Action) -> TransitionResult<Self>;
 
     /// Perform a transition and ignore the effect, when the effect is `()`.
     fn transition_(
@@ -61,5 +61,5 @@ where
     fn is_terminal(&self, _: &Self::State) -> bool;
 }
 
-pub type MachineResult<S> =
+pub type TransitionResult<S> =
     Result<(<S as Machine>::State, <S as Machine>::Fx), <S as Machine>::Error>;

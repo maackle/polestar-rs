@@ -9,111 +9,30 @@ use exhaustive::Exhaustive;
 use itertools::Itertools;
 use polestar::{id::Id, prelude::*, util::first};
 
-use crate::op_single::{OpEvent, OpPhase, OpSingleMachine, ValidationType as VT};
+use crate::op_single::{OpAction, OpPhase, OpSingleMachine, ValidationType as VT};
+
+/*
+                                    █████       ███
+                                   ░░███       ░░░
+ █████████████    ██████    ██████  ░███████   ████  ████████    ██████
+░░███░░███░░███  ░░░░░███  ███░░███ ░███░░███ ░░███ ░░███░░███  ███░░███
+ ░███ ░███ ░███   ███████ ░███ ░░░  ░███ ░███  ░███  ░███ ░███ ░███████
+ ░███ ░███ ░███  ███░░███ ░███  ███ ░███ ░███  ░███  ░███ ░███ ░███░░░
+ █████░███ █████░░████████░░██████  ████ █████ █████ ████ █████░░██████
+░░░░░ ░░░ ░░░░░  ░░░░░░░░  ░░░░░░  ░░░░ ░░░░░ ░░░░░ ░░░░ ░░░░░  ░░░░░░
+*/
 
 /// Machine that tracks the state of an op and all its dependencies
-#[derive(Clone, Debug, PartialEq, Eq, Hash, derive_more::Constructor)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct OpFamilyMachine<O: Id> {
-    pub focus: O,
-}
-
-impl<O: Id> OpFamilyMachine<O> {
-    pub fn initial(&self, ids: impl IntoIterator<Item = O>) -> OpFamilyState<O> {
-        OpFamilyState::new(ids)
-    }
-}
-
-#[derive(Deref, Clone, derive_more::From)]
-struct OpDeps<O: Id>(Vec<(O, OpDeps<O>)>);
-
-impl<O: Id> OpDeps<O> {
-    pub fn all_pairs(&self) -> HashSet<(O, O)> {
-        self.iter()
-            .flat_map(|(x, xs)| {
-                xs.iter()
-                    .flat_map(|(y, ys)| ys.all_pairs().into_iter().chain(std::iter::once((*x, *y))))
-            })
-            .collect()
-        // .map(|(x, y)| (x.clone(), y.clone()))
-    }
-}
-
-/// Machine that tracks the state of an op and all its dependencies
-#[derive(Clone, Debug)]
-pub struct OpFamilyKnownDepsMachine<O: Id> {
-    pub machine: OpFamilyMachine<O>,
-    pub allowed_pairs: HashSet<(O, O)>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash, derive_more::Deref, derive_more::DerefMut)]
-pub struct OpFamilyState<O: Id>(BTreeMap<O, OpFamilyPhase<O>>);
-
-impl<O: Id> OpFamilyState<O> {
-    pub fn new(ids: impl IntoIterator<Item = O>) -> Self {
-        Self(
-            ids.into_iter()
-                .map(|id| (id, OpFamilyPhase::default()))
-                .collect(),
-        )
-    }
-}
-
-impl<O: Id> OpFamilyKnownDepsMachine<O> {
-    pub fn new(focus: O, allowed_pairs: impl IntoIterator<Item = (O, O)>) -> Self {
-        let machine = OpFamilyMachine::new(focus);
-        Self {
-            machine,
-            allowed_pairs: allowed_pairs.into_iter().collect(),
-        }
-    }
-
-    pub fn initial(&self) -> OpFamilyState<O> {
-        OpFamilyState::new(
-            self.allowed_pairs
-                .iter()
-                .flat_map(|(x, y)| [x, y])
-                .copied()
-                .collect::<HashSet<_>>(),
-        )
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, derive_more::Display, derive_more::TryUnwrap)]
-pub enum OpFamilyPhase<O: Id> {
-    Op(OpPhase),
-    #[display("Awaiting({}, {})", _0, _1)]
-    Awaiting(VT, O),
-}
-
-impl<O: Id> Default for OpFamilyPhase<O> {
-    fn default() -> Self {
-        Self::Op(Default::default())
-    }
-}
-
-impl<O: Id> OpFamilyPhase<O> {
-    pub fn is_definitely_valid(&self) -> bool {
-        matches!(
-            self,
-            OpFamilyPhase::Op(OpPhase::Validated(VT::App)) | OpFamilyPhase::Op(OpPhase::Integrated)
-        )
-    }
-
-    pub fn is_definitely_invalid(&self) -> bool {
-        matches!(self, OpFamilyPhase::Op(OpPhase::Rejected))
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, /* derive_more::Display, */ Exhaustive)]
-pub enum OpFamilyEvent<O: Id> {
-    Op(OpEvent),
-    /// Await these ops
-    Await(VT, O),
+    pub root: O,
+    /// All ops covered, including the root
+    pub deps: BTreeSet<O>,
 }
 
 impl<O: Id> Machine for OpFamilyMachine<O> {
     type State = OpFamilyState<O>;
-    type Action = (O, OpFamilyEvent<O>);
+    type Action = (O, OpFamilyAction<O>);
     type Fx = ();
     type Error = anyhow::Error;
 
@@ -121,16 +40,20 @@ impl<O: Id> Machine for OpFamilyMachine<O> {
         &self,
         mut states: Self::State,
         (target, action): Self::Action,
-    ) -> MachineResult<Self> {
-        use OpFamilyEvent as E;
+    ) -> TransitionResult<Self> {
+        use OpFamilyAction as E;
         use OpFamilyPhase as S;
         use OpPhase::*;
+
+        if !self.deps.contains(&target) {
+            bail!("{target:?} not covered");
+        }
 
         if let E::Await(_, dep) = action {
             if dep == target {
                 bail!("An op can't depend on itself")
             }
-            if dep == self.focus {
+            if dep == self.root {
                 bail!("The focus op can't be depended on")
             }
         }
@@ -145,14 +68,14 @@ impl<O: Id> Machine for OpFamilyMachine<O> {
 
             // Transitions to the Awaiting state
             (S::Op(s), E::Await(vt, dep_id)) => match (vt, s) {
-                (VT::Sys, Pending) => S::Awaiting(VT::Sys, dep_id),
+                (VT::Sys, Stored) => S::Awaiting(VT::Sys, dep_id),
                 (VT::App, Validated(VT::Sys)) => S::Awaiting(VT::App, dep_id),
                 _ => bail!("invalid transition to Awaiting: {state:?} -> {action:?}"),
             },
 
             // Transitions out of the Awaiting state
             (S::Awaiting(vt, dep_id), E::Op(a)) => match (vt, a) {
-                (VT::Sys, OpEvent::Validate(VT::Sys)) | (VT::App, OpEvent::Validate(VT::App)) => {
+                (VT::Sys, OpAction::Validate(VT::Sys)) | (VT::App, OpAction::Validate(VT::App)) => {
                     let dep = states.get(&dep_id).ok_or(anyhow!("no dep {:?}", dep_id))?;
                     if matches!(dep, S::Op(Integrated)) {
                         S::Op(Validated(vt))
@@ -194,31 +117,90 @@ impl<O: Id> Machine for OpFamilyMachine<O> {
     }
 }
 
-impl<O: Id> Machine for OpFamilyKnownDepsMachine<O> {
-    type State = OpFamilyState<O>;
-    type Action = (O, OpFamilyEvent<O>);
-    type Fx = ();
-    type Error = anyhow::Error;
-
-    fn transition(
-        &self,
-        state: Self::State,
-        (target, action): Self::Action,
-    ) -> MachineResult<Self> {
-        use OpFamilyEvent as E;
-
-        if let E::Await(_, dep_id) = action {
-            if !self.allowed_pairs.contains(&(target, dep_id)) {
-                bail!("dependency not specified in machine: {target:?} -> {dep_id:?}");
-            }
+impl<O: Id> OpFamilyMachine<O> {
+    pub fn new(root: O, deps: impl IntoIterator<Item = O>) -> Self {
+        Self {
+            root,
+            deps: deps.into_iter().collect(),
         }
-
-        self.machine.transition(state, (target, action))
     }
 
-    fn is_terminal(&self, s: &Self::State) -> bool {
-        self.machine.is_terminal(s)
+    pub fn initial(&self, ids: impl IntoIterator<Item = O>) -> OpFamilyState<O> {
+        OpFamilyState::new(ids)
     }
+}
+
+/*
+          █████               █████
+         ░░███               ░░███
+  █████  ███████    ██████   ███████    ██████
+ ███░░  ░░░███░    ░░░░░███ ░░░███░    ███░░███
+░░█████   ░███      ███████   ░███    ░███████
+ ░░░░███  ░███ ███ ███░░███   ░███ ███░███░░░
+ ██████   ░░█████ ░░████████  ░░█████ ░░██████
+░░░░░░     ░░░░░   ░░░░░░░░    ░░░░░   ░░░░░░
+
+
+
+*/
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, derive_more::Deref, derive_more::DerefMut)]
+pub struct OpFamilyState<O: Id>(BTreeMap<O, OpFamilyPhase<O>>);
+
+impl<O: Id> OpFamilyState<O> {
+    pub fn new(ids: impl IntoIterator<Item = O>) -> Self {
+        Self(
+            ids.into_iter()
+                .map(|id| (id, OpFamilyPhase::default()))
+                .collect(),
+        )
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, derive_more::Display, derive_more::TryUnwrap)]
+pub enum OpFamilyPhase<O: Id, Phase = OpPhase> {
+    Op(Phase),
+    #[display("Awaiting({}, {})", _0, _1)]
+    Awaiting(VT, O),
+}
+
+impl<O: Id> Default for OpFamilyPhase<O> {
+    fn default() -> Self {
+        Self::Op(Default::default())
+    }
+}
+
+impl<O: Id> OpFamilyPhase<O> {
+    pub fn is_definitely_valid(&self) -> bool {
+        matches!(
+            self,
+            OpFamilyPhase::Op(OpPhase::Validated(VT::App)) | OpFamilyPhase::Op(OpPhase::Integrated)
+        )
+    }
+
+    pub fn is_definitely_invalid(&self) -> bool {
+        matches!(self, OpFamilyPhase::Op(OpPhase::Rejected))
+    }
+}
+
+/*
+                     █████     ███
+                    ░░███     ░░░
+  ██████    ██████  ███████   ████   ██████  ████████
+ ░░░░░███  ███░░███░░░███░   ░░███  ███░░███░░███░░███
+  ███████ ░███ ░░░   ░███     ░███ ░███ ░███ ░███ ░███
+ ███░░███ ░███  ███  ░███ ███ ░███ ░███ ░███ ░███ ░███
+░░████████░░██████   ░░█████  █████░░██████  ████ █████
+ ░░░░░░░░  ░░░░░░     ░░░░░  ░░░░░  ░░░░░░  ░░░░ ░░░░░
+
+
+
+*/
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, /* derive_more::Display, */ Exhaustive)]
+pub enum OpFamilyAction<O: Id> {
+    Op(OpAction),
+    /// Await these ops
+    Await(VT, O),
 }
 
 /// Given a btreemap of ops to their dependencies, detect if there are any loops
@@ -235,7 +217,7 @@ fn detect_loop<O: Id>(state: &BTreeMap<O, OpFamilyPhase<O>>, mut id: O) -> bool 
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, derive_more::From)]
-pub struct OpFamilyStatePretty<I: Id>(OpFamilyState<I>);
+pub struct OpFamilyStatePretty<I: Id>(pub OpFamilyState<I>);
 
 impl<I: Id> Debug for OpFamilyStatePretty<I> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -245,6 +227,20 @@ impl<I: Id> Debug for OpFamilyStatePretty<I> {
         Ok(())
     }
 }
+
+/*
+  █████                      █████
+ ░░███                      ░░███
+ ███████    ██████   █████  ███████    █████
+░░░███░    ███░░███ ███░░  ░░░███░    ███░░
+  ░███    ░███████ ░░█████   ░███    ░░█████
+  ░███ ███░███░░░   ░░░░███  ░███ ███ ░░░░███
+  ░░█████ ░░██████  ██████   ░░█████  ██████
+   ░░░░░   ░░░░░░  ░░░░░░     ░░░░░  ░░░░░░
+
+
+
+*/
 
 #[cfg(test)]
 mod tests {
@@ -278,58 +274,30 @@ mod tests {
             })
         };
 
-        {
-            let machine: OpFamilyMachine<O> = OpFamilyMachine::new(o[0]);
+        let machine: OpFamilyMachine<O> = OpFamilyMachine::new(o[0], o);
 
-            let predicates = (0..N).map(O::new).flat_map(|a| {
-                (0..N).map(O::new).flat_map(move |b| {
-                    [
-                        P::always(awaiting(a, b).implies(P::not(awaiting(b, a)))),
-                        P::always(
-                            awaiting(a, b).implies(P::always(integrated(a).implies(integrated(b)))),
-                        ),
-                    ]
-                })
-            });
-
-            let checker = machine.clone().checked().with_predicates(predicates);
-
-            let initial = checker.initial(machine.initial(o));
-
-            if let Err(err) = traverse_checked(&checker, initial) {
-                eprintln!("{:#?}", err.path);
-                eprintln!("{}", err.error);
-                panic!("properties failed");
-            }
-
-            println!("{:#?}", checker);
-        }
-
-        {
-            let machine_kd: OpFamilyKnownDepsMachine<O> =
-                OpFamilyKnownDepsMachine::new(o[0], [(o[0], o[1]), (o[0], o[2])]);
-
-            let predicates_kd = machine_kd.allowed_pairs.iter().copied().flat_map(|(a, b)| {
+        let predicates = (0..N).map(O::new).flat_map(|a| {
+            (0..N).map(O::new).flat_map(move |b| {
                 [
                     P::always(awaiting(a, b).implies(P::not(awaiting(b, a)))),
                     P::always(
                         awaiting(a, b).implies(P::always(integrated(a).implies(integrated(b)))),
                     ),
                 ]
-            });
+            })
+        });
 
-            let checker = machine_kd.clone().checked().with_predicates(predicates_kd);
+        let checker = machine.clone().checked().with_predicates(predicates);
 
-            let initial = checker.initial(machine_kd.initial());
+        let initial = checker.initial(machine.initial(o));
 
-            if let Err(err) = traverse_checked(&checker, initial) {
-                eprintln!("{:#?}", err.path);
-                eprintln!("{}", err.error);
-                panic!("properties failed");
-            }
-
-            println!("{:#?}", checker);
+        if let Err(err) = traverse_checked(&checker, initial) {
+            eprintln!("{:#?}", err.path);
+            eprintln!("{}", err.error);
+            panic!("properties failed");
         }
+
+        println!("{:#?}", checker);
     }
 
     #[test]
@@ -341,7 +309,7 @@ mod tests {
         let o = O::all_values();
 
         // Create an instance of OpMachine with 1 dependency
-        let machine: OpFamilyMachine<O> = OpFamilyMachine::new(o[0]);
+        let machine: OpFamilyMachine<O> = OpFamilyMachine::new(o[0], o);
 
         let initial = OpFamilyState::new(o);
 
@@ -357,35 +325,25 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "diagram"]
-    fn test_op_family_known_deps_diagram() {
-        use polestar::diagram::exhaustive::DiagramConfig;
-
-        type O = IdU8<3>;
-        let o = O::all_values();
-
-        let pairs = [(o[0], o[1]), (o[1], o[2])];
-
-        // Create an instance of OpMachine with 1 dependency
-        let machine: OpFamilyKnownDepsMachine<O> = OpFamilyKnownDepsMachine::new(o[0], pairs);
-
-        let initial = machine.initial();
-
-        write_dot_state_diagram_mapped(
-            "op-family-known-deps.dot",
-            machine,
-            initial,
-            &DiagramConfig {
-                max_actions: Some(5),
-                ..Default::default()
-            },
-            |state| OpFamilyStatePretty(state),
-        );
-    }
-
-    #[test]
     #[ignore = "wrong"]
     fn test_all_pairs() {
+        /// Supposed to be a tree of dependencies, but doesn't work
+        #[derive(Deref, Clone, derive_more::From)]
+        struct OpDeps<O: Id>(Vec<(O, OpDeps<O>)>);
+
+        impl<O: Id> OpDeps<O> {
+            pub fn all_pairs(&self) -> HashSet<(O, O)> {
+                self.iter()
+                    .flat_map(|(x, xs)| {
+                        xs.iter().flat_map(|(y, ys)| {
+                            ys.all_pairs().into_iter().chain(std::iter::once((*x, *y)))
+                        })
+                    })
+                    .collect()
+                // .map(|(x, y)| (x.clone(), y.clone()))
+            }
+        }
+
         type O = IdU8<4>;
         let o = O::all_values();
 
@@ -423,7 +381,7 @@ mod tests {
         let state: BTreeMap<_, _> = [
             (o[0], OpFamilyPhase::Awaiting(v, o[1])),
             (o[1], OpFamilyPhase::Awaiting(v, o[2])),
-            (o[2], OpFamilyPhase::Op(OpPhase::Pending)),
+            (o[2], OpFamilyPhase::Op(OpPhase::Stored)),
         ]
         .into_iter()
         .collect();

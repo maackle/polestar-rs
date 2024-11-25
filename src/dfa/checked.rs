@@ -4,7 +4,7 @@ use im::{vector, Vector};
 
 use crate::util::first_ref;
 
-use super::{Machine, MachineResult};
+use super::{Machine, TransitionResult};
 
 #[derive(Debug)]
 pub struct Checker<M: Machine> {
@@ -165,7 +165,7 @@ where
     type Fx = M::Fx;
     type Error = CheckerError<M::Action, M::Error>;
 
-    fn transition(&self, state: Self::State, action: Self::Action) -> MachineResult<Self> {
+    fn transition(&self, state: Self::State, action: Self::Action) -> TransitionResult<Self> {
         let prev = state.state;
         let mut predicates = state.predicates;
         let mut path = state.path;
@@ -448,7 +448,7 @@ mod tests {
         type Fx = ();
         type Error = anyhow::Error;
 
-        fn transition(&self, _state: u8, action: u8) -> MachineResult<Self> {
+        fn transition(&self, _state: u8, action: u8) -> TransitionResult<Self> {
             Ok((action, ()))
         }
 
