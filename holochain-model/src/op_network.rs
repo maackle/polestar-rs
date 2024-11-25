@@ -188,7 +188,8 @@ impl<N: Id, I: Id> Debug for OpNetworkEdgePretty<N, I> {
 #[cfg(test)]
 mod tests {
     use polestar::{
-        dfa::checked::Predicate as P, diagram::exhaustive::write_dot_state_diagram_mapped, id::IdU8,
+        diagram::exhaustive::write_dot_state_diagram_mapped, id::IdU8,
+        machine::checked::Predicate as P,
     };
 
     use super::*;

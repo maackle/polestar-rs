@@ -247,7 +247,7 @@ impl<I: Id> Debug for OpFamilyStatePretty<I> {
 mod tests {
     use super::*;
     use polestar::{
-        dfa::checked::Predicate, diagram::exhaustive::write_dot_state_diagram_mapped, id::IdU8,
+        diagram::exhaustive::write_dot_state_diagram_mapped, id::IdU8, machine::checked::Predicate,
         traversal::traverse_checked,
     };
 

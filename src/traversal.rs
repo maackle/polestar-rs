@@ -1,16 +1,14 @@
 use exhaustive::Exhaustive;
-use petgraph::graph::{DiGraph, NodeIndex};
 
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{HashSet, VecDeque},
     fmt::Debug,
     hash::Hash,
-    path::Path,
     sync::Arc,
 };
 
 use crate::{
-    dfa::checked::{Checker, CheckerError, CheckerState, PredicateError},
+    machine::checked::{Checker, CheckerError, CheckerState, PredicateError},
     util::first,
     Machine,
 };
@@ -91,7 +89,7 @@ where
                 Err(e) => Some(e),
             })
             .collect();
-        errors.sort_by_key(|(e, p)| p.len());
+        errors.sort_by_key(|(_, p)| p.len());
         let (error, path) = errors.pop().unwrap();
         return Err(PredicateError { error, path });
     }
@@ -169,7 +167,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::{dfa::checked::Predicate, TransitionResult};
+    use crate::{machine::checked::Predicate, TransitionResult};
 
     use super::*;
 

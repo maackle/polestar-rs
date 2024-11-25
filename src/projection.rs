@@ -64,12 +64,7 @@ where
     ActionOf<Self::Model>: Clone + Debug + Eq,
     ErrorOf<Self::Model>: Eq,
 {
-    fn test_commutativity(
-        &mut self,
-        mut machine: Self::Model,
-        x: Self::System,
-        event: Self::Event,
-    ) {
+    fn test_commutativity(&mut self, machine: Self::Model, x: Self::System, event: Self::Event) {
         let x_m = self.map_state(&x);
 
         let x_a = {
@@ -177,7 +172,7 @@ commutative diff : (system-transitioned and mapped) vs (mapped and model-transit
     fn transition_commutes_with_generation(
         mut self,
         runner: &mut impl Generator,
-        mut machine: Self::Model,
+        machine: Self::Model,
         x: StateOf<Self::Model>,
         event: ActionOf<Self::Model>,
     ) {
