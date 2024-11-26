@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fmt::Debug,
+    fmt::{Debug, Display},
 };
 
 use anyhow::{anyhow, bail};
@@ -9,7 +9,7 @@ use polestar::{ext::MapExt, id::Id, Machine, TransitionResult};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    op_family::{OpFamilyAction, OpFamilyMachine, OpFamilyPhase, OpFamilyState},
+    op_family::{OpFamilyAction, OpFamilyMachine, OpFamilyPhase, OpFamilyState, OpId},
     op_single::{OpAction, OpPhase, ValidationType},
 };
 
@@ -57,7 +57,7 @@ impl<N: Id, O: Id, T: Id> Machine for OpNetworkMachine<N, O, T> {
                     let any_integrated = nodes
                         .get(&from)
                         .ok_or(anyhow!("no node"))?
-                        .find_integrated(op.0)
+                        .all_integrated(op.0)
                         .any(|v| v.is_valid());
 
                     if !any_integrated {
@@ -93,7 +93,7 @@ impl<N: Id, O: Id, T: Id> OpNetworkMachine<N, O, T> {
 
     pub fn new_bounded(
         nodes: impl IntoIterator<Item = N>,
-        ops: impl IntoIterator<Item = (O, T)>,
+        ops: impl IntoIterator<Item = OpId<O, T>>,
     ) -> Self {
         Self {
             inner: OpFamilyMachine::new_bounded(ops),
@@ -148,11 +148,11 @@ pub type OpNetworkMachineAction<N, O, T> = (N, OpNetworkAction<N, O, T>);
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Exhaustive, Serialize, Deserialize)]
 pub enum OpNetworkAction<N: Id, O: Id, T: Id> {
     Local {
-        op: (O, T),
+        op: OpId<O, T>,
         action: OpFamilyAction<O>,
     },
     Receive {
-        op: (O, T),
+        op: OpId<O, T>,
         from: N,
         valid: bool,
     },
@@ -193,14 +193,10 @@ impl<N: Id, O: Id, T: Id> Debug for OpNetworkEdgePretty<N, O, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let Self(node, action) = self;
         match action {
-            OpNetworkAction::Local { op: (a, t), action } => {
-                write!(f, "[{node}, {a}.{t}] {action:?}",)?
+            OpNetworkAction::Local { op, action } => write!(f, "[{node}, {op}] {action:?}",)?,
+            OpNetworkAction::Receive { op, from, valid } => {
+                write!(f, "{node} ↢ {from}: Recv({op}, {valid})",)?
             }
-            OpNetworkAction::Receive {
-                op: (a, t),
-                from,
-                valid,
-            } => write!(f, "{node} ↢ {from}: Recv({a}.{t}, {valid})",)?,
         }
         Ok(())
     }
@@ -226,7 +222,7 @@ mod tests {
         type T = IdU8<1>;
 
         let ns = N::all_values();
-        let ops = <(O, T)>::iter_exhaustive(None).collect_vec();
+        let ops = <OpId<O, T>>::iter_exhaustive(None).collect_vec();
 
         // Create an instance of OpMachine with 1 dependency
         let machine: OpNetworkMachine<N, O, T> = OpNetworkMachine::new_bounded(ns, ops);

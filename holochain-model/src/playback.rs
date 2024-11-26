@@ -10,13 +10,16 @@ fn test_playback() {
     type T = u8;
     // let path = "/home/michael/Holo/chain/crates/holochain/op_events.json";
     let path = "/tmp/op-events.json";
+    // let path = "/home/michael/proj/polestar-rs/op-events.json";
     let text = std::fs::read_to_string(path).unwrap();
     let text = text.lines().join(",");
     let json = format!("[{}]", text);
 
     let actions: Vec<OpNetworkMachineAction<N, O, T>> = serde_json::from_str(&json).unwrap();
 
-    dbg!(&actions);
+    for a in actions.iter() {
+        println!("{a:?}");
+    }
 
     let machine = OpNetworkMachine::<N, O, T>::new();
 

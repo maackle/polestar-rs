@@ -31,12 +31,12 @@ use crate::op_single::{OpAction, OpPhase, OpSingleMachine, Outcome, ValidationTy
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct OpFamilyMachine<O: Id, T: Id> {
     /// All ops covered, including the root
-    pub deps: Option<BTreeSet<(O, T)>>,
+    pub deps: Option<BTreeSet<OpId<O, T>>>,
 }
 
 impl<O: Id, T: Id> Machine for OpFamilyMachine<O, T> {
     type State = OpFamilyState<O, T>;
-    type Action = ((O, T), OpFamilyAction<O>);
+    type Action = (OpId<O, T>, OpFamilyAction<O>);
     type Fx = ();
     type Error = anyhow::Error;
 
@@ -151,7 +151,7 @@ impl<O: Id, T: Id> OpFamilyMachine<O, T> {
         Self { deps: None }
     }
 
-    pub fn new_bounded(deps: impl IntoIterator<Item = (O, T)>) -> Self {
+    pub fn new_bounded(deps: impl IntoIterator<Item = OpId<O, T>>) -> Self {
         Self {
             deps: Some(deps.into_iter().collect()),
         }
@@ -177,7 +177,7 @@ impl<O: Id, T: Id> OpFamilyMachine<O, T> {
 */
 
 #[derive(Clone, PartialEq, Eq, Hash, derive_more::Deref, derive_more::DerefMut)]
-pub struct OpFamilyState<A: Id, T: Id>(BTreeMap<(A, T), OpFamilyPhase<A>>);
+pub struct OpFamilyState<A: Id, T: Id>(BTreeMap<OpId<A, T>, OpFamilyPhase<A>>);
 
 impl<A: Id, T: Id> Default for OpFamilyState<A, T> {
     fn default() -> Self {
@@ -190,19 +190,21 @@ impl<A: Id, T: Id> OpFamilyState<A, T> {
     /// Works for getting all ops of a given action.
     /// Assumes that the default value is also the minimum!
     /// TODO: use Min instead of Default
-    pub fn iter_from(&self, key: A) -> impl Iterator<Item = (&(A, T), &OpFamilyPhase<A>)> {
-        self.range((key, T::default())..)
+    pub fn iter_from(&self, key: A) -> impl Iterator<Item = (&OpId<A, T>, &OpFamilyPhase<A>)> {
+        self.range(OpId(key, T::default())..)
             .take_while(move |(k, _)| k.0 == key)
     }
 
-    pub fn find_awaiting(&self, key: A) -> impl Iterator<Item = A> + '_ {
+    /// For every op with the given dep key whose status is Awaiting,
+    /// return the awaited deps
+    pub fn all_awaiting(&self, key: A) -> impl Iterator<Item = A> + '_ {
         self.iter_from(key)
             .filter_map(move |(_, v)| v.try_unwrap_awaiting().ok().map(|(_, dep)| dep))
     }
 
     /// Returns true for every Integrated (valid) op,
     /// and false for every Rejected op
-    pub fn find_integrated(&self, key: A) -> impl Iterator<Item = Outcome> + '_ {
+    pub fn all_integrated(&self, key: A) -> impl Iterator<Item = Outcome> + '_ {
         self.iter_from(key).filter_map(|(_, v)| match v {
             OpFamilyPhase::Op(OpPhase::Integrated(o)) => Some(*o),
             _ => None,
@@ -213,8 +215,8 @@ impl<A: Id, T: Id> OpFamilyState<A, T> {
 impl<A: Id, T: Id> Debug for OpFamilyState<A, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut l = f.debug_list();
-        for ((a, t), phase) in self.iter() {
-            l.entry(&format_args!("{a}.{t}: {phase:?}"));
+        for (id, phase) in self.iter() {
+            l.entry(&format_args!("{id}: {phase:?}"));
         }
         l.finish()
     }
@@ -239,6 +241,34 @@ impl<O: Id> OpFamilyPhase<O> {
             self,
             OpFamilyPhase::Op(p) if p.is_definitely_valid()
         )
+    }
+}
+
+#[derive(
+    Clone,
+    Copy,
+    // Debug,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Exhaustive,
+    Serialize,
+    Deserialize,
+    derive_more::From,
+)]
+pub struct OpId<O, T>(pub O, pub T);
+
+impl<O: Id, T: Id> std::fmt::Display for OpId<O, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}.{}", self.0, self.1)
+    }
+}
+
+impl<O: Id, T: Id> Debug for OpId<O, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "OpId({}.{})", self.0, self.1)
     }
 }
 
@@ -270,7 +300,7 @@ fn detect_loop<O: Id, T: Id>(state: &OpFamilyState<O, T>, id: O) -> bool {
     let mut visited = HashSet::new();
     let mut next = vec![id];
     while let Some(id) = next.pop() {
-        for dep in state.find_awaiting(id) {
+        for dep in state.all_awaiting(id) {
             if !visited.insert(dep) {
                 return true;
             }
@@ -299,8 +329,8 @@ pub struct OpFamilyStatePretty<A: Id, T: Id>(pub OpFamilyState<A, T>);
 
 impl<A: Id, T: Id> Debug for OpFamilyStatePretty<A, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for ((id, t), state) in self.0.iter() {
-            writeln!(f, "{id}.{t} = {state}")?;
+        for (id, state) in self.0.iter() {
+            writeln!(f, "{id} = {state}")?;
         }
         Ok(())
     }
@@ -328,15 +358,18 @@ mod tests {
         type A = IdU8<3>;
         type T = IdU8<1>;
 
-        let awaiting = |(a, t): (A, T), b: A| {
-            P::atom(
-                format!("{a}.{t} awaits {b}"),
-                move |s: &OpFamilyState<A, T>| {
-                    s.get(&(a, t))
-                        .map(|p| matches!(p, OpFamilyPhase::Awaiting(_, d) if *d == b))
-                        .unwrap_or(false)
-                },
-            )
+        let op_awaiting = |o: OpId<A, T>, b: A| {
+            P::atom(format!("{o} awaits {b}"), move |s: &OpFamilyState<A, T>| {
+                s.get(&o)
+                    .map(|p| matches!(p, OpFamilyPhase::Awaiting(_, d) if *d == b))
+                    .unwrap_or(false)
+            })
+        };
+
+        let dep_any_awaiting = |a: A, b: A| {
+            P::atom(format!("{a} awaits {b}"), move |s: &OpFamilyState<A, T>| {
+                s.all_awaiting(a).any(|d| d == b)
+            })
         };
 
         // let awaiting = |a: A, b: A| {
@@ -345,35 +378,28 @@ mod tests {
         //     })
         // };
 
-        let op_integrated = |(a, t)| {
-            P::atom(
-                format!("{a}.{t} integrated"),
-                move |s: &OpFamilyState<A, T>| {
-                    s.get(&(a, t))
-                        .map(|p| {
-                            matches!(p, OpFamilyPhase::Op(OpPhase::Integrated(Outcome::Accepted)))
-                        })
-                        .unwrap_or(false)
-                },
-            )
+        let op_integrated = |o: OpId<A, T>| {
+            P::atom(format!("{o} integrated"), move |s: &OpFamilyState<A, T>| {
+                s.get(&o)
+                    .map(|p| matches!(p, OpFamilyPhase::Op(OpPhase::Integrated(Outcome::Accepted))))
+                    .unwrap_or(false)
+            })
         };
 
         let action_integrated = |a| {
             T::iter_exhaustive(None)
                 .map(|t| {
-                    P::atom(
-                        format!("{a}.{t} integrated"),
-                        move |s: &OpFamilyState<A, T>| {
-                            s.get(&(a, t))
-                                .map(|p| {
-                                    matches!(
-                                        p,
-                                        OpFamilyPhase::Op(OpPhase::Integrated(Outcome::Accepted))
-                                    )
-                                })
-                                .unwrap_or(false)
-                        },
-                    )
+                    let o = OpId(a, t);
+                    P::atom(format!("{o} integrated"), move |s: &OpFamilyState<A, T>| {
+                        s.get(&o)
+                            .map(|p| {
+                                matches!(
+                                    p,
+                                    OpFamilyPhase::Op(OpPhase::Integrated(Outcome::Accepted))
+                                )
+                            })
+                            .unwrap_or(false)
+                    })
                 })
                 .reduce(P::or)
                 .unwrap()
@@ -381,14 +407,16 @@ mod tests {
 
         let machine: OpFamilyMachine<A, T> = OpFamilyMachine::new();
 
-        let predicates = <(A, T)>::iter_exhaustive(None)
-            .flat_map(|(a, t)| {
+        let predicates = <OpId<A, T>>::iter_exhaustive(None)
+            .flat_map(|o| {
                 A::iter_exhaustive(None).flat_map(move |b| {
+                    // let all_b = T::iter_exhaustive(None).map(|t| OpId(b, t)).reduce(P::)
                     [
-                        P::always(awaiting((a, t), b).implies(P::not(awaiting((b, t), a)))),
-                        P::always(awaiting((a, t), b).implies(P::always(
-                            op_integrated((a, t)).implies(action_integrated(b)),
-                        ))),
+                        P::always(op_awaiting(o, b).implies(P::not(dep_any_awaiting(b, o.0)))),
+                        P::always(
+                            op_awaiting(o, b)
+                                .implies(P::always(op_integrated(o).implies(action_integrated(b)))),
+                        ),
                     ]
                 })
             })
@@ -499,9 +527,9 @@ mod tests {
 
         let state = OpFamilyState(
             [
-                ((o[1], t[0]), OpFamilyPhase::Awaiting(v, o[2])),
-                ((o[0], t[1]), OpFamilyPhase::Awaiting(v, o[1])),
-                ((o[2], t[0]), OpFamilyPhase::Op(OpPhase::Stored)),
+                ((o[1], t[0]).into(), OpFamilyPhase::Awaiting(v, o[2])),
+                ((o[0], t[1]).into(), OpFamilyPhase::Awaiting(v, o[1])),
+                ((o[2], t[0]).into(), OpFamilyPhase::Op(OpPhase::Stored)),
             ]
             .into_iter()
             .collect(),
@@ -510,9 +538,9 @@ mod tests {
 
         let state = OpFamilyState(
             [
-                ((o[0], t[1]), OpFamilyPhase::Awaiting(v, o[1])),
-                ((o[1], t[0]), OpFamilyPhase::Awaiting(v, o[2])),
-                ((o[2], t[1]), OpFamilyPhase::Awaiting(v, o[0])),
+                ((o[0], t[1]).into(), OpFamilyPhase::Awaiting(v, o[1])),
+                ((o[1], t[0]).into(), OpFamilyPhase::Awaiting(v, o[2])),
+                ((o[2], t[1]).into(), OpFamilyPhase::Awaiting(v, o[0])),
             ]
             .into_iter()
             .collect(),
