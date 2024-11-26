@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     op_family::{OpFamilyAction, OpFamilyMachine, OpFamilyPhase, OpFamilyState, OpId},
-    op_single::{OpAction, OpPhase, ValidationType},
+    op_single::{OpAction, OpPhase, Outcome, ValidationType},
 };
 
 /*
@@ -54,11 +54,28 @@ impl<N: Id, O: Id, T: Id> Machine for OpNetworkMachine<N, O, T> {
                     self.inner.transition(node_state, (op, action))
                 }
                 OpNetworkAction::Receive { op, from, valid } => {
+                    // BUG: technically we should wait for validation before
+                    // receiving, but we don't currently check for that.
+                    // we only require that the op is valid.
                     let any_integrated = nodes
                         .get(&from)
                         .ok_or(anyhow!("no node"))?
-                        .all_integrated(op.0)
-                        .any(|v| v.is_valid());
+                        .iter_from(op.0)
+                        .any(|(_, v)| {
+                            matches!(
+                                v,
+                                OpFamilyPhase::Op(
+                                    OpPhase::Integrated(Outcome::Accepted)
+                                        | OpPhase::Validated(ValidationType::App)
+                                )
+                            )
+                        });
+
+                    // let any_integrated = nodes
+                    //     .get(&from)
+                    //     .ok_or(anyhow!("no node"))?
+                    //     .all_integrated(op.0)
+                    //     .any(|v| v.is_valid());
 
                     if !any_integrated {
                         bail!("can't receive op if target has not integrated")

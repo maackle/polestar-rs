@@ -27,7 +27,8 @@ fn test_playback() {
 
     match machine.apply_actions_(initial, actions) {
         Err((e, s, a)) => {
-            panic!("{} state: {:#?}, action: {:#?}", e, s, a);
+            eprintln!("state: {:#?}, action: {:#?}", s, a);
+            panic!("{e:?}");
         }
         Ok(state) => {
             dbg!(&state);
