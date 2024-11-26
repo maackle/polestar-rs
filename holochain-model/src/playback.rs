@@ -7,17 +7,18 @@ use crate::op_network::{OpNetworkMachine, OpNetworkMachineAction};
 fn test_playback() {
     type N = u32;
     type O = u32;
+    type T = u8;
     // let path = "/home/michael/Holo/chain/crates/holochain/op_events.json";
     let path = "/tmp/op_events.json";
     let text = std::fs::read_to_string(path).unwrap();
     let text = text.lines().join(",");
     let json = format!("[{}]", text);
 
-    let actions: Vec<OpNetworkMachineAction<N, O>> = serde_json::from_str(&json).unwrap();
+    let actions: Vec<OpNetworkMachineAction<N, O, T>> = serde_json::from_str(&json).unwrap();
 
     dbg!(&actions);
 
-    let machine = OpNetworkMachine::<N, O>::new();
+    let machine = OpNetworkMachine::<N, O, T>::new();
 
     let initial = machine.initial();
 

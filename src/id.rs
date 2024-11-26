@@ -1,5 +1,6 @@
 use std::{collections::HashMap, hash::Hash};
 
+use derive_more::derive::Display;
 use proptest::prelude::{BoxedStrategy, Strategy};
 use proptest_derive::Arbitrary;
 
@@ -45,6 +46,7 @@ impl<const N: usize> proptest::arbitrary::Arbitrary for UpTo<N> {
 pub trait Id:
     Clone
     + Copy
+    + Default
     + PartialEq
     + Eq
     + PartialOrd
@@ -62,7 +64,39 @@ impl Id for u32 {}
 impl Id for u64 {}
 impl Id for usize {}
 
-// pub trait Id: IdLike + Arbitrary + Exhaustive {}
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Arbitrary,
+    exhaustive::Exhaustive,
+)]
+pub struct IdUnit;
+
+impl Id for IdUnit {}
+
+impl std::fmt::Display for IdUnit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "∅")
+    }
+}
+
+impl TryFrom<usize> for IdUnit {
+    type Error = String;
+    fn try_from(x: usize) -> Result<Self, Self::Error> {
+        if x == 0 {
+            Ok(IdUnit)
+        } else {
+            Err(format!("Cannot use {x} for IdUnit"))
+        }
+    }
+}
 
 impl<const N: usize> Id for IdU8<N> {}
 // impl<const N: usize> Id for IdU8<N> {}
@@ -70,6 +104,7 @@ impl<const N: usize> Id for IdU8<N> {}
 #[derive(
     Clone,
     Copy,
+    Default,
     PartialEq,
     Eq,
     PartialOrd,

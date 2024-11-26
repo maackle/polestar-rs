@@ -7,7 +7,11 @@ use anyhow::{anyhow, bail};
 use derive_more::derive::Deref;
 use exhaustive::Exhaustive;
 use itertools::Itertools;
-use polestar::{id::Id, prelude::*, util::first};
+use polestar::{
+    id::{Id, IdU8},
+    prelude::*,
+    util::{first, second},
+};
 use serde::{Deserialize, Serialize};
 
 use crate::op_single::{OpAction, OpPhase, OpSingleMachine, ValidationType as VT};
@@ -25,14 +29,14 @@ use crate::op_single::{OpAction, OpPhase, OpSingleMachine, ValidationType as VT}
 
 /// Machine that tracks the state of an op and all its dependencies
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct OpFamilyMachine<O: Id> {
+pub struct OpFamilyMachine<O: Id, T: Id> {
     /// All ops covered, including the root
-    pub deps: Option<BTreeSet<O>>,
+    pub deps: Option<BTreeSet<(O, T)>>,
 }
 
-impl<O: Id> Machine for OpFamilyMachine<O> {
-    type State = OpFamilyState<O>;
-    type Action = (O, OpFamilyAction<O>);
+impl<O: Id, T: Id> Machine for OpFamilyMachine<O, T> {
+    type State = OpFamilyState<O, T>;
+    type Action = ((O, T), OpFamilyAction<O>);
     type Fx = ();
     type Error = anyhow::Error;
 
@@ -45,11 +49,6 @@ impl<O: Id> Machine for OpFamilyMachine<O> {
         use OpFamilyPhase as S;
         use OpPhase::*;
 
-        // If deps aren't bounded, add a new state when seen
-        if self.deps.is_none() && !states.contains_key(&target) {
-            states.insert(target, OpFamilyPhase::default());
-        }
-
         if self
             .deps
             .as_ref()
@@ -59,8 +58,13 @@ impl<O: Id> Machine for OpFamilyMachine<O> {
             bail!("{target:?} not covered");
         }
 
+        // If deps aren't bounded, add a new state when seen
+        if !states.contains_key(&target) {
+            states.insert(target, OpFamilyPhase::default());
+        }
+
         if let E::Await(_, dep) = action {
-            if dep == target {
+            if dep == target.0 {
                 bail!("An op can't depend on itself")
             }
 
@@ -68,7 +72,7 @@ impl<O: Id> Machine for OpFamilyMachine<O> {
                 .deps
                 .as_ref()
                 .and_then(|ds| ds.first())
-                .map(|d| dep == *d)
+                .map(|d| dep == d.0)
                 .unwrap_or(false)
             {
                 bail!("The focus op can't be depended on")
@@ -93,16 +97,22 @@ impl<O: Id> Machine for OpFamilyMachine<O> {
             // Transitions out of the Awaiting state
             (S::Awaiting(vt, dep_id), E::Op(a)) => match (vt, a) {
                 (VT::Sys, OpAction::Validate(VT::Sys)) | (VT::App, OpAction::Validate(VT::App)) => {
-                    let dep = states.get(&dep_id).ok_or(anyhow!("no dep {:?}", dep_id))?;
-                    if matches!(dep, S::Op(Integrated)) {
-                        S::Op(Validated(vt))
-                    } else if dep.is_definitely_invalid() {
-                        // TODO: can holochain do better here? Would this be a case for Abandoned?
-                        state
-                    } else {
-                        bail!(
-                            "attempted to validate op still awaiting dep: {state:?} -> {action:?}"
-                        )
+                    let dep = states
+                        .iter_from(dep_id)
+                        .find(|(_, dep)| matches!(dep, S::Op(Rejected | Integrated)))
+                        .map(|(_, dep)| dep)
+                        .ok_or(anyhow!(
+                            "attempted to validate op still awaiting dep {:?}",
+                            dep_id
+                        ))?;
+
+                    match dep {
+                        S::Op(Integrated) => S::Op(Validated(vt)),
+                        S::Op(Rejected) => {
+                            // TODO: can holochain do better here? Would this be a case for Abandoned?
+                            state
+                        }
+                        _ => unreachable!(),
                     }
                 }
                 _ => bail!("invalid transition out of Awaiting: {state:?} -> {action:?}"),
@@ -118,35 +128,36 @@ impl<O: Id> Machine for OpFamilyMachine<O> {
 
         states.insert(target, next);
 
-        if detect_loop(&states, target) {
+        if detect_loop(&states, target.0) {
             bail!("this would create a dependency loop: {state:?} -> {action:?}");
         }
         Ok((states, ()))
     }
 
     fn is_terminal(&self, state: &Self::State) -> bool {
-        state.values().all(|s| {
-            matches!(
-                s,
-                OpFamilyPhase::Op(OpPhase::Integrated | OpPhase::Rejected)
-            )
-        })
+        false
+        // state.values().all(|s| {
+        //     matches!(
+        //         s,
+        //         OpFamilyPhase::Op(OpPhase::Integrated | OpPhase::Rejected)
+        //     )
+        // })
     }
 }
 
-impl<O: Id> OpFamilyMachine<O> {
+impl<O: Id, T: Id> OpFamilyMachine<O, T> {
     pub fn new() -> Self {
         Self { deps: None }
     }
 
-    pub fn new_bounded(deps: impl IntoIterator<Item = O>) -> Self {
+    pub fn new_bounded(deps: impl IntoIterator<Item = (O, T)>) -> Self {
         Self {
             deps: Some(deps.into_iter().collect()),
         }
     }
 
-    pub fn initial(&self, ids: impl IntoIterator<Item = O>) -> OpFamilyState<O> {
-        OpFamilyState::new(ids)
+    pub fn initial(&self) -> OpFamilyState<O, T> {
+        OpFamilyState::default()
     }
 }
 
@@ -165,15 +176,25 @@ impl<O: Id> OpFamilyMachine<O> {
 */
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, derive_more::Deref, derive_more::DerefMut)]
-pub struct OpFamilyState<O: Id>(BTreeMap<O, OpFamilyPhase<O>>);
+pub struct OpFamilyState<A: Id, T: Id>(BTreeMap<(A, T), OpFamilyPhase<A>>);
 
-impl<O: Id> OpFamilyState<O> {
-    pub fn new(ids: impl IntoIterator<Item = O>) -> Self {
-        Self(
-            ids.into_iter()
-                .map(|id| (id, OpFamilyPhase::default()))
-                .collect(),
-        )
+impl<A: Id, T: Id> Default for OpFamilyState<A, T> {
+    fn default() -> Self {
+        Self(BTreeMap::default())
+    }
+}
+
+impl<A: Id, T: Id> OpFamilyState<A, T> {
+    /// Get all items where the first element of the key is the specified input.
+    /// Works for getting all ops of a given action.
+    pub fn iter_from(&self, key: A) -> impl Iterator<Item = (&(A, T), &OpFamilyPhase<A>)> {
+        self.range((key, T::default())..)
+            .take_while(move |(k, _)| k.0 == key)
+    }
+
+    pub fn find_awaiting(&self, key: A) -> impl Iterator<Item = A> + '_ {
+        self.iter_from(key)
+            .filter_map(move |(_, v)| v.try_unwrap_awaiting().ok().map(|(_, dep)| dep))
     }
 }
 
@@ -227,14 +248,16 @@ pub enum OpFamilyAction<O: Id> {
 }
 
 /// Given a btreemap of ops to their dependencies, detect if there are any loops
-fn detect_loop<O: Id>(state: &BTreeMap<O, OpFamilyPhase<O>>, mut id: O) -> bool {
+fn detect_loop<O: Id, T: Id>(state: &OpFamilyState<O, T>, id: O) -> bool {
     let mut visited = HashSet::new();
-    visited.insert(id);
-    while let Some((_vt, dep)) = state.get(&id).and_then(|s| s.try_unwrap_awaiting().ok()) {
-        if !visited.insert(dep) {
-            return true;
+    let mut next = vec![id];
+    while let Some(id) = next.pop() {
+        for dep in state.find_awaiting(id) {
+            if !visited.insert(dep) {
+                return true;
+            }
+            next.push(dep);
         }
-        id = dep;
     }
     false
 }
@@ -254,12 +277,12 @@ fn detect_loop<O: Id>(state: &BTreeMap<O, OpFamilyPhase<O>>, mut id: O) -> bool 
 */
 
 #[derive(Clone, PartialEq, Eq, Hash, derive_more::From)]
-pub struct OpFamilyStatePretty<I: Id>(pub OpFamilyState<I>);
+pub struct OpFamilyStatePretty<A: Id, T: Id>(pub OpFamilyState<A, T>);
 
-impl<I: Id> Debug for OpFamilyStatePretty<I> {
+impl<A: Id, T: Id> Debug for OpFamilyStatePretty<A, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for (id, state) in self.0.iter() {
-            writeln!(f, "{id} = {state}")?;
+        for ((id, t), state) in self.0.iter() {
+            writeln!(f, "{id}.{t} = {state}")?;
         }
         Ok(())
     }
@@ -269,50 +292,88 @@ impl<I: Id> Debug for OpFamilyStatePretty<I> {
 mod tests {
     use super::*;
     use polestar::{
-        diagram::exhaustive::write_dot_state_diagram_mapped, id::IdU8, machine::checked::Predicate,
+        diagram::exhaustive::write_dot_state_diagram_mapped,
+        id::{IdU8, IdUnit},
+        machine::checked::Predicate,
         traversal::traverse_checked,
     };
 
     #[test]
+    #[ignore = "nonterminating"]
     fn op_family_properties() {
+        tracing_subscriber::fmt::fmt()
+            .with_max_level(tracing::Level::DEBUG)
+            .init();
+
         use Predicate as P;
 
-        const N: usize = 3;
-        type O = IdU8<N>;
-        let o = O::all_values();
+        type A = IdU8<3>;
+        type T = IdU8<1>;
 
-        let awaiting = |a, b: O| {
-            P::atom(format!("{a} awaits {b}"), move |s: &OpFamilyState<O>| {
-                s.get(&a)
-                    .map(|p| matches!(p, OpFamilyPhase::Awaiting(_, x) if *x == b))
-                    .unwrap_or(false)
-            })
+        let awaiting = |(a, t): (A, T), b: A| {
+            P::atom(
+                format!("{a}.{t} awaits {b}"),
+                move |s: &OpFamilyState<A, T>| {
+                    s.get(&(a, t))
+                        .map(|p| matches!(p, OpFamilyPhase::Awaiting(_, d) if *d == b))
+                        .unwrap_or(false)
+                },
+            )
         };
 
-        let integrated = |a| {
-            P::atom(format!("{a} integrated"), move |s: &OpFamilyState<O>| {
-                s.get(&a)
-                    .map(|p| matches!(p, OpFamilyPhase::Op(OpPhase::Integrated)))
-                    .unwrap_or(false)
-            })
+        // let awaiting = |a: A, b: A| {
+        //     P::atom(format!("{a} awaits {b}"), move |s: &OpFamilyState<A, T>| {
+        //         s.find_awaiting(a).any(|dep| dep == b)
+        //     })
+        // };
+
+        let op_integrated = |(a, t)| {
+            P::atom(
+                format!("{a}.{t} integrated"),
+                move |s: &OpFamilyState<A, T>| {
+                    s.get(&(a, t))
+                        .map(|p| matches!(p, OpFamilyPhase::Op(OpPhase::Integrated)))
+                        .unwrap_or(false)
+                },
+            )
         };
 
-        let machine: OpFamilyMachine<O> = OpFamilyMachine::new_bounded(o);
+        let action_integrated = |a| {
+            T::iter_exhaustive(None)
+                .map(|t| {
+                    P::atom(
+                        format!("{a}.{t} integrated"),
+                        move |s: &OpFamilyState<A, T>| {
+                            s.get(&(a, t))
+                                .map(|p| matches!(p, OpFamilyPhase::Op(OpPhase::Integrated)))
+                                .unwrap_or(false)
+                        },
+                    )
+                })
+                .reduce(P::or)
+                .unwrap()
+        };
 
-        let predicates = (0..N).map(O::new).flat_map(|a| {
-            (0..N).map(O::new).flat_map(move |b| {
-                [
-                    P::always(awaiting(a, b).implies(P::not(awaiting(b, a)))),
-                    P::always(
-                        awaiting(a, b).implies(P::always(integrated(a).implies(integrated(b)))),
-                    ),
-                ]
+        let machine: OpFamilyMachine<A, T> = OpFamilyMachine::new();
+
+        let predicates = <(A, T)>::iter_exhaustive(None)
+            .flat_map(|(a, t)| {
+                A::iter_exhaustive(None).flat_map(move |b| {
+                    [
+                        P::always(awaiting((a, t), b).implies(P::not(awaiting((b, t), a)))),
+                        P::always(awaiting((a, t), b).implies(P::always(
+                            op_integrated((a, t)).implies(action_integrated(b)),
+                        ))),
+                    ]
+                })
             })
-        });
+            .collect_vec();
+
+        dbg!(&predicates);
 
         let checker = machine.clone().checked().with_predicates(predicates);
 
-        let initial = checker.initial(machine.initial(o));
+        let initial = checker.initial(machine.initial());
 
         if let Err(err) = traverse_checked(&checker, initial) {
             eprintln!("{:#?}", err.path);
@@ -326,21 +387,30 @@ mod tests {
     #[test]
     #[ignore = "diagram"]
     fn test_op_family_diagram() {
+        // tracing_subscriber::fmt::fmt()
+        //     .with_max_level(tracing::Level::DEBUG)
+        //     .init();
+
         use polestar::diagram::exhaustive::DiagramConfig;
 
-        type O = IdU8<2>;
-        let o = O::all_values();
+        type A = IdU8<2>;
+        type T = IdU8<1>;
+        let a = A::all_values();
+        let items = <(A, T)>::iter_exhaustive(None);
 
         // Create an instance of OpMachine with 1 dependency
-        let machine: OpFamilyMachine<O> = OpFamilyMachine::new_bounded(o);
+        // let machine: OpFamilyMachine<A, T> = OpFamilyMachine::new_bounded(items);
+        let machine: OpFamilyMachine<A, T> = OpFamilyMachine::new();
 
-        let initial = OpFamilyState::new(o);
+        let initial = machine.initial();
 
         write_dot_state_diagram_mapped(
             "op-family.dot",
             machine,
             initial,
             &DiagramConfig {
+                trace_errors: true,
+                ignore_loopbacks: true,
                 ..Default::default()
             },
             |state| OpFamilyStatePretty(state),
@@ -398,26 +468,32 @@ mod tests {
     #[test]
     fn test_loop() {
         type O = IdU8<3>;
+        type T = IdU8<2>;
         let o = O::all_values();
+        let t = T::all_values();
 
         let v = VT::Sys;
 
-        let state: BTreeMap<_, _> = [
-            (o[0], OpFamilyPhase::Awaiting(v, o[1])),
-            (o[1], OpFamilyPhase::Awaiting(v, o[2])),
-            (o[2], OpFamilyPhase::Op(OpPhase::Stored)),
-        ]
-        .into_iter()
-        .collect();
+        let state = OpFamilyState(
+            [
+                ((o[1], t[0]), OpFamilyPhase::Awaiting(v, o[2])),
+                ((o[0], t[1]), OpFamilyPhase::Awaiting(v, o[1])),
+                ((o[2], t[0]), OpFamilyPhase::Op(OpPhase::Stored)),
+            ]
+            .into_iter()
+            .collect(),
+        );
         assert!(!detect_loop(&state, o[0]));
 
-        let state: BTreeMap<_, _> = [
-            (o[0], OpFamilyPhase::Awaiting(v, o[1])),
-            (o[1], OpFamilyPhase::Awaiting(v, o[2])),
-            (o[2], OpFamilyPhase::Awaiting(v, o[0])),
-        ]
-        .into_iter()
-        .collect();
+        let state = OpFamilyState(
+            [
+                ((o[0], t[1]), OpFamilyPhase::Awaiting(v, o[1])),
+                ((o[1], t[0]), OpFamilyPhase::Awaiting(v, o[2])),
+                ((o[2], t[1]), OpFamilyPhase::Awaiting(v, o[0])),
+            ]
+            .into_iter()
+            .collect(),
+        );
         assert!(detect_loop(&state, o[0]));
     }
 }

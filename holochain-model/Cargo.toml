@@ -12,6 +12,8 @@ itertools = "*"
 polestar = { version = "*", path = "/home/michael/proj/polestar-rs" }
 proptest = "1"
 proptest-derive = "0"
+tracing = "*"
+tracing-subscriber = "*"
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "*"

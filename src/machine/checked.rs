@@ -64,11 +64,10 @@ where
     }
 }
 
-#[derive(Debug, derive_more::From)]
+#[derive(Debug)]
 #[cfg_attr(test, derive(derive_more::Unwrap))]
 pub enum CheckerError<A: Clone, E> {
     Predicate(PredicateError<A>),
-    #[from]
     Machine(E),
 }
 
@@ -120,7 +119,12 @@ impl<M: Machine> Checker<M> {
         let s = self.initial(initial);
         let (end, _) = self
             .apply_actions(s, actions)
-            .map_err(|(e, s, a)| anyhow!("{:?} state: {:?}, action: {:?}", e, s.state, a))?;
+            .map_err(|(e, s, a)| match e {
+                CheckerError::Predicate(e) => CheckerError::Predicate(e),
+                CheckerError::Machine(e) => {
+                    CheckerError::Machine(anyhow!("{:?} state: {:?}, action: {:?}", e, s.state, a))
+                }
+            })?;
         end.finalize()
             .map_err(|(error, path)| CheckerError::Predicate(PredicateError { error, path }))
     }
@@ -175,7 +179,10 @@ where
         let prev = state.state;
         let mut predicates = state.predicates;
         let mut path = state.path;
-        let (next, fx) = self.machine.transition(prev.clone(), action.clone())?;
+        let (next, fx) = self
+            .machine
+            .transition(prev.clone(), action.clone())
+            .map_err(CheckerError::Machine)?;
         path.push_back(action);
         predicates.step((&prev, &next)).map_err(|error| {
             CheckerError::Predicate(PredicateError {
@@ -239,7 +246,7 @@ impl<S: std::fmt::Debug> Predicates<S> {
                 (old, new),
             ) {
                 return Err(format!(
-                    "Predicate failed: '{name}'. Transition: {old:?} -> {new:?}"
+                    "Predicate failed: '{name}'.\nTransition: {old:#?} -> {new:#?}"
                 ));
             }
         }
@@ -474,6 +481,9 @@ mod tests {
         let big = P::atom("20-and-up".to_string(), |s: &u8| *s >= 20);
         let reallybig = P::atom("100-and-up".to_string(), |s: &u8| *s >= 100);
         let not_teens = small.clone().or(big.clone());
+
+        let redundant = P::or(reallybig.clone(), reallybig.clone());
+
         let checker = Mach.checked().with_predicates([
             P::always(even.clone().implies(P::next(P::not(even.clone())))),
             P::always(P::not(even.clone()).implies(P::next(even.clone()))),
@@ -484,9 +494,16 @@ mod tests {
         checker.check_fold(0, [1, 2, 3, 108, 21]).unwrap();
 
         let err = checker.check_fold(0, [1, 2, 3, 23, 21]).unwrap_err();
+        dbg!(&err);
         assert_eq!(err.unwrap_predicate().path, vector![1, 2, 3, 23]);
 
         let err = checker.check_fold(1, [2, 12, 33]).unwrap_err();
+        dbg!(&err);
         assert_eq!(err.unwrap_predicate().path, vector![2, 12]);
+
+        Mach.checked()
+            .with_predicates([P::always(redundant)])
+            .check_fold(0, [100])
+            .unwrap();
     }
 }

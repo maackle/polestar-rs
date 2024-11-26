@@ -19,6 +19,7 @@ pub struct TraversalConfig<E> {
     pub max_depth: Option<usize>,
     pub max_iters: Option<usize>,
     pub ignore_loopbacks: bool,
+    pub trace_error: bool,
     pub is_fatal_error: Option<Arc<dyn Fn(&E) -> bool>>,
 }
 
@@ -29,6 +30,7 @@ impl<E> Default for TraversalConfig<E> {
             max_depth: None,
             max_iters: None,
             ignore_loopbacks: false,
+            trace_error: false,
             is_fatal_error: None,
         }
     }
@@ -68,6 +70,7 @@ where
     M: Machine + Debug,
     M::State: Clone + Eq + Hash + Debug,
     M::Action: Exhaustive + Clone + Eq + Hash + Debug,
+    M::Error: Debug,
 {
     let config = TraversalConfig::default().stop_on_checker_error();
     let (terminals, report) = traverse(machine, initial, &config).map_err(|e| match e {
@@ -106,6 +109,7 @@ where
     M: Machine,
     M::State: Clone + Eq + Hash,
     M::Action: Exhaustive + Clone + Eq + Hash + Debug,
+    M::Error: Debug,
 {
     let mut visited: HashSet<M::State> = HashSet::new();
     let mut terminals: HashSet<M::State> = HashSet::new();
@@ -152,6 +156,7 @@ where
                 }
                 Err(err) => {
                     report.num_errors += 1;
+                    tracing::debug!("traversal error: {:?}", err);
                     if let Some(ref is_fatal_error) = config.is_fatal_error {
                         if is_fatal_error(&err) {
                             return Err(err);

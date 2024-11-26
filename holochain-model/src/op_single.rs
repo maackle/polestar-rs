@@ -127,7 +127,7 @@ mod tests {
             OpSingleMachine,
             OpPhase::None,
             &DiagramConfig {
-                max_actions: Some(5),
+                ignore_loopbacks: true,
                 ..Default::default()
             },
         );

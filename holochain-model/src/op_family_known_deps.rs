@@ -7,14 +7,14 @@ use crate::op_family::{OpFamilyAction, OpFamilyMachine, OpFamilyState};
 
 /// Machine that tracks the state of an op and all its dependencies
 #[derive(Clone, Debug)]
-pub struct OpFamilyKnownDepsMachine<O: Id> {
-    pub machine: OpFamilyMachine<O>,
-    pub allowed_pairs: HashSet<(O, O)>,
+pub struct OpFamilyKnownDepsMachine<A: Id, T: Id> {
+    pub machine: OpFamilyMachine<A, T>,
+    pub allowed_pairs: HashSet<(A, A)>,
 }
 
-impl<O: Id> Machine for OpFamilyKnownDepsMachine<O> {
-    type State = OpFamilyState<O>;
-    type Action = (O, OpFamilyAction<O>);
+impl<A: Id, T: Id> Machine for OpFamilyKnownDepsMachine<A, T> {
+    type State = OpFamilyState<A, T>;
+    type Action = ((A, T), OpFamilyAction<A>);
     type Fx = ();
     type Error = anyhow::Error;
 
@@ -51,7 +51,7 @@ impl<O: Id> OpFamilyKnownDepsMachine<O> {
     }
 
     pub fn initial(&self) -> OpFamilyState<O> {
-        OpFamilyState::new(self.machine.deps.clone().unwrap_or_default())
+        OpFamilyState::default()
     }
 }
 

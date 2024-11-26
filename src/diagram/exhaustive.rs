@@ -10,24 +10,25 @@ use std::{
 
 use crate::{util::first, Machine};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct DiagramConfig {
     pub max_actions: Option<usize>,
     pub max_distance: Option<usize>,
     pub max_iters: Option<usize>,
     pub ignore_loopbacks: bool,
+    pub trace_errors: bool,
 }
 
-impl Default for DiagramConfig {
-    fn default() -> Self {
-        Self {
-            max_actions: None,
-            max_distance: None,
-            max_iters: None,
-            ignore_loopbacks: false,
-        }
-    }
-}
+// impl Default for DiagramConfig {
+//     fn default() -> Self {
+//         Self {
+//             max_actions: None,
+//             max_distance: None,
+//             max_iters: None,
+//             ignore_loopbacks: false,
+//         }
+//     }
+// }
 
 pub fn write_dot_state_diagram<M>(
     path: impl AsRef<Path>,
@@ -38,6 +39,7 @@ pub fn write_dot_state_diagram<M>(
     M: Machine,
     M::State: Clone + Eq + Hash + Debug,
     M::Action: Exhaustive + Clone + Eq + Hash + Debug,
+    M::Error: Debug,
 {
     write_dot_state_diagram_mapped(path, machine, initial, config, |m| m, |a| a)
 }
@@ -53,6 +55,7 @@ pub fn write_dot_state_diagram_mapped<M, N, E>(
     M: Machine,
     M::State: Clone + Eq + Hash,
     M::Action: Exhaustive + Clone + Eq + Hash,
+    M::Error: Debug,
     N: Clone + Eq + Hash + Debug,
     E: Clone + Eq + Hash + Debug,
 {
@@ -74,6 +77,7 @@ where
     M: Machine,
     M::State: Clone + Eq + Hash + Debug,
     M::Action: Exhaustive + Clone + Eq + Hash + Debug,
+    M::Error: Debug,
 {
     print_dot_state_diagram_mapped::<M, M::State, M::Action>(machine, initial, config, |m| m, |a| a)
 }
@@ -88,6 +92,7 @@ pub fn print_dot_state_diagram_mapped<M, N, E>(
     M: Machine,
     M::State: Clone + Eq + Hash,
     M::Action: Exhaustive + Clone + Eq + Hash,
+    M::Error: Debug,
     N: Clone + Eq + Hash + Debug,
     E: Clone + Eq + Hash + Debug,
 {
@@ -108,6 +113,7 @@ where
     M: Machine,
     M::State: Clone + Eq + Hash + Debug,
     M::Action: Exhaustive + Clone + Eq + Hash + Debug,
+    M::Error: Debug,
 {
     state_diagram_mapped(machine, initial, config, |m| m, |a| a)
 }
@@ -125,10 +131,10 @@ where
     M: Machine,
     M::State: Clone + Eq + Hash,
     M::Action: Exhaustive + Clone + Eq + Hash,
+    M::Error: Debug,
     N: Clone + Eq + Hash + Debug,
     E: Debug,
 {
-    dbg!();
     let mut graph = DiGraph::new();
     let mut visited_states: HashSet<M::State> = HashSet::new();
     let mut visited_nodes: HashMap<N, NodeIndex> = HashMap::new();
@@ -193,7 +199,10 @@ where
                 Ok(node) => {
                     states_to_visit.push_back((node, distance + 1, Some((edge, ix))));
                 }
-                Err(_err) => {
+                Err(err) => {
+                    if config.trace_errors {
+                        tracing::error!("error: {err:?}");
+                    }
                     num_errors += 1;
                 }
             }
