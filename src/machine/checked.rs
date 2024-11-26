@@ -1,5 +1,6 @@
 use std::{fmt::Debug, sync::Arc};
 
+use anyhow::anyhow;
 use im::{vector, Vector};
 
 use crate::util::first_ref;
@@ -109,14 +110,17 @@ impl<M: Machine> Checker<M> {
         &self,
         initial: M::State,
         actions: impl IntoIterator<Item = M::Action>,
-    ) -> Result<(), CheckerError<M::Action, M::Error>>
+    ) -> Result<(), CheckerError<M::Action, anyhow::Error>>
     where
         M: Debug,
         M::State: Clone + Debug,
         M::Action: Clone + Debug,
+        M::Error: Debug,
     {
         let s = self.initial(initial);
-        let (end, _) = self.apply_actions(s, actions)?;
+        let (end, _) = self
+            .apply_actions(s, actions)
+            .map_err(|(e, s, a)| anyhow!("{:?} state: {:?}, action: {:?}", e, s.state, a))?;
         end.finalize()
             .map_err(|(error, path)| CheckerError::Predicate(PredicateError { error, path }))
     }

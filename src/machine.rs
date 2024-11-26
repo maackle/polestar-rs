@@ -54,10 +54,16 @@ where
         &self,
         mut state: Self::State,
         actions: impl IntoIterator<Item = Self::Action>,
-    ) -> Result<(Self::State, Vec<Self::Fx>), Self::Error> {
+    ) -> Result<(Self::State, Vec<Self::Fx>), (Self::Error, Self::State, Self::Action)>
+    where
+        Self::State: Clone,
+        Self::Action: Clone,
+    {
         let mut fxs = vec![];
         for action in actions.into_iter() {
-            let (s, fx) = self.transition(state, action)?;
+            let (s, fx) = self
+                .transition(state.clone(), action.clone())
+                .map_err(|e| (e, state, action))?;
             fxs.push(fx);
             state = s;
         }
@@ -68,7 +74,11 @@ where
         &self,
         state: Self::State,
         actions: impl IntoIterator<Item = Self::Action>,
-    ) -> Result<Self::State, Self::Error> {
+    ) -> Result<Self::State, (Self::Error, Self::State, Self::Action)>
+    where
+        Self::State: Clone,
+        Self::Action: Clone,
+    {
         self.apply_actions(state, actions).map(first)
     }
 }

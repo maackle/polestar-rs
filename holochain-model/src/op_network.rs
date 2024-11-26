@@ -54,8 +54,8 @@ impl<N: Id, O: Id> Machine for OpNetworkMachine<N, O> {
         let fx = state
             .nodes
             .owned_update(node, |nodes, node_state| match action {
-                OpNetworkAction::Family { target, action } => {
-                    self.inner.transition(node_state, (target, action))
+                OpNetworkAction::Local { op, action } => {
+                    self.inner.transition(node_state, (op, action))
                 }
                 OpNetworkAction::Receive { op, from, valid } => {
                     let from_phase = nodes
@@ -73,7 +73,7 @@ impl<N: Id, O: Id> Machine for OpNetworkMachine<N, O> {
                     }
 
                     self.inner
-                        .transition(node_state, (op, OpAction::Store.into()))
+                        .transition(node_state, (op, OpAction::Store(false).into()))
                 }
             })?;
 
@@ -157,15 +157,8 @@ pub type OpNetworkMachineAction<N, O> = (N, OpNetworkAction<N, O>);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Exhaustive, Serialize, Deserialize)]
 pub enum OpNetworkAction<N: Id, O: Id> {
-    Family {
-        target: O,
-        action: OpFamilyAction<O>,
-    },
-    Receive {
-        op: O,
-        from: N,
-        valid: bool,
-    },
+    Local { op: O, action: OpFamilyAction<O> },
+    Receive { op: O, from: N, valid: bool },
 }
 
 /*
@@ -203,7 +196,7 @@ impl<N: Id, I: Id> Debug for OpNetworkEdgePretty<N, I> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let Self(node, action) = self;
         match action {
-            OpNetworkAction::Family { target, action } => {
+            OpNetworkAction::Local { op: target, action } => {
                 write!(f, "[{node}, {target}] {action:?}",)?
             }
             OpNetworkAction::Receive { op, from, valid } => {

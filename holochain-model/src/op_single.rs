@@ -61,8 +61,8 @@ use ValidationType as VT;
     Deserialize,
 )]
 pub enum OpAction {
-    /// Store the op
-    Store,
+    /// Store the op. If true, integrate immediately.
+    Store(bool),
     /// Validate the op (as valid)
     Validate(ValidationType),
     /// Reject the op (as invalid)
@@ -83,13 +83,19 @@ impl Machine for OpSingleMachine {
         use ValidationType as V;
 
         let next = match (state, t) {
+            // Author the op (it gets immediately integrated)
+            (S::None, E::Store(true)) => S::Integrated,
+
             // Receive the op
-            (S::None, E::Store) => S::Stored,
+            (S::None, E::Store(false)) => S::Stored,
 
             // Duplicate authorship should be an error,
             // but with the loose hookup to Holochain, we let it be idempotent.
             // (_, E::Store) => bail!("duplicate authorship"),
-            (s, E::Store) => s,
+            (s, E::Store(_)) => s,
+
+            // Here's some other idempotency additions I'm adding, but should be cleaned up.
+            (s @ S::Validated(v1), E::Validate(v2)) if v1 == v2 => s,
 
             (S::Stored | S::Validated(V::Sys), E::Reject) => S::Rejected,
             (S::Stored, E::Validate(V::Sys)) => S::Validated(VT::Sys),
