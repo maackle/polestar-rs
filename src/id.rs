@@ -1,6 +1,5 @@
 use std::{collections::HashMap, hash::Hash};
 
-use derive_more::derive::Display;
 use proptest::prelude::{BoxedStrategy, Strategy};
 use proptest_derive::Arbitrary;
 

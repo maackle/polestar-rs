@@ -14,7 +14,7 @@ use polestar::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::op_single::{OpAction, OpPhase, OpSingleMachine, ValidationType as VT};
+use crate::op_single::{OpAction, OpPhase, OpSingleMachine, Outcome, ValidationType as VT};
 
 /*
                                     █████       ███
@@ -45,6 +45,7 @@ impl<O: Id, T: Id> Machine for OpFamilyMachine<O, T> {
         mut states: Self::State,
         (target, action): Self::Action,
     ) -> TransitionResult<Self> {
+        use crate::op_single::Outcome as VO;
         use OpFamilyAction as E;
         use OpFamilyPhase as S;
         use OpPhase::*;
@@ -100,15 +101,15 @@ impl<O: Id, T: Id> Machine for OpFamilyMachine<O, T> {
                     let dep = states
                         .iter_from(dep_id)
                         .map(|(_, dep)| dep)
-                        .find(|dep| matches!(dep, S::Op(Rejected | Integrated)))
+                        .find(|dep| matches!(dep, S::Op(Integrated(_))))
                         .ok_or(anyhow!(
                             "attempted to validate op still awaiting dep {:?}",
                             dep_id
                         ))?;
 
                     match dep {
-                        S::Op(Integrated) => S::Op(Validated(vt)),
-                        S::Op(Rejected) => {
+                        S::Op(Integrated(VO::Accepted)) => S::Op(Validated(vt)),
+                        S::Op(Integrated(VO::Rejected)) => {
                             // TODO: can holochain do better here? Would this be a case for Abandoned?
                             state
                         }
@@ -201,10 +202,9 @@ impl<A: Id, T: Id> OpFamilyState<A, T> {
 
     /// Returns true for every Integrated (valid) op,
     /// and false for every Rejected op
-    pub fn find_integrated(&self, key: A) -> impl Iterator<Item = bool> + '_ {
+    pub fn find_integrated(&self, key: A) -> impl Iterator<Item = Outcome> + '_ {
         self.iter_from(key).filter_map(|(_, v)| match v {
-            OpFamilyPhase::Op(OpPhase::Integrated) => Some(true),
-            OpFamilyPhase::Op(OpPhase::Rejected) => Some(false),
+            OpFamilyPhase::Op(OpPhase::Integrated(o)) => Some(*o),
             _ => None,
         })
     }
@@ -227,12 +227,8 @@ impl<O: Id> OpFamilyPhase<O> {
     pub fn is_definitely_valid(&self) -> bool {
         matches!(
             self,
-            OpFamilyPhase::Op(OpPhase::Validated(VT::App)) | OpFamilyPhase::Op(OpPhase::Integrated)
+            OpFamilyPhase::Op(p) if p.is_definitely_valid()
         )
-    }
-
-    pub fn is_definitely_invalid(&self) -> bool {
-        matches!(self, OpFamilyPhase::Op(OpPhase::Rejected))
     }
 }
 
@@ -344,7 +340,9 @@ mod tests {
                 format!("{a}.{t} integrated"),
                 move |s: &OpFamilyState<A, T>| {
                     s.get(&(a, t))
-                        .map(|p| matches!(p, OpFamilyPhase::Op(OpPhase::Integrated)))
+                        .map(|p| {
+                            matches!(p, OpFamilyPhase::Op(OpPhase::Integrated(Outcome::Accepted)))
+                        })
                         .unwrap_or(false)
                 },
             )
@@ -357,7 +355,12 @@ mod tests {
                         format!("{a}.{t} integrated"),
                         move |s: &OpFamilyState<A, T>| {
                             s.get(&(a, t))
-                                .map(|p| matches!(p, OpFamilyPhase::Op(OpPhase::Integrated)))
+                                .map(|p| {
+                                    matches!(
+                                        p,
+                                        OpFamilyPhase::Op(OpPhase::Integrated(Outcome::Accepted))
+                                    )
+                                })
                                 .unwrap_or(false)
                         },
                     )
@@ -407,8 +410,6 @@ mod tests {
 
         type A = IdU8<2>;
         type T = IdU8<1>;
-        let a = A::all_values();
-        let items = <(A, T)>::iter_exhaustive(None);
 
         // Create an instance of OpMachine with 1 dependency
         // let machine: OpFamilyMachine<A, T> = OpFamilyMachine::new_bounded(items);

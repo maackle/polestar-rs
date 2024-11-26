@@ -58,7 +58,7 @@ impl<N: Id, O: Id, T: Id> Machine for OpNetworkMachine<N, O, T> {
                         .get(&from)
                         .ok_or(anyhow!("no node"))?
                         .find_integrated(op.0)
-                        .any(|v| v);
+                        .any(|v| v.is_valid());
 
                     if !any_integrated {
                         bail!("can't receive op if target has not integrated")
@@ -225,13 +225,11 @@ mod tests {
         type O = IdU8<1>;
         type T = IdU8<1>;
 
-        let n = N::all_values();
-        let o = O::all_values();
-        let t = T::all_values();
+        let ns = N::all_values();
         let ops = <(O, T)>::iter_exhaustive(None).collect_vec();
 
         // Create an instance of OpMachine with 1 dependency
-        let machine: OpNetworkMachine<N, O, T> = OpNetworkMachine::new_bounded(n, ops);
+        let machine: OpNetworkMachine<N, O, T> = OpNetworkMachine::new_bounded(ns, ops);
         let initial = machine.initial();
 
         // let all_integrated = {

@@ -18,15 +18,16 @@ pub enum OpPhase {
     /// The op has been validated.
     #[display("Validated({})", _0)]
     Validated(ValidationType),
-    /// The op has been rejected
-    Rejected,
     /// The op has been integrated
-    Integrated,
+    Integrated(Outcome),
 }
 
 impl OpPhase {
     pub fn is_definitely_valid(&self) -> bool {
-        matches!(self, OpPhase::Validated(VT::App) | OpPhase::Integrated)
+        matches!(
+            self,
+            OpPhase::Validated(VT::App) | OpPhase::Integrated(Outcome::Accepted)
+        )
     }
 }
 
@@ -45,6 +46,29 @@ impl OpPhase {
 pub enum ValidationType {
     Sys,
     App,
+}
+
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    Eq,
+    Hash,
+    derive_more::Display,
+    Exhaustive,
+    Serialize,
+    Deserialize,
+)]
+pub enum Outcome {
+    Accepted,
+    Rejected,
+}
+
+impl Outcome {
+    pub fn is_valid(&self) -> bool {
+        matches!(self, Outcome::Accepted)
+    }
 }
 
 use ValidationType as VT;
@@ -84,7 +108,7 @@ impl Machine for OpSingleMachine {
 
         let next = match (state, t) {
             // Author the op (it gets immediately integrated)
-            (S::None, E::Store(true)) => S::Integrated,
+            (S::None, E::Store(true)) => S::Integrated(Outcome::Accepted),
 
             // Receive the op
             (S::None, E::Store(false)) => S::Stored,
@@ -97,10 +121,10 @@ impl Machine for OpSingleMachine {
             // Here's some other idempotency additions I'm adding, but should be cleaned up.
             (s @ S::Validated(v1), E::Validate(v2)) if v1 == v2 => s,
 
-            (S::Stored | S::Validated(V::Sys), E::Reject) => S::Rejected,
+            (S::Stored | S::Validated(V::Sys), E::Reject) => S::Integrated(Outcome::Rejected),
             (S::Stored, E::Validate(V::Sys)) => S::Validated(VT::Sys),
             (S::Validated(V::Sys), E::Validate(V::App)) => S::Validated(V::App),
-            (S::Validated(V::App), E::Integrate) => S::Integrated,
+            (S::Validated(V::App), E::Integrate) => S::Integrated(Outcome::Accepted),
 
             (state, action) => bail!("invalid transition: {state:?} -> {action:?}"),
         };
@@ -108,7 +132,7 @@ impl Machine for OpSingleMachine {
     }
 
     fn is_terminal(&self, state: &Self::State) -> bool {
-        matches!(state, OpPhase::Integrated | OpPhase::Rejected)
+        matches!(state, OpPhase::Integrated(_))
     }
 }
 
