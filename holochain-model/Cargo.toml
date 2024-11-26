@@ -7,7 +7,7 @@ edition = "2021"
 anyhow = "*"
 automap = "*"
 derive_more = { version = "1", features = ["full"] }
-exhaustive = { git = "https://github.com/maackle/exhaustive" }
+exhaustive = "*"
 itertools = "*"
 polestar = { version = "*", path = "/home/michael/proj/polestar-rs" }
 proptest = "1"
@@ -16,4 +16,4 @@ proptest-derive = "0"
 [patch.crates-io]
 automap = { path = "/home/michael/proj/automap-rs" }
 proptest-derive = { git = "https://github.com/maackle/proptest.git", branch = "allow-non-local-definitions" }
-exhaustive_macros = { git = "https://github.com/maackle/exhaustive.git" }
+# exhaustive_macros = { git = "https://github.com/maackle/exhaustive.git" }

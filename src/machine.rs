@@ -12,7 +12,15 @@ where
 {
     type State;
     type Action;
+
+    #[cfg(not(nightly))]
+    type Fx;
+    #[cfg(not(nightly))]
+    type Error;
+
+    #[cfg(nightly)]
     type Fx = ();
+    #[cfg(nightly)]
     type Error: std::fmt::Debug = anyhow::Error;
 
     fn transition(&self, state: Self::State, action: Self::Action) -> TransitionResult<Self>;

@@ -39,11 +39,11 @@ impl<N: Id, O: Id> Machine for OpNetworkMachine<N, O> {
         mut state: Self::State,
         (node, action): Self::Action,
     ) -> TransitionResult<Self> {
-        state
+        let fx = state
             .nodes
             .owned_update(node, |nodes, node_state| match action {
                 OpNetworkAction::Family { target, action } => {
-                    self.inner.transition_(node_state, (target, action))
+                    self.inner.transition(node_state, (target, action))
                 }
                 OpNetworkAction::Receive { op, from, valid } => {
                     let from_phase = nodes
@@ -61,11 +61,11 @@ impl<N: Id, O: Id> Machine for OpNetworkMachine<N, O> {
                     }
 
                     self.inner
-                        .transition_(node_state, (op, OpAction::Store.into()))
+                        .transition(node_state, (op, OpAction::Store.into()))
                 }
             })?;
 
-        Ok((state, ()))
+        Ok((state, fx))
     }
 
     fn is_terminal(&self, s: &Self::State) -> bool {

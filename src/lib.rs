@@ -1,5 +1,4 @@
-#![feature(associated_type_defaults)]
-// #![feature(lazy_type_alias)]
+#![cfg_attr(nightly, feature(associated_type_defaults))]
 
 pub mod actor;
 pub mod generate;
@@ -23,6 +22,7 @@ pub use machine::{Machine, TransitionResult};
 
 pub mod prelude {
     pub use crate::actor::{Actor, ShareRead, ShareRw};
+    pub use crate::ext::MapExt;
     pub use crate::generate::Generator;
     pub use crate::machine::{Machine, TransitionResult};
     pub use crate::projection::{Projection, ProjectionTests};

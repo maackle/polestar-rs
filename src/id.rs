@@ -1,6 +1,7 @@
 use std::{collections::HashMap, hash::Hash};
 
-use proptest::prelude::{BoxedStrategy, Strategy};
+use exhaustive::Exhaustive;
+use proptest::prelude::{Arbitrary, BoxedStrategy, Strategy};
 use proptest_derive::Arbitrary;
 
 /// A number which is less than `N`.
@@ -42,7 +43,7 @@ impl<const N: usize> proptest::arbitrary::Arbitrary for UpTo<N> {
     }
 }
 
-pub trait Id:
+pub trait IdLike:
     Clone
     + Copy
     + PartialEq
@@ -50,13 +51,21 @@ pub trait Id:
     + PartialOrd
     + Ord
     + Hash
+    + TryFrom<usize>
     + std::fmt::Display
     + std::fmt::Debug
-    + proptest::arbitrary::Arbitrary
-    + exhaustive::Exhaustive
 {
 }
 
+impl IdLike for u8 {}
+impl IdLike for u16 {}
+impl IdLike for u32 {}
+impl IdLike for u64 {}
+impl IdLike for usize {}
+
+pub trait Id: IdLike + Arbitrary + Exhaustive {}
+
+impl<const N: usize> IdLike for IdU8<N> {}
 impl<const N: usize> Id for IdU8<N> {}
 
 #[derive(
@@ -121,12 +130,13 @@ impl<const N: usize> std::fmt::Display for IdU8<N> {
 }
 
 #[derive(Debug)]
-pub struct IdMap<const N: usize, V> {
-    map: HashMap<V, IdU8<N>>,
+pub struct IdMap<I: IdLike, V> {
+    map: HashMap<V, I>,
 }
 
-impl<V, const N: usize> Default for IdMap<N, V>
+impl<V, I> Default for IdMap<I, V>
 where
+    I: IdLike,
     V: Hash + Eq,
 {
     fn default() -> Self {
@@ -136,16 +146,18 @@ where
     }
 }
 
-impl<V, const N: usize> IdMap<N, V>
+impl<V, I> IdMap<I, V>
 where
+    I: IdLike,
+    I::Error: std::fmt::Debug,
     V: Hash + Eq,
 {
-    pub fn lookup(&mut self, k: V) -> Result<IdU8<N>, String> {
+    pub fn lookup(&mut self, k: V) -> Result<I, String> {
         let len = self.map.len();
         match self.map.entry(k) {
             std::collections::hash_map::Entry::Occupied(e) => Ok(e.get().clone()),
             std::collections::hash_map::Entry::Vacant(e) => {
-                let id = IdU8::try_from(len)?;
+                let id = I::try_from(len).map_err(|e| format!("{e:?}"))?;
                 e.insert(id);
                 Ok(id)
             }
@@ -160,7 +172,7 @@ mod tests {
 
     #[test]
     fn test_id_map() {
-        let mut m = IdMap::<3, _>::default();
+        let mut m = IdMap::<IdU8<3>, _>::default();
         assert_eq!(m.lookup("c"), Ok(IdU8(0)));
         assert_eq!(m.lookup("m"), Ok(IdU8(1)));
         assert_eq!(m.lookup("c"), Ok(IdU8(0)));

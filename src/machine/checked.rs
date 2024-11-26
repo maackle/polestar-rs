@@ -12,8 +12,10 @@ pub struct Checker<M: Machine> {
     initial_predicates: Vec<Predicate<M::State>>,
 }
 
+#[derive(derive_more::Deref)]
 pub struct CheckerState<M: Machine> {
     predicates: Predicates<M::State>,
+    #[deref]
     pub state: M::State,
     path: im::Vector<M::Action>,
 }

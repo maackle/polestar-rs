@@ -12,20 +12,24 @@ num-traits = "0.2"
 parking_lot = "*"
 proptest = "1.2.0"
 proptest-derive = "0.5"
+rustversion = "*"
 tracing = "0.1"
 tracing-subscriber = "0.3"
 
-exhaustive = { git = "https://github.com/maackle/exhaustive.git", optional = true }
+exhaustive = { version = "*", optional = true }
 petgraph = { version = "*", optional = true }
 prettydiff = { version = "*", optional = true }
 
 [dev-dependencies]
 polestar = { path = ".", features = ["testing"] }
 
+[build-dependencies]
+rustversion = "*"
 
 [features]
 default = ["diagrams", "testing"]
 
+nightly = []
 diagrams = ["exhaustive", "petgraph"]
 testing = ["prettydiff"]
 
@@ -35,4 +39,4 @@ members = ["holochain-model"]
 [patch.crates-io]
 # holo_hash = { path = "/home/michael/Holo/chain/crates/holo_hash" }
 proptest-derive = { git = "https://github.com/maackle/proptest.git", branch = "allow-non-local-definitions" }
-exhaustive_macros = { git = "https://github.com/maackle/exhaustive.git" }
+# exhaustive_macros = { git = "https://github.com/maackle/exhaustive.git" }
