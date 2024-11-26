@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
-    fmt::Debug,
+    fmt::{Debug, Pointer},
 };
 
 use anyhow::{anyhow, bail};
@@ -176,7 +176,7 @@ impl<O: Id, T: Id> OpFamilyMachine<O, T> {
 
 */
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, derive_more::Deref, derive_more::DerefMut)]
+#[derive(Clone, PartialEq, Eq, Hash, derive_more::Deref, derive_more::DerefMut)]
 pub struct OpFamilyState<A: Id, T: Id>(BTreeMap<(A, T), OpFamilyPhase<A>>);
 
 impl<A: Id, T: Id> Default for OpFamilyState<A, T> {
@@ -207,6 +207,16 @@ impl<A: Id, T: Id> OpFamilyState<A, T> {
             OpFamilyPhase::Op(OpPhase::Integrated(o)) => Some(*o),
             _ => None,
         })
+    }
+}
+
+impl<A: Id, T: Id> Debug for OpFamilyState<A, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut l = f.debug_list();
+        for ((a, t), phase) in self.iter() {
+            l.entry(&format_args!("{a}.{t}: {phase:?}"));
+        }
+        l.finish()
     }
 }
 
