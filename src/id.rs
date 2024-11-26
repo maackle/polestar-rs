@@ -164,11 +164,11 @@ impl<const N: usize> std::fmt::Display for IdU8<N> {
 }
 
 #[derive(Debug)]
-pub struct IdMap<I: Id, V> {
+pub struct IdMap<V, I: Id> {
     map: HashMap<V, I>,
 }
 
-impl<V, I> Default for IdMap<I, V>
+impl<V, I> Default for IdMap<V, I>
 where
     I: Id,
     V: Hash + Eq,
@@ -180,15 +180,15 @@ where
     }
 }
 
-impl<V, I> IdMap<I, V>
+impl<V, I> IdMap<V, I>
 where
     I: Id,
     I::Error: std::fmt::Debug,
     V: Hash + Eq,
 {
-    pub fn lookup(&mut self, k: V) -> Result<I, String> {
+    pub fn lookup(&mut self, v: V) -> Result<I, String> {
         let len = self.map.len();
-        match self.map.entry(k) {
+        match self.map.entry(v) {
             std::collections::hash_map::Entry::Occupied(e) => Ok(e.get().clone()),
             std::collections::hash_map::Entry::Vacant(e) => {
                 let id = I::try_from(len).map_err(|e| format!("{e:?}"))?;
@@ -206,7 +206,7 @@ mod tests {
 
     #[test]
     fn test_id_map() {
-        let mut m = IdMap::<IdU8<3>, _>::default();
+        let mut m = IdMap::<_, IdU8<3>>::default();
         assert_eq!(m.lookup("c"), Ok(IdU8(0)));
         assert_eq!(m.lookup("m"), Ok(IdU8(1)));
         assert_eq!(m.lookup("c"), Ok(IdU8(0)));

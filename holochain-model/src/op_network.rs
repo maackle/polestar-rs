@@ -54,13 +54,13 @@ impl<N: Id, O: Id, T: Id> Machine for OpNetworkMachine<N, O, T> {
                     self.inner.transition(node_state, (op, action))
                 }
                 OpNetworkAction::Receive { op, from, valid } => {
-                    let from_phase = nodes
+                    let any_integrated = nodes
                         .get(&from)
                         .ok_or(anyhow!("no node"))?
-                        .get(&op)
-                        .ok_or(anyhow!("no op"))?;
+                        .find_integrated(op.0)
+                        .any(|v| v);
 
-                    if !matches!(from_phase, OpFamilyPhase::Op(OpPhase::Integrated)) {
+                    if !any_integrated {
                         bail!("can't receive op if target has not integrated")
                     }
 

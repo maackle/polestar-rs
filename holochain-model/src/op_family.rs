@@ -99,8 +99,8 @@ impl<O: Id, T: Id> Machine for OpFamilyMachine<O, T> {
                 (VT::Sys, OpAction::Validate(VT::Sys)) | (VT::App, OpAction::Validate(VT::App)) => {
                     let dep = states
                         .iter_from(dep_id)
-                        .find(|(_, dep)| matches!(dep, S::Op(Rejected | Integrated)))
                         .map(|(_, dep)| dep)
+                        .find(|dep| matches!(dep, S::Op(Rejected | Integrated)))
                         .ok_or(anyhow!(
                             "attempted to validate op still awaiting dep {:?}",
                             dep_id
@@ -187,6 +187,8 @@ impl<A: Id, T: Id> Default for OpFamilyState<A, T> {
 impl<A: Id, T: Id> OpFamilyState<A, T> {
     /// Get all items where the first element of the key is the specified input.
     /// Works for getting all ops of a given action.
+    /// Assumes that the default value is also the minimum!
+    /// TODO: use Min instead of Default
     pub fn iter_from(&self, key: A) -> impl Iterator<Item = (&(A, T), &OpFamilyPhase<A>)> {
         self.range((key, T::default())..)
             .take_while(move |(k, _)| k.0 == key)
@@ -195,6 +197,16 @@ impl<A: Id, T: Id> OpFamilyState<A, T> {
     pub fn find_awaiting(&self, key: A) -> impl Iterator<Item = A> + '_ {
         self.iter_from(key)
             .filter_map(move |(_, v)| v.try_unwrap_awaiting().ok().map(|(_, dep)| dep))
+    }
+
+    /// Returns true for every Integrated (valid) op,
+    /// and false for every Rejected op
+    pub fn find_integrated(&self, key: A) -> impl Iterator<Item = bool> + '_ {
+        self.iter_from(key).filter_map(|(_, v)| match v {
+            OpFamilyPhase::Op(OpPhase::Integrated) => Some(true),
+            OpFamilyPhase::Op(OpPhase::Rejected) => Some(false),
+            _ => None,
+        })
     }
 }
 
