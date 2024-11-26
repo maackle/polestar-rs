@@ -6,6 +6,7 @@ use std::{
 use anyhow::{anyhow, bail};
 use exhaustive::Exhaustive;
 use polestar::{ext::MapExt, id::Id, Machine, TransitionResult};
+use serde::{Deserialize, Serialize};
 
 use crate::{
     op_family::{OpFamilyAction, OpFamilyMachine, OpFamilyPhase, OpFamilyState},
@@ -27,18 +28,29 @@ use crate::{
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct OpNetworkMachine<N: Id, O: Id> {
     pub inner: OpFamilyMachine<O>,
-    pub nodes: BTreeSet<N>,
+    pub nodes: Option<BTreeSet<N>>,
 }
 
 impl<N: Id, O: Id> Machine for OpNetworkMachine<N, O> {
     type State = OpNetworkState<N, O>;
     type Action = (N, OpNetworkAction<N, O>);
+    type Fx = ();
+    type Error = anyhow::Error;
 
     fn transition(
         &self,
         mut state: Self::State,
         (node, action): Self::Action,
     ) -> TransitionResult<Self> {
+        // If nodes aren't bounded, add a new node when seen
+        if self.nodes.is_none() && !state.nodes.contains_key(&node) {
+            state.nodes.insert(
+                node,
+                self.inner
+                    .initial(self.inner.deps.clone().unwrap_or_default()),
+            );
+        }
+
         let fx = state
             .nodes
             .owned_update(node, |nodes, node_state| match action {
@@ -76,26 +88,41 @@ impl<N: Id, O: Id> Machine for OpNetworkMachine<N, O> {
 }
 
 impl<N: Id, O: Id> OpNetworkMachine<N, O> {
-    pub fn new(
+    pub fn new() -> Self {
+        Self {
+            inner: OpFamilyMachine::new(),
+            nodes: None,
+        }
+    }
+
+    pub fn new_bounded(
         nodes: impl IntoIterator<Item = N>,
-        root_op: O,
         ops: impl IntoIterator<Item = O>,
     ) -> Self {
         Self {
-            inner: OpFamilyMachine::new(root_op, ops),
-            nodes: nodes.into_iter().collect(),
+            inner: OpFamilyMachine::new_bounded(ops),
+            nodes: Some(nodes.into_iter().collect()),
         }
     }
 
     pub fn initial(&self) -> OpNetworkState<N, O> {
-        OpNetworkState {
-            nodes: self
-                .nodes
-                .iter()
-                .copied()
-                .map(|n| (n, self.inner.initial(self.inner.deps.clone())))
-                .collect(),
-        }
+        let nodes = self
+            .nodes
+            .as_ref()
+            .map(|ns| {
+                ns.iter()
+                    .copied()
+                    .map(|n| {
+                        (
+                            n,
+                            self.inner
+                                .initial(self.inner.deps.clone().unwrap_or_default()),
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        OpNetworkState { nodes }
     }
 }
 
@@ -126,7 +153,9 @@ pub struct OpNetworkState<N: Id, O: Id> {
  ░░░░░░░░  ░░░░░░     ░░░░░  ░░░░░  ░░░░░░  ░░░░ ░░░░░
  */
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Exhaustive)]
+pub type OpNetworkMachineAction<N, O> = (N, OpNetworkAction<N, O>);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Exhaustive, Serialize, Deserialize)]
 pub enum OpNetworkAction<N: Id, O: Id> {
     Family {
         target: O,
@@ -206,7 +235,7 @@ mod tests {
         let o = O::all_values();
 
         // Create an instance of OpMachine with 1 dependency
-        let machine: OpNetworkMachine<N, O> = OpNetworkMachine::new(n, o[0], o);
+        let machine: OpNetworkMachine<N, O> = OpNetworkMachine::new_bounded(n, o);
         let initial = machine.initial();
 
         // let all_integrated = {

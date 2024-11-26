@@ -13,6 +13,10 @@ polestar = { version = "*", path = "/home/michael/proj/polestar-rs" }
 proptest = "1"
 proptest-derive = "0"
 
+serde = { version = "1", features = ["derive"] }
+serde_json = "*"
+
+
 [patch.crates-io]
 automap = { path = "/home/michael/proj/automap-rs" }
 proptest-derive = { git = "https://github.com/maackle/proptest.git", branch = "allow-non-local-definitions" }

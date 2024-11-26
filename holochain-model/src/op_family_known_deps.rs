@@ -40,10 +40,10 @@ impl<O: Id> Machine for OpFamilyKnownDepsMachine<O> {
 }
 
 impl<O: Id> OpFamilyKnownDepsMachine<O> {
-    pub fn new(focus: O, allowed_pairs: impl IntoIterator<Item = (O, O)>) -> Self {
+    pub fn new(allowed_pairs: impl IntoIterator<Item = (O, O)>) -> Self {
         let allowed_pairs: HashSet<(O, O)> = allowed_pairs.into_iter().collect();
         let deps = allowed_pairs.iter().flat_map(|(x, y)| [x, y]).copied();
-        let machine = OpFamilyMachine::new(focus, deps);
+        let machine = OpFamilyMachine::new_bounded(deps);
         Self {
             machine,
             allowed_pairs,
@@ -51,7 +51,7 @@ impl<O: Id> OpFamilyKnownDepsMachine<O> {
     }
 
     pub fn initial(&self) -> OpFamilyState<O> {
-        OpFamilyState::new(self.machine.deps.clone())
+        OpFamilyState::new(self.machine.deps.clone().unwrap_or_default())
     }
 }
 
@@ -74,7 +74,7 @@ mod tests {
         let pairs = [(o[0], o[1]), (o[1], o[2])];
 
         // Create an instance of OpMachine with 1 dependency
-        let machine: OpFamilyKnownDepsMachine<O> = OpFamilyKnownDepsMachine::new(o[0], pairs);
+        let machine: OpFamilyKnownDepsMachine<O> = OpFamilyKnownDepsMachine::new(pairs);
 
         let initial = machine.initial();
 

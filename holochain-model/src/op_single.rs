@@ -3,6 +3,7 @@ use std::fmt::Debug;
 use anyhow::bail;
 use exhaustive::Exhaustive;
 use polestar::prelude::*;
+use serde::{Deserialize, Serialize};
 
 pub struct OpSingleMachine;
 
@@ -29,7 +30,18 @@ impl OpPhase {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, derive_more::Display, Exhaustive)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    Eq,
+    Hash,
+    derive_more::Display,
+    Exhaustive,
+    Serialize,
+    Deserialize,
+)]
 pub enum ValidationType {
     Sys,
     App,
@@ -37,7 +49,17 @@ pub enum ValidationType {
 
 use ValidationType as VT;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, /* derive_more::Display, */ Exhaustive)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    Eq,
+    Hash,
+    /* derive_more::Display, */ Exhaustive,
+    Serialize,
+    Deserialize,
+)]
 pub enum OpAction {
     /// Store the op
     Store,
@@ -64,8 +86,10 @@ impl Machine for OpSingleMachine {
             // Receive the op
             (S::None, E::Store) => S::Stored,
 
-            // Duplicate authorship is an error
-            (_, E::Store) => bail!("duplicate authorship"),
+            // Duplicate authorship should be an error,
+            // but with the loose hookup to Holochain, we let it be idempotent.
+            // (_, E::Store) => bail!("duplicate authorship"),
+            (s, E::Store) => s,
 
             (S::Stored | S::Validated(V::Sys), E::Reject) => S::Rejected,
             (S::Stored, E::Validate(V::Sys)) => S::Validated(VT::Sys),

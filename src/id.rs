@@ -1,7 +1,6 @@
 use std::{collections::HashMap, hash::Hash};
 
-use exhaustive::Exhaustive;
-use proptest::prelude::{Arbitrary, BoxedStrategy, Strategy};
+use proptest::prelude::{BoxedStrategy, Strategy};
 use proptest_derive::Arbitrary;
 
 /// A number which is less than `N`.
@@ -43,7 +42,7 @@ impl<const N: usize> proptest::arbitrary::Arbitrary for UpTo<N> {
     }
 }
 
-pub trait IdLike:
+pub trait Id:
     Clone
     + Copy
     + PartialEq
@@ -57,16 +56,16 @@ pub trait IdLike:
 {
 }
 
-impl IdLike for u8 {}
-impl IdLike for u16 {}
-impl IdLike for u32 {}
-impl IdLike for u64 {}
-impl IdLike for usize {}
+impl Id for u8 {}
+impl Id for u16 {}
+impl Id for u32 {}
+impl Id for u64 {}
+impl Id for usize {}
 
-pub trait Id: IdLike + Arbitrary + Exhaustive {}
+// pub trait Id: IdLike + Arbitrary + Exhaustive {}
 
-impl<const N: usize> IdLike for IdU8<N> {}
 impl<const N: usize> Id for IdU8<N> {}
+// impl<const N: usize> Id for IdU8<N> {}
 
 #[derive(
     Clone,
@@ -130,13 +129,13 @@ impl<const N: usize> std::fmt::Display for IdU8<N> {
 }
 
 #[derive(Debug)]
-pub struct IdMap<I: IdLike, V> {
+pub struct IdMap<I: Id, V> {
     map: HashMap<V, I>,
 }
 
 impl<V, I> Default for IdMap<I, V>
 where
-    I: IdLike,
+    I: Id,
     V: Hash + Eq,
 {
     fn default() -> Self {
@@ -148,7 +147,7 @@ where
 
 impl<V, I> IdMap<I, V>
 where
-    I: IdLike,
+    I: Id,
     I::Error: std::fmt::Debug,
     V: Hash + Eq,
 {

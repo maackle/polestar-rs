@@ -8,6 +8,7 @@ use derive_more::derive::Deref;
 use exhaustive::Exhaustive;
 use itertools::Itertools;
 use polestar::{id::Id, prelude::*, util::first};
+use serde::{Deserialize, Serialize};
 
 use crate::op_single::{OpAction, OpPhase, OpSingleMachine, ValidationType as VT};
 
@@ -25,9 +26,8 @@ use crate::op_single::{OpAction, OpPhase, OpSingleMachine, ValidationType as VT}
 /// Machine that tracks the state of an op and all its dependencies
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct OpFamilyMachine<O: Id> {
-    pub root: O,
     /// All ops covered, including the root
-    pub deps: BTreeSet<O>,
+    pub deps: Option<BTreeSet<O>>,
 }
 
 impl<O: Id> Machine for OpFamilyMachine<O> {
@@ -45,7 +45,17 @@ impl<O: Id> Machine for OpFamilyMachine<O> {
         use OpFamilyPhase as S;
         use OpPhase::*;
 
-        if !self.deps.contains(&target) {
+        // If deps aren't bounded, add a new state when seen
+        if self.deps.is_none() && !states.contains_key(&target) {
+            states.insert(target, OpFamilyPhase::default());
+        }
+
+        if self
+            .deps
+            .as_ref()
+            .map(|ds| !ds.contains(&target))
+            .unwrap_or(false)
+        {
             bail!("{target:?} not covered");
         }
 
@@ -53,7 +63,14 @@ impl<O: Id> Machine for OpFamilyMachine<O> {
             if dep == target {
                 bail!("An op can't depend on itself")
             }
-            if dep == self.root {
+
+            if self
+                .deps
+                .as_ref()
+                .and_then(|ds| ds.first())
+                .map(|d| dep == *d)
+                .unwrap_or(false)
+            {
                 bail!("The focus op can't be depended on")
             }
         }
@@ -118,10 +135,13 @@ impl<O: Id> Machine for OpFamilyMachine<O> {
 }
 
 impl<O: Id> OpFamilyMachine<O> {
-    pub fn new(root: O, deps: impl IntoIterator<Item = O>) -> Self {
+    pub fn new() -> Self {
+        Self { deps: None }
+    }
+
+    pub fn new_bounded(deps: impl IntoIterator<Item = O>) -> Self {
         Self {
-            root,
-            deps: deps.into_iter().collect(),
+            deps: Some(deps.into_iter().collect()),
         }
     }
 
@@ -196,7 +216,9 @@ impl<O: Id> OpFamilyPhase<O> {
 
 
 */
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, derive_more::From, Exhaustive)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, derive_more::From, Exhaustive, Serialize, Deserialize,
+)]
 pub enum OpFamilyAction<O: Id> {
     #[from]
     Op(OpAction),
@@ -275,7 +297,7 @@ mod tests {
             })
         };
 
-        let machine: OpFamilyMachine<O> = OpFamilyMachine::new(o[0], o);
+        let machine: OpFamilyMachine<O> = OpFamilyMachine::new_bounded(o);
 
         let predicates = (0..N).map(O::new).flat_map(|a| {
             (0..N).map(O::new).flat_map(move |b| {
@@ -310,7 +332,7 @@ mod tests {
         let o = O::all_values();
 
         // Create an instance of OpMachine with 1 dependency
-        let machine: OpFamilyMachine<O> = OpFamilyMachine::new(o[0], o);
+        let machine: OpFamilyMachine<O> = OpFamilyMachine::new_bounded(o);
 
         let initial = OpFamilyState::new(o);
 
