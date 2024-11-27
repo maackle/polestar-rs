@@ -76,7 +76,7 @@ impl<O: Id, T: Id> Machine for OpFamilyMachine<O, T> {
                 .map(|d| dep == d.0)
                 .unwrap_or(false)
             {
-                bail!("The focus op can't be depended on")
+                bail!("The focus op (first dep) can't be depended on")
             }
         }
 
@@ -103,7 +103,7 @@ impl<O: Id, T: Id> Machine for OpFamilyMachine<O, T> {
                         .map(|(_, dep)| dep)
                         .find(|dep| matches!(dep, S::Op(Integrated(_))))
                         .ok_or(anyhow!(
-                            "attempted to validate op still awaiting dep {:?}",
+                            "attempted to validate op {target} but still awaiting dep {:?}",
                             dep_id
                         ))?;
 
@@ -355,7 +355,7 @@ mod tests {
 
         use Predicate as P;
 
-        type A = IdU8<3>;
+        type A = IdU8<2>;
         type T = IdU8<1>;
 
         let op_awaiting = |o: OpId<A, T>, b: A| {
@@ -410,14 +410,17 @@ mod tests {
         let predicates = <OpId<A, T>>::iter_exhaustive(None)
             .flat_map(|o| {
                 A::iter_exhaustive(None).flat_map(move |b| {
-                    // let all_b = T::iter_exhaustive(None).map(|t| OpId(b, t)).reduce(P::)
-                    [
-                        P::always(op_awaiting(o, b).implies(P::not(dep_any_awaiting(b, o.0)))),
-                        P::always(
-                            op_awaiting(o, b)
-                                .implies(P::always(op_integrated(o).implies(action_integrated(b)))),
-                        ),
-                    ]
+                    if o.0 == b {
+                        vec![]
+                    } else {
+                        // let all_b = T::iter_exhaustive(None).map(|t| OpId(b, t)).reduce(P::)
+                        vec![
+                            P::always(op_awaiting(o, b).implies(P::not(dep_any_awaiting(b, o.0)))),
+                            P::always(op_awaiting(o, b).implies(P::always(
+                                op_integrated(o).implies(action_integrated(b)),
+                            ))),
+                        ]
+                    }
                 })
             })
             .collect_vec();

@@ -52,6 +52,44 @@ impl<N: Id, O: Id, T: Id> Machine for OpNetworkMachine<N, O, T> {
             .owned_update(node, |nodes, node_state| match action {
                 OpNetworkAction::Local { op, action } => {
                     self.inner.transition(node_state, (op, action))
+
+                    // use OpFamilyAction as E;
+                    // use OpFamilyPhase as S;
+                    // use OpPhase as P;
+                    // use ValidationType as VT;
+
+                    // let changed = node_state.owned_update(op, |_, mut op_state| {
+                    //     match (op_state, action) {
+                    //         (S::Awaiting(vt, dep_id), E::Op(a)) => match (vt, a) {
+                    //             (VT::Sys, OpAction::Validate(VT::Sys))
+                    //             | (VT::App, OpAction::Validate(VT::App)) => {
+                    //                 let any_not_rejected = nodes.values().any(|op_states| {
+                    //                     op_states.iter_from(dep_id).any(|(_, op_state)| {
+                    //                         !matches!(
+                    //                             op_state,
+                    //                             S::Op(P::Integrated(Outcome::Rejected))
+                    //                         )
+                    //                     })
+                    //                 });
+
+                    //                 if !any_not_rejected {
+                    //                     bail!("can't validate op if all deps are rejected");
+                    //                 }
+
+                    //                 op_state = S::Op(P::Validated(vt));
+
+                    //                 Ok((op_state, true))
+                    //             }
+                    //             _ => Ok((op_state, false)),
+                    //         },
+                    //         _ => Ok((op_state, false)),
+                    //     }
+                    // })?;
+                    // if changed {
+                    //     Ok((node_state, ()))
+                    // } else {
+                    //     self.inner.transition(node_state, (op, action))
+                    // }
                 }
                 OpNetworkAction::Receive { op, from, valid } => {
                     // BUG: technically we should wait for validation before
@@ -235,7 +273,7 @@ mod tests {
         use polestar::diagram::exhaustive::DiagramConfig;
 
         type N = IdU8<2>;
-        type O = IdU8<1>;
+        type O = IdU8<2>;
         type T = IdU8<1>;
 
         let ns = N::all_values();
@@ -259,6 +297,7 @@ mod tests {
             machine,
             initial,
             &DiagramConfig {
+                ignore_loopbacks: true,
                 ..Default::default()
             },
             |state| OpNetworkStatePretty(state),
