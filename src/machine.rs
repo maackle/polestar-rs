@@ -50,10 +50,11 @@ where
         checked::Checker::new(self)
     }
 
-    fn apply_actions(
+    fn apply_each_action(
         &self,
         mut state: Self::State,
         actions: impl IntoIterator<Item = Self::Action>,
+        on_action: impl Fn(&Self::Action, &Self::State),
     ) -> Result<(Self::State, Vec<Self::Fx>), (Self::Error, Self::State, Self::Action)>
     where
         Self::State: Clone,
@@ -63,11 +64,24 @@ where
         for action in actions.into_iter() {
             let (s, fx) = self
                 .transition(state.clone(), action.clone())
-                .map_err(|e| (e, state, action))?;
+                .map_err(|e| (e, state, action.clone()))?;
+            on_action(&action, &s);
             fxs.push(fx);
             state = s;
         }
         Ok((state, fxs))
+    }
+
+    fn apply_actions(
+        &self,
+        state: Self::State,
+        actions: impl IntoIterator<Item = Self::Action>,
+    ) -> Result<(Self::State, Vec<Self::Fx>), (Self::Error, Self::State, Self::Action)>
+    where
+        Self::State: Clone,
+        Self::Action: Clone,
+    {
+        self.apply_each_action(state, actions, |_, _| ())
     }
 
     fn apply_actions_(

@@ -42,54 +42,71 @@ impl<N: Id, O: Id, T: Id> Machine for OpNetworkMachine<N, O, T> {
         mut state: Self::State,
         (node, action): Self::Action,
     ) -> TransitionResult<Self> {
-        // If nodes aren't bounded, add a new node when seen
-        if self.nodes.is_none() && !state.nodes.contains_key(&node) {
-            state.nodes.insert(node, self.inner.initial());
-        }
-
-        let fx = state
-            .nodes
-            .owned_update(node, |nodes, node_state| match action {
+        let fx = state.nodes.owned_upsert(
+            node,
+            |_| {
+                // If nodes aren't bounded, add a new node when seen
+                if self.nodes.is_none() {
+                    Ok(self.inner.initial())
+                } else {
+                    Err(anyhow!("no node {node:?}"))
+                }
+            },
+            |nodes, mut node_state| match action {
                 OpNetworkAction::Local { op, action } => {
-                    self.inner.transition(node_state, (op, action))
+                    // self.inner.transition(node_state, (op, action))
 
-                    // use OpFamilyAction as E;
-                    // use OpFamilyPhase as S;
-                    // use OpPhase as P;
-                    // use ValidationType as VT;
+                    use OpFamilyAction as E;
+                    use OpFamilyPhase as S;
+                    use OpPhase as P;
+                    use ValidationType as VT;
 
-                    // let changed = node_state.owned_update(op, |_, mut op_state| {
-                    //     match (op_state, action) {
-                    //         (S::Awaiting(vt, dep_id), E::Op(a)) => match (vt, a) {
-                    //             (VT::Sys, OpAction::Validate(VT::Sys))
-                    //             | (VT::App, OpAction::Validate(VT::App)) => {
-                    //                 let any_not_rejected = nodes.values().any(|op_states| {
-                    //                     op_states.iter_from(dep_id).any(|(_, op_state)| {
-                    //                         !matches!(
-                    //                             op_state,
-                    //                             S::Op(P::Integrated(Outcome::Rejected))
-                    //                         )
-                    //                     })
-                    //                 });
+                    let changed = node_state.owned_upsert(
+                        op,
+                        |_| {
+                            if self.inner.is_op_handled(&op) {
+                                Ok(OpFamilyPhase::default())
+                            } else {
+                                Err(anyhow!("no op {op:?}"))
+                            }
+                        },
+                        |_, mut op_state| match (op_state, action) {
+                            // If attempting to Validate while in an Awaiting state...
+                            (S::Awaiting(vt, dep_id), E::Op(a)) => match (vt, a) {
+                                (vt, OpAction::Validate(vt2)) if vt == vt2 => {
+                                    // ... check if any nodes contain an non-rejected copy of the op,
+                                    // which means they are able to serve it up via get request
+                                    // NOTE: this does not actually model the get request! just the availablility
+                                    // TODO: model the get request explicitly once kitsune can know who we got it from
+                                    let any_not_rejected = nodes.values().any(|op_states| {
+                                        op_states.iter_from(dep_id).any(|(_, op_state)| {
+                                            // TODO: is this correct? Does a node serve up unintegrated ops?
+                                            // or only integrated?
+                                            !matches!(
+                                                op_state,
+                                                S::Op(P::Integrated(Outcome::Rejected))
+                                            )
+                                        })
+                                    });
 
-                    //                 if !any_not_rejected {
-                    //                     bail!("can't validate op if all deps are rejected");
-                    //                 }
+                                    if !any_not_rejected {
+                                        bail!("can't validate op if all deps are rejected");
+                                    }
 
-                    //                 op_state = S::Op(P::Validated(vt));
+                                    op_state = S::Op(P::Validated(vt));
 
-                    //                 Ok((op_state, true))
-                    //             }
-                    //             _ => Ok((op_state, false)),
-                    //         },
-                    //         _ => Ok((op_state, false)),
-                    //     }
-                    // })?;
-                    // if changed {
-                    //     Ok((node_state, ()))
-                    // } else {
-                    //     self.inner.transition(node_state, (op, action))
-                    // }
+                                    Ok((op_state, true))
+                                }
+                                _ => Ok((op_state, false)),
+                            },
+                            _ => Ok((op_state, false)),
+                        },
+                    )?;
+                    if changed {
+                        Ok((node_state, ()))
+                    } else {
+                        self.inner.transition(node_state, (op, action))
+                    }
                 }
                 OpNetworkAction::Receive { op, from, valid } => {
                     // BUG: technically we should wait for validation before
@@ -126,7 +143,8 @@ impl<N: Id, O: Id, T: Id> Machine for OpNetworkMachine<N, O, T> {
                     self.inner
                         .transition(node_state, (op, OpAction::Store(false).into()))
                 }
-            })?;
+            },
+        )?;
 
         Ok((state, fx))
     }
@@ -182,7 +200,7 @@ impl<N: Id, O: Id, T: Id> OpNetworkMachine<N, O, T> {
 ░░░░░░     ░░░░░   ░░░░░░░░    ░░░░░   ░░░░░░
 */
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, derive_more::From)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, derive_more::From)]
 pub struct OpNetworkState<N: Id, O: Id, T: Id> {
     pub nodes: BTreeMap<N, OpFamilyState<O, T>>,
 }

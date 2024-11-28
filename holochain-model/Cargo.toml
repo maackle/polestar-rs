@@ -18,6 +18,8 @@ tracing-subscriber = "*"
 serde = { version = "1", features = ["derive"] }
 serde_json = "*"
 
+[dev-dependencies]
+pretty_assertions = "*"
 
 [patch.crates-io]
 automap = { path = "/home/michael/proj/automap-rs" }

@@ -1,7 +1,11 @@
 use itertools::Itertools;
 use polestar::Machine;
 
-use crate::op_network::{OpNetworkMachine, OpNetworkMachineAction};
+use crate::{
+    op_family::{OpFamilyPhase, OpFamilyState},
+    op_network::{OpNetworkMachine, OpNetworkMachineAction, OpNetworkState},
+    op_single::{OpPhase, Outcome},
+};
 
 #[test]
 fn test_playback() {
@@ -17,20 +21,31 @@ fn test_playback() {
 
     let actions: Vec<OpNetworkMachineAction<N, O, T>> = serde_json::from_str(&json).unwrap();
 
-    for a in actions.iter() {
-        println!("{a:?}");
-    }
-
     let machine = OpNetworkMachine::<N, O, T>::new();
+    dbg!(&machine);
 
     let initial = machine.initial();
 
-    match machine.apply_actions_(initial, actions) {
+    match machine.apply_each_action(initial, actions, |a, s| {
+        eprintln!("action: {:?}", a);
+    }) {
         Err((e, s, a)) => {
             eprintln!("state: {:#?}, action: {:#?}", s, a);
             panic!("{e:?}");
         }
-        Ok(state) => {
+        Ok((state, _)) => {
+            let mut expected = OpNetworkState::default();
+            for (n, ops) in state.nodes.iter() {
+                expected.nodes.insert(n.clone(), OpFamilyState::default());
+                for (op, _) in ops.iter() {
+                    expected.nodes.get_mut(n).unwrap().insert(
+                        op.clone(),
+                        OpFamilyPhase::Op(OpPhase::Integrated(Outcome::Accepted)),
+                    );
+                }
+            }
+
+            pretty_assertions::assert_eq!(state, expected, "all ops must be integrated");
             dbg!(&state);
         }
     }

@@ -50,16 +50,11 @@ impl<O: Id, T: Id> Machine for OpFamilyMachine<O, T> {
         use OpFamilyPhase as S;
         use OpPhase::*;
 
-        if self
-            .deps
-            .as_ref()
-            .map(|ds| !ds.contains(&target))
-            .unwrap_or(false)
-        {
+        if !self.is_op_handled(&target) {
             bail!("{target:?} not covered");
         }
 
-        // If deps aren't bounded, add a new state when seen
+        // Add a new state when seen if we didn't already bail.
         if !states.contains_key(&target) {
             states.insert(target, OpFamilyPhase::default());
         }
@@ -159,6 +154,15 @@ impl<O: Id, T: Id> OpFamilyMachine<O, T> {
 
     pub fn initial(&self) -> OpFamilyState<O, T> {
         OpFamilyState::default()
+    }
+
+    /// If the machine specifies a set of deps, then the target op must be in that set.
+    /// Otherwise, any op is fair game.
+    pub fn is_op_handled(&self, target: &OpId<O, T>) -> bool {
+        self.deps
+            .as_ref()
+            .map(|ds| ds.contains(target))
+            .unwrap_or(true)
     }
 }
 
