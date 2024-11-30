@@ -126,6 +126,9 @@ impl Machine for OpSingleMachine {
             (S::Validated(V::Sys), E::Validate(V::App)) => S::Validated(V::App),
             (S::Validated(V::App), E::Integrate) => S::Integrated(Outcome::Accepted),
 
+            // XXX: Allow idempotent integration, because Holochain does this.
+            (S::Integrated(Outcome::Accepted), E::Integrate) => S::Integrated(Outcome::Accepted),
+
             (state, action) => bail!("invalid transition: {state:?} -> {action:?}"),
         };
         Ok((next, ()))
