@@ -72,6 +72,7 @@ mod tests {
         // let path = "/home/michael/Downloads/op-events.json";
         // let path = "/home/michael/proj/polestar-rs/op-events.json";
         let text = std::fs::read_to_string(path).unwrap();
+        assert!(!text.is_empty(), "events file is empty");
         let text = text
             .lines()
             .filter(|l| !l.is_empty() && !l.starts_with("//"))
@@ -86,15 +87,15 @@ mod tests {
         let initial = machine.initial();
 
         match machine.apply_each_action(initial, actions, |a, _s| {
-            eprintln!("action: {:?}", a);
+            // eprintln!("action: {:?}", a);
         }) {
             Err((e, s, a)) => {
                 eprintln!("state: {:#?}, action: {:#?}", s, a);
                 panic!("{e:?}");
             }
             Ok((state, _)) => {
-                assert_received_integrated(&state);
-                // assert_all_integrated(&state);
+                // assert_received_integrated(&state);
+                assert_all_integrated(&state);
                 dbg!(&state);
             }
         }

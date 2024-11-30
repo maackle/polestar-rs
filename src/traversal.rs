@@ -83,7 +83,7 @@ where
             path: Default::default(),
         });
     }
-    let results: Vec<_> = terminals.into_iter().map(|s| s.finalize()).collect();
+    let results: Vec<_> = terminals.into_iter().map(|(s, _)| s.finalize()).collect();
     if results.iter().all(|r| r.is_err()) {
         let mut errors: Vec<_> = results
             .into_iter()
@@ -104,15 +104,15 @@ pub fn traverse<M>(
     machine: &M,
     initial: M::State,
     config: &TraversalConfig<M::Error>,
-) -> Result<(HashSet<M::State>, TraversalReport), M::Error>
+) -> Result<(HashSet<(M::State, im::Vector<M::Action>)>, TraversalReport), M::Error>
 where
     M: Machine,
-    M::State: Clone + Eq + Hash,
+    M::State: Clone + Eq + Hash + Debug,
     M::Action: Exhaustive + Clone + Eq + Hash + Debug,
     M::Error: Debug,
 {
     let mut visited: HashSet<M::State> = HashSet::new();
-    let mut terminals: HashSet<M::State> = HashSet::new();
+    let mut terminals: HashSet<(M::State, im::Vector<M::Action>)> = HashSet::new();
     let mut to_visit: VecDeque<(M::State, usize, im::Vector<M::Action>)> = VecDeque::new();
 
     to_visit.push_back((initial, 0, im::vector![]));
@@ -120,6 +120,11 @@ where
     let mut report = TraversalReport::default();
 
     while let Some((state, distance, path)) = to_visit.pop_front() {
+        tracing::debug!(
+            "to_visit: {:?}, dist={distance}, path={:?}",
+            to_visit.len(),
+            path,
+        );
         report.total_steps += 1;
         if report.total_steps % 1000 == 0 {
             tracing::debug!("iter {}", report.total_steps);
@@ -134,7 +139,7 @@ where
 
         // Don't explore the same node twice, and respect the depth limit
         if distance > config.max_depth.unwrap_or(usize::MAX) || visited.contains(&state) {
-            terminals.insert(state);
+            terminals.insert((state, path));
             continue;
         }
 
@@ -143,6 +148,7 @@ where
         // If this is a terminal state, no need to explore further.
         if machine.is_terminal(&state) {
             report.num_terminations += 1;
+            terminals.insert((state, path));
             continue;
         }
 

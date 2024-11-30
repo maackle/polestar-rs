@@ -18,7 +18,19 @@ pub struct CheckerState<M: Machine> {
     predicates: Predicates<M::State>,
     #[deref]
     pub state: M::State,
+
     path: im::Vector<M::Action>,
+}
+
+impl<M> std::fmt::Debug for CheckerState<M>
+where
+    M: Machine,
+    M::State: std::fmt::Debug,
+    M::Action: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "CheckerState({:?})", self.state)
+    }
 }
 
 impl<M> Clone for CheckerState<M>
