@@ -12,12 +12,18 @@ pub enum OpPhase {
     #[default]
     /// The op has not been seen by this node yet
     None,
+
     /// The op has been received, either first-hand (authorship) or second-hand (via publish or gossip)
     /// and validation has not yet been attempted
     Stored,
-    /// The op has been validated.
+
+    /// The op has passed validation.
     #[display("Validated({})", _0)]
     Validated(ValidationType),
+
+    /// The op has been rejected
+    Rejected,
+
     /// The op has been integrated
     Integrated(Outcome),
 }
@@ -121,10 +127,12 @@ impl Machine for OpSingleMachine {
             // Here's some other idempotency additions I'm adding, but should be cleaned up.
             (s @ S::Validated(v1), E::Validate(v2)) if v1 == v2 => s,
 
-            (S::Stored | S::Validated(V::Sys), E::Reject) => S::Integrated(Outcome::Rejected),
+            (S::Stored | S::Validated(V::Sys), E::Reject) => S::Rejected,
             (S::Stored, E::Validate(V::Sys)) => S::Validated(VT::Sys),
             (S::Validated(V::Sys), E::Validate(V::App)) => S::Validated(V::App),
+
             (S::Validated(V::App), E::Integrate) => S::Integrated(Outcome::Accepted),
+            (S::Rejected, E::Integrate) => S::Integrated(Outcome::Rejected),
 
             // XXX: Allow idempotent integration, because Holochain does this.
             (S::Integrated(Outcome::Accepted), E::Integrate) => S::Integrated(Outcome::Accepted),
