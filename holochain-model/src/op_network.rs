@@ -108,7 +108,12 @@ impl<N: Id, O: Id, T: Id> Machine for OpNetworkMachine<N, O, T> {
                         self.inner.transition(node_state, (op, action))
                     }
                 }
-                OpNetworkAction::Receive { op, from, valid } => {
+                OpNetworkAction::Receive {
+                    op,
+                    from,
+                    valid,
+                    target,
+                } => {
                     // BUG: technically we should wait for validation before
                     // receiving, but we don't currently check for that.
                     // we only require that the op is valid.
@@ -228,7 +233,25 @@ pub enum OpNetworkAction<N: Id, O: Id, T: Id> {
         op: OpId<O, T>,
         from: N,
         valid: bool,
+        target: OpSendTarget,
     },
+}
+
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    Eq,
+    Hash,
+    Exhaustive,
+    derive_more::Display,
+    serde::Serialize,
+    serde::Deserialize,
+)]
+pub enum OpSendTarget {
+    Vault,
+    Cache,
 }
 
 /*
@@ -267,9 +290,12 @@ impl<N: Id, O: Id, T: Id> Debug for OpNetworkEdgePretty<N, O, T> {
         let Self(node, action) = self;
         match action {
             OpNetworkAction::Local { op, action } => write!(f, "[{node}, {op}] {action:?}",)?,
-            OpNetworkAction::Receive { op, from, valid } => {
-                write!(f, "{node} ↢ {from}: Recv({op}, {valid})",)?
-            }
+            OpNetworkAction::Receive {
+                op,
+                from,
+                valid,
+                target,
+            } => write!(f, "{node} ↢ {from}: Recv({op}, {valid}, {target})",)?,
         }
         Ok(())
     }
