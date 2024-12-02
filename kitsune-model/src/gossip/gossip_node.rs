@@ -57,9 +57,11 @@ pub struct NodeState<N: Id> {
 
 /// The state of a peer from the perspective of another
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, derive_more::From)]
-pub struct PeerState {
-    active_round: bool,
-    last_outcome: Option<(GossipOutcome, usize)>,
+pub enum PeerState {
+    #[default]
+    NeverStarted,
+    Active,
+    Complete(GossipOutcome, usize),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -95,7 +97,11 @@ impl<N: Id> Machine for NodeMachine<N> {
         match action {
             NodeAction::Tick => state.peers.values_mut().for_each(|peer| {
                 // TODO: timeout
-                peer.last_outcome.as_mut().map(|(_, time)| *time += 1);
+                match peer {
+                    PeerState::NeverStarted => {}
+                    PeerState::Active => {}
+                    PeerState::Complete(_, time) => *time += 1,
+                }
             }),
             NodeAction::AddPeer(peer) => {
                 if let Some(_) = state.peers.insert(peer, PeerState::default()) {
@@ -104,29 +110,28 @@ impl<N: Id> Machine for NodeMachine<N> {
             }
             NodeAction::Incoming { from, msg } => match msg {
                 Msg::Initiate => state.peers.owned_update(from, |peers, mut peer| {
-                    if peer.active_round {
-                        bail!("node {from} already in a gossip round");
-                    } else {
-                        peer.active_round = true;
+                    match peer {
+                        PeerState::Active => bail!("node {from} already in a gossip round"),
+                        _ => peer = PeerState::Active,
                     }
                     Ok((peer, ()))
                 })?,
                 Msg::Complete(new_data) => state.peers.owned_update(from, |peers, mut peer| {
-                    if peer.active_round {
-                        peer.active_round = false;
-                        peer.last_outcome = Some((GossipOutcome::Success(new_data), 0));
-                    } else {
-                        bail!("node {from} not in a gossip round");
+                    match peer {
+                        PeerState::Active => {
+                            peer = PeerState::Complete(GossipOutcome::Success(new_data), 0);
+                        }
+                        _ => bail!("node {from} not in a gossip round"),
                     }
                     Ok((peer, ()))
                 })?,
             },
             NodeAction::Error { from } => state.peers.owned_update(from, |peers, mut peer| {
-                if peer.active_round {
-                    peer.active_round = false;
-                    peer.last_outcome = Some((GossipOutcome::Failure, 0));
-                } else {
-                    bail!("node {from} not in a gossip round");
+                match peer {
+                    PeerState::Active => {
+                        peer = PeerState::Complete(GossipOutcome::Failure, 0);
+                    }
+                    _ => bail!("node {from} not in a gossip round"),
                 }
                 Ok((peer, ()))
             })?, // NodeAction::Hangup { to } => {
@@ -185,11 +190,11 @@ mod tests {
         let state = machine.initial();
 
         write_dot_state_diagram_mapped(
-            "gossip-node.dot",
+            "gossip-node-7.dot",
             machine,
             state,
             &DiagramConfig {
-                max_depth: Some(3),
+                max_depth: Some(7),
                 ..Default::default()
             },
             |state| {
@@ -197,9 +202,7 @@ mod tests {
                     state
                         .peers
                         .iter()
-                        .map(|(n, peer)| {
-                            format!("{n}: {} {:?}", peer.active_round, peer.last_outcome)
-                        })
+                        .map(|(n, peer)| format!("{n}: {:?}", peer))
                         .collect_vec()
                         .join("\n")
                 })
