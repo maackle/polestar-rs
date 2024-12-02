@@ -69,14 +69,16 @@ pub trait Spacey:
     + WrappingSub
     + Pow<u32, Output = Self>
 {
+    const BITS: usize;
     fn rotate_left(&self, n: u32) -> Self;
     fn reverse_bits(&self) -> Self;
     fn to_ascii(&self) -> String;
 }
 
-macro_rules! impl_spacey_primitives {
-    ($($t:ty : $fmt:literal),+) => {
-        $(impl Spacey for $t {
+macro_rules! impl_spacey_primitive {
+    ($t:ty , $n:literal, $fmt:literal) => {
+        impl Spacey for $t {
+            const BITS: usize = $n;
 
             fn rotate_left(&self, n: u32) -> Self {
                 <$t>::rotate_left(*self, n)
@@ -89,27 +91,33 @@ macro_rules! impl_spacey_primitives {
             fn to_ascii(&self) -> String {
                 format!($fmt, *self)
             }
-        })+
+        }
     };
 }
 
-impl_spacey_primitives!(u8 : "{:08b}", u16 : "{:016b}", u32 : "{:032b}", u64 : "{:064b}", u128 : "{:0128b}");
+impl_spacey_primitive!(u8, 8, "{:08b}");
+impl_spacey_primitive!(u16, 16, "{:016b}");
+impl_spacey_primitive!(u32, 32, "{:032b}");
+impl_spacey_primitive!(u64, 64, "{:064b}");
+impl_spacey_primitive!(u128, 128, "{:0128b}");
 
 impl<Space> Arq<Space>
 where
     Space: Spacey,
 {
-    const BITS: usize = size_of::<Space>() * 8;
+    pub fn normalize(&self) -> Self {
+        todo!()
+    }
 
     pub fn to_space(&self) -> Space {
         let Self {
             grain, start, len, ..
         } = *self;
 
-        let chunk = Self::BITS / 2usize.pow(grain);
+        let chunk = Space::BITS / 2usize.pow(grain);
         let pow = chunk as u32 * len as u32;
-        assert!(pow <= Self::BITS as u32);
-        if pow == Self::BITS as u32 {
+        assert!(pow <= Space::BITS as u32);
+        if pow == Space::BITS as u32 {
             return Space::zero().wrapping_sub(&Space::one());
         }
         let mask = Space::from(2);
@@ -136,7 +144,7 @@ mod tests {
 
     #[test]
     fn arq_exhaustive() {
-        let all = Arq::<u16>::iter_exhaustive(None).collect_vec();
+        let all = Arq::<u32>::iter_exhaustive(None).collect_vec();
         for arq in all.iter() {
             println!("{}", arq.to_ascii());
         }
