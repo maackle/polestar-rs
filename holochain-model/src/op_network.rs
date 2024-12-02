@@ -305,7 +305,7 @@ impl<N: Id, O: Id, T: Id> Debug for OpNetworkEdgePretty<N, O, T> {
 mod tests {
     use itertools::Itertools;
     use polestar::{
-        diagram::exhaustive::write_dot_state_diagram_mapped, id::IdU8,
+        diagram::exhaustive::write_dot_state_diagram_mapped, id::UpTo,
         machine::checked::Predicate as P,
     };
 
@@ -316,9 +316,9 @@ mod tests {
     fn test_op_network_diagram() {
         use polestar::diagram::exhaustive::DiagramConfig;
 
-        type N = IdU8<2>;
-        type O = IdU8<2>;
-        type T = IdU8<1>;
+        type N = UpTo<2>;
+        type O = UpTo<2>;
+        type T = UpTo<1>;
 
         let ns = N::all_values();
         let ops = <OpId<O, T>>::iter_exhaustive(None).collect_vec();

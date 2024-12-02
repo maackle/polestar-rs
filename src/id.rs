@@ -3,45 +3,6 @@ use std::{collections::HashMap, hash::Hash};
 use proptest::prelude::{BoxedStrategy, Strategy};
 use proptest_derive::Arbitrary;
 
-/// A number which is less than `N`.
-/// Useful for IDs in exhaustive testing, to limit the number of choices.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, derive_more::Into, derive_more::Deref,
-)]
-pub struct UpTo<const N: usize>(usize);
-
-impl<const N: usize> UpTo<N> {
-    pub fn modulo(n: usize) -> Self {
-        Self(n % N)
-    }
-}
-
-impl<const N: usize> TryFrom<usize> for UpTo<N> {
-    type Error = String;
-    fn try_from(value: usize) -> Result<Self, Self::Error> {
-        if value < N {
-            Ok(Self(value))
-        } else {
-            Err(format!("Cannot use {value} for UpTo<{N}>"))
-        }
-    }
-}
-
-impl<const N: usize> exhaustive::Exhaustive for UpTo<N> {
-    fn generate(u: &mut exhaustive::DataSourceTaker) -> exhaustive::Result<Self> {
-        u.choice(N).map(Self)
-    }
-}
-
-impl<const N: usize> proptest::arbitrary::Arbitrary for UpTo<N> {
-    type Parameters = ();
-    type Strategy = BoxedStrategy<Self>;
-
-    fn arbitrary_with((): Self::Parameters) -> Self::Strategy {
-        (0..N).prop_map(Self).boxed()
-    }
-}
-
 pub trait Id:
     Clone
     + Copy
@@ -97,9 +58,9 @@ impl TryFrom<usize> for IdUnit {
     }
 }
 
-impl<const N: usize> Id for IdU8<N> {}
-// impl<const N: usize> Id for IdU8<N> {}
+impl<const N: usize> Id for UpTo<N> {}
 
+/// A number in the range [0, N)
 #[derive(
     Clone,
     Copy,
@@ -109,13 +70,12 @@ impl<const N: usize> Id for IdU8<N> {}
     PartialOrd,
     Ord,
     Hash,
-    Arbitrary,
     derive_more::Into,
     derive_more::Deref,
 )]
-pub struct IdU8<const N: usize>(usize);
+pub struct UpTo<const N: usize>(usize);
 
-impl<const N: usize> IdU8<N> {
+impl<const N: usize> UpTo<N> {
     pub fn new(n: usize) -> Self {
         Self::try_from(n).expect("Attempted to initialize Id<{N}> with {n}")
     }
@@ -133,13 +93,13 @@ impl<const N: usize> IdU8<N> {
     }
 }
 
-impl<const N: usize> exhaustive::Exhaustive for IdU8<N> {
+impl<const N: usize> exhaustive::Exhaustive for UpTo<N> {
     fn generate(u: &mut exhaustive::DataSourceTaker) -> exhaustive::Result<Self> {
         u.choice(N).map(Self)
     }
 }
 
-impl<const N: usize> TryFrom<usize> for IdU8<N> {
+impl<const N: usize> TryFrom<usize> for UpTo<N> {
     type Error = String;
     fn try_from(value: usize) -> Result<Self, Self::Error> {
         if value < N {
@@ -150,13 +110,13 @@ impl<const N: usize> TryFrom<usize> for IdU8<N> {
     }
 }
 
-impl<const N: usize> std::fmt::Debug for IdU8<N> {
+impl<const N: usize> std::fmt::Debug for UpTo<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Id({})", self.0)
     }
 }
 
-impl<const N: usize> std::fmt::Display for IdU8<N> {
+impl<const N: usize> std::fmt::Display for UpTo<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
@@ -205,12 +165,12 @@ mod tests {
 
     #[test]
     fn test_id_map() {
-        let mut m = IdMap::<_, IdU8<3>>::default();
-        assert_eq!(m.lookup("c"), Ok(IdU8(0)));
-        assert_eq!(m.lookup("m"), Ok(IdU8(1)));
-        assert_eq!(m.lookup("c"), Ok(IdU8(0)));
-        assert_eq!(m.lookup("y"), Ok(IdU8(2)));
-        assert_eq!(m.lookup("y"), Ok(IdU8(2)));
+        let mut m = IdMap::<_, UpTo<3>>::default();
+        assert_eq!(m.lookup("c"), Ok(UpTo(0)));
+        assert_eq!(m.lookup("m"), Ok(UpTo(1)));
+        assert_eq!(m.lookup("c"), Ok(UpTo(0)));
+        assert_eq!(m.lookup("y"), Ok(UpTo(2)));
+        assert_eq!(m.lookup("y"), Ok(UpTo(2)));
         assert!(matches!(m.lookup("k"), Err(_)));
     }
 }

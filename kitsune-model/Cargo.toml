@@ -1,0 +1,28 @@
+[package]
+name = "kitsune-model"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "*"
+automap = "*"
+derive_more = { version = "1", features = ["full"] }
+exhaustive = "*"
+itertools = "*"
+num-traits = "*"
+polestar = { version = "*", path = "/home/michael/proj/polestar-rs" }
+proptest = "1"
+proptest-derive = "0"
+tracing = "*"
+tracing-subscriber = "*"
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "*"
+
+[dev-dependencies]
+pretty_assertions = "*"
+
+[patch.crates-io]
+automap = { path = "/home/michael/proj/automap-rs" }
+proptest-derive = { git = "https://github.com/maackle/proptest.git", branch = "allow-non-local-definitions" }
+# exhaustive_macros = { git = "https://github.com/maackle/exhaustive.git" }

@@ -8,7 +8,7 @@ use derive_more::derive::Deref;
 use exhaustive::Exhaustive;
 use itertools::Itertools;
 use polestar::{
-    id::{Id, IdU8},
+    id::{Id, UpTo},
     prelude::*,
     util::{first, second},
 };
@@ -345,7 +345,7 @@ mod tests {
     use super::*;
     use polestar::{
         diagram::exhaustive::write_dot_state_diagram_mapped,
-        id::{IdU8, IdUnit},
+        id::{IdUnit, UpTo},
         machine::checked::Predicate,
         traversal::traverse_checked,
     };
@@ -359,8 +359,8 @@ mod tests {
 
         use Predicate as P;
 
-        type A = IdU8<2>;
-        type T = IdU8<1>;
+        type A = UpTo<2>;
+        type T = UpTo<1>;
 
         let op_awaiting = |o: OpId<A, T>, b: A| {
             P::atom(format!("{o} awaits {b}"), move |s: &OpFamilyState<A, T>| {
@@ -453,8 +453,8 @@ mod tests {
 
         use polestar::diagram::exhaustive::DiagramConfig;
 
-        type A = IdU8<2>;
-        type T = IdU8<1>;
+        type A = UpTo<2>;
+        type T = UpTo<1>;
 
         // Create an instance of OpMachine with 1 dependency
         // let machine: OpFamilyMachine<A, T> = OpFamilyMachine::new_bounded(items);
@@ -496,7 +496,7 @@ mod tests {
             }
         }
 
-        type O = IdU8<4>;
+        type O = UpTo<4>;
         let o = O::all_values();
 
         let deps = OpDeps(vec![(
@@ -525,8 +525,8 @@ mod tests {
 
     #[test]
     fn test_loop() {
-        type O = IdU8<3>;
-        type T = IdU8<2>;
+        type O = UpTo<3>;
+        type T = UpTo<2>;
         let o = O::all_values();
         let t = T::all_values();
 
