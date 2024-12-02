@@ -132,8 +132,8 @@ mod tests {
             ShardMachine,
             ShardState::new(arq),
             &Default::default(),
-            |state| state.synced_chunks,
-            |action| action,
+            |state| Some(state.synced_chunks),
+            |action| Some(action),
         );
     }
 }

@@ -8,6 +8,8 @@ use exhaustive::Exhaustive;
 use polestar::{ext::MapExt, id::Id, prelude::*};
 use serde::{Deserialize, Serialize};
 
+use super::gossip_node::*;
+
 /*                   █████     ███
                     ░░███     ░░░
   ██████    ██████  ███████   ████   ██████  ████████
@@ -18,8 +20,21 @@ use serde::{Deserialize, Serialize};
  ░░░░░░░░  ░░░░░░     ░░░░░  ░░░░░  ░░░░░░  ░░░░ ░░░░░   */
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Exhaustive, Serialize, Deserialize)]
-pub enum ___Action {
-    Noop,
+pub struct GossipAction<N: Id>(N, NodeAction<N>);
+
+/*        █████               █████
+         ░░███               ░░███
+  █████  ███████    ██████   ███████    ██████
+ ███░░  ░░░███░    ░░░░░███ ░░░███░    ███░░███
+░░█████   ░███      ███████   ░███    ░███████
+ ░░░░███  ░███ ███ ███░░███   ░███ ███░███░░░
+ ██████   ░░█████ ░░████████  ░░█████ ░░██████
+░░░░░░     ░░░░░   ░░░░░░░░    ░░░░░   ░░░░░░  */
+
+/// The panoptic state of the whole network
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, derive_more::From)]
+pub struct GossipState<N: Id> {
+    nodes: BTreeMap<N, NodeState<N>>,
 }
 
 /*                                  █████       ███
@@ -32,11 +47,13 @@ pub enum ___Action {
 ░░░░░ ░░░ ░░░░░  ░░░░░░░░  ░░░░░░  ░░░░ ░░░░░ ░░░░░ ░░░░ ░░░░░  ░░░░░░  */
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ___Machine {}
+pub struct GossipMachine<N: Id> {
+    phantom: std::marker::PhantomData<N>,
+}
 
-impl Machine for ___Machine {
-    type State = ___State;
-    type Action = ___Action;
+impl<N: Id> Machine for GossipMachine<N> {
+    type State = GossipState<N>;
+    type Action = GossipAction<N>;
     type Fx = ();
     type Error = anyhow::Error;
 
@@ -49,27 +66,15 @@ impl Machine for ___Machine {
     }
 }
 
-impl ___Machine {
+impl<N: Id> GossipMachine<N> {
     pub fn new() -> Self {
         todo!()
     }
 
-    pub fn initial(&self) -> ___State {
+    pub fn initial(&self) -> GossipState<N> {
         todo!()
     }
 }
-
-/*        █████               █████
-         ░░███               ░░███
-  █████  ███████    ██████   ███████    ██████
- ███░░  ░░░███░    ░░░░░███ ░░░███░    ███░░███
-░░█████   ░███      ███████   ░███    ░███████
- ░░░░███  ░███ ███ ███░░███   ░███ ███░███░░░
- ██████   ░░█████ ░░████████  ░░█████ ░░██████
-░░░░░░     ░░░░░   ░░░░░░░░    ░░░░░   ░░░░░░  */
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, derive_more::From)]
-pub struct ___State {}
 
 /*█████                      █████
  ░░███                      ░░███

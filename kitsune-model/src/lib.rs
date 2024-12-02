@@ -1,5 +1,6 @@
 #![allow(unused_imports)]
 
-mod sharding;
-pub mod shard;
 pub mod arq;
+pub mod gossip;
+pub mod shard;
+mod sharding;

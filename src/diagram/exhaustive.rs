@@ -13,7 +13,7 @@ use crate::{util::first, Machine};
 #[derive(Debug, Default, Clone)]
 pub struct DiagramConfig {
     pub max_actions: Option<usize>,
-    pub max_distance: Option<usize>,
+    pub max_depth: Option<usize>,
     pub max_iters: Option<usize>,
     pub ignore_loopbacks: bool,
     pub trace_errors: bool,
@@ -41,7 +41,7 @@ pub fn write_dot_state_diagram<M>(
     M::Action: Exhaustive + Clone + Eq + Hash + Debug,
     M::Error: Debug,
 {
-    write_dot_state_diagram_mapped(path, machine, initial, config, |m| m, |a| a)
+    write_dot_state_diagram_mapped(path, machine, initial, config, |m| Some(m), |a| Some(a))
 }
 
 pub fn write_dot_state_diagram_mapped<M, N, E>(
@@ -49,8 +49,8 @@ pub fn write_dot_state_diagram_mapped<M, N, E>(
     machine: M,
     initial: M::State,
     config: &DiagramConfig,
-    map_node: impl Fn(M::State) -> N,
-    map_edge: impl Fn(M::Action) -> E,
+    map_node: impl Fn(M::State) -> Option<N>,
+    map_edge: impl Fn(M::Action) -> Option<E>,
 ) where
     M: Machine,
     M::State: Clone + Eq + Hash,
@@ -79,15 +79,21 @@ where
     M::Action: Exhaustive + Clone + Eq + Hash + Debug,
     M::Error: Debug,
 {
-    print_dot_state_diagram_mapped::<M, M::State, M::Action>(machine, initial, config, |m| m, |a| a)
+    print_dot_state_diagram_mapped::<M, M::State, M::Action>(
+        machine,
+        initial,
+        config,
+        |m| Some(m),
+        |a| Some(a),
+    )
 }
 
 pub fn print_dot_state_diagram_mapped<M, N, E>(
     machine: M,
     initial: M::State,
     config: &DiagramConfig,
-    map_node: impl Fn(M::State) -> N,
-    map_edge: impl Fn(M::Action) -> E,
+    map_node: impl Fn(M::State) -> Option<N>,
+    map_edge: impl Fn(M::Action) -> Option<E>,
 ) where
     M: Machine,
     M::State: Clone + Eq + Hash,
@@ -115,7 +121,7 @@ where
     M::Action: Exhaustive + Clone + Eq + Hash + Debug,
     M::Error: Debug,
 {
-    state_diagram_mapped(machine, initial, config, |m| m, |a| a)
+    state_diagram_mapped(machine, initial, config, |m| Some(m), |a| Some(a))
 }
 
 /// Generate a state diagram of this state machine by exhaustively taking all possible actions
@@ -124,8 +130,8 @@ pub fn state_diagram_mapped<M, N, E>(
     machine: M,
     initial: M::State,
     config: &DiagramConfig,
-    map_node: impl Fn(M::State) -> N,
-    map_edge: impl Fn(M::Action) -> E,
+    map_node: impl Fn(M::State) -> Option<N>,
+    map_edge: impl Fn(M::Action) -> Option<E>,
 ) -> DiGraph<N, E>
 where
     M: Machine,
@@ -157,7 +163,11 @@ where
         if config.max_iters.map(|m| num_iters >= m).unwrap_or(false) {
             panic!("max iters of {} reached", config.max_iters.unwrap());
         }
-        let node: N = map_node(state.clone());
+        let node: N = if let Some(node) = map_node(state.clone()) {
+            node
+        } else {
+            continue;
+        };
         let ix = if let Some(ix) = visited_nodes.get(&node) {
             *ix
         } else {
@@ -171,14 +181,15 @@ where
             if !(config.ignore_loopbacks && prev_ix == ix)
                 && actions.insert((prev_ix, ix, prev_action.clone()))
             {
-                let edge = map_edge(prev_action);
-                tracing::debug!("new edge : {edge:?}");
-                graph.add_edge(prev_ix, ix, edge);
+                if let Some(edge) = map_edge(prev_action) {
+                    tracing::debug!("new edge : {edge:?}");
+                    graph.add_edge(prev_ix, ix, edge);
+                }
             }
         }
 
         // Don't explore the same node twice.
-        if distance > config.max_distance.unwrap_or(usize::MAX) || visited_states.contains(&state) {
+        if distance > config.max_depth.unwrap_or(usize::MAX) || visited_states.contains(&state) {
             tracing::debug!("skipping node (dist={distance}) : {node:?}");
             continue;
         }

@@ -344,8 +344,8 @@ mod tests {
                 ignore_loopbacks: true,
                 ..Default::default()
             },
-            |state| OpNetworkStatePretty(state),
-            |(target, action)| OpNetworkEdgePretty(target, action),
+            |state| Some(OpNetworkStatePretty(state)),
+            |(target, action)| Some(OpNetworkEdgePretty(target, action)),
         );
     }
 }

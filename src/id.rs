@@ -16,6 +16,9 @@ pub trait Id:
     + std::fmt::Display
     + std::fmt::Debug
 {
+    fn choices() -> IdChoices {
+        IdChoices::Large
+    }
 }
 
 impl Id for u8 {}
@@ -23,6 +26,11 @@ impl Id for u16 {}
 impl Id for u32 {}
 impl Id for u64 {}
 impl Id for usize {}
+
+pub enum IdChoices {
+    Small(usize),
+    Large,
+}
 
 #[derive(
     Clone,
@@ -39,7 +47,11 @@ impl Id for usize {}
 )]
 pub struct IdUnit;
 
-impl Id for IdUnit {}
+impl Id for IdUnit {
+    fn choices() -> IdChoices {
+        IdChoices::Small(1)
+    }
+}
 
 impl std::fmt::Display for IdUnit {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -58,8 +70,6 @@ impl TryFrom<usize> for IdUnit {
     }
 }
 
-impl<const N: usize> Id for UpTo<N> {}
-
 /// A number in the range [0, N)
 #[derive(
     Clone,
@@ -74,6 +84,12 @@ impl<const N: usize> Id for UpTo<N> {}
     derive_more::Deref,
 )]
 pub struct UpTo<const N: usize>(usize);
+
+impl<const N: usize> Id for UpTo<N> {
+    fn choices() -> IdChoices {
+        IdChoices::Small(N)
+    }
+}
 
 impl<const N: usize> UpTo<N> {
     pub fn new(n: usize) -> Self {

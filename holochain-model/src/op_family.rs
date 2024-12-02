@@ -471,8 +471,8 @@ mod tests {
                 ignore_loopbacks: true,
                 ..Default::default()
             },
-            |state| OpFamilyStatePretty(state),
-            |action| action,
+            |state| Some(OpFamilyStatePretty(state)),
+            |action| Some(action),
         );
     }
 
