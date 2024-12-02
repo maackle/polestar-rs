@@ -56,36 +56,75 @@ impl<Space> Exhaustive for Arq<Space> {
     }
 }
 
-pub trait Spacey: Debug + Copy + Ord + Eq + Binary + BitAnd<Output = Self> + From<u8> {}
+pub trait Spacey:
+    Debug
+    + Copy
+    + Ord
+    + Eq
+    + Binary
+    + BitAnd<Output = Self>
+    + From<u8>
+    + Zero
+    + One
+    + WrappingSub
+    + Pow<u32, Output = Self>
+{
+    fn rotate_left(&self, n: u32) -> Self;
+    fn reverse_bits(&self) -> Self;
+    fn to_ascii(&self) -> String;
+}
 
-impl Spacey for u8 {}
-impl Spacey for u16 {}
-impl Spacey for u32 {}
-impl Spacey for u64 {}
-impl Spacey for u128 {}
+macro_rules! impl_spacey_primitives {
+    ($($t:ty : $fmt:literal),+) => {
+        $(impl Spacey for $t {
+
+            fn rotate_left(&self, n: u32) -> Self {
+                <$t>::rotate_left(*self, n)
+            }
+
+            fn reverse_bits(&self) -> Self {
+                <$t>::reverse_bits(*self)
+            }
+
+            fn to_ascii(&self) -> String {
+                format!($fmt, *self)
+            }
+        })+
+    };
+}
+
+impl_spacey_primitives!(u8 : "{:08b}", u16 : "{:016b}", u32 : "{:032b}", u64 : "{:064b}", u128 : "{:0128b}");
 
 impl<Space> Arq<Space>
 where
     Space: Spacey,
 {
+    const BITS: usize = size_of::<Space>() * 8;
+
     pub fn to_space(&self) -> Space {
         let Self {
             grain, start, len, ..
         } = *self;
 
-        let chunk = (size_of::<Space>() * 8) / 2usize.pow(grain);
-        let mask = 2u8.wrapping_pow(chunk as u32 * len as u32);
+        let chunk = Self::BITS / 2usize.pow(grain);
+        let pow = chunk as u32 * len as u32;
+        assert!(pow <= Self::BITS as u32);
+        if pow == Self::BITS as u32 {
+            return Space::zero().wrapping_sub(&Space::one());
+        }
+        let mask = Space::from(2);
+        let mask = mask.pow(pow);
         // println!("{:08b}", mask);
-        let mask = mask.wrapping_sub(1u8);
+        let mask = mask.wrapping_sub(&Space::one());
         // println!("{:08b}", mask);
         let mask = mask.rotate_left(start as u32 * chunk as u32);
         // println!("{:08b}", mask);
 
-        Space::from(mask.reverse_bits())
+        mask.reverse_bits()
     }
 
     pub fn to_ascii(&self) -> String {
-        format!("{:032b}", self.to_space())
+        self.to_space().to_ascii()
     }
 }
 
@@ -97,7 +136,7 @@ mod tests {
 
     #[test]
     fn arq_exhaustive() {
-        let all = Arq::<u32>::iter_exhaustive(None).collect_vec();
+        let all = Arq::<u16>::iter_exhaustive(None).collect_vec();
         for arq in all.iter() {
             println!("{}", arq.to_ascii());
         }
