@@ -15,7 +15,7 @@ const fn max_grain<T>() -> u32 {
     (size_of::<T>() * 8).ilog2()
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
 pub struct Arq<Space> {
     pub grain: u32,
     pub start: Loc,
@@ -85,21 +85,24 @@ where
     }
 
     pub fn to_ascii(&self) -> String {
-        format!("{:08b}", self.to_space())
+        format!("{:032b}", self.to_space())
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use itertools::Itertools;
+
     use super::*;
 
     #[test]
     fn arq_exhaustive() {
-        let all = Arq::<u8>::iter_exhaustive(None);
-
-        for arq in all {
+        let all = Arq::<u32>::iter_exhaustive(None).collect_vec();
+        for arq in all.iter() {
             println!("{}", arq.to_ascii());
         }
+        let count = all.len();
+        println!("count: {count}");
     }
 
     #[test]
