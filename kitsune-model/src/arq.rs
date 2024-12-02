@@ -10,7 +10,6 @@ use num_traits::*;
 use polestar::id::UpTo;
 
 type Loc = u8;
-const MAX_GRAIN: usize = size_of::<Loc>() * 4;
 
 const fn max_grain<T>() -> u32 {
     (size_of::<T>() * 8).ilog2()
@@ -43,10 +42,10 @@ impl<Space> Arq<Space> {
 impl<Space> Exhaustive for Arq<Space> {
     fn generate(u: &mut DataSourceTaker) -> Result<Self> {
         // let g = MAX_GRAIN.min(size_of::<Space>() * 8);
-        let grain = u.choice(max_grain::<Space>() as usize)? as u32;
+        let grain = u.choice(1 + max_grain::<Space>() as usize)? as u32;
         let divs = 2usize.pow(grain);
         let start = u.choice(divs)? as u8;
-        let len = 1 + u.choice(divs - 1)? as u8;
+        let len = 1 + u.choice(divs)? as u8;
 
         Ok(Self {
             grain,
@@ -93,6 +92,15 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn arq_exhaustive() {
+        let all = Arq::<u8>::iter_exhaustive(None);
+
+        for arq in all {
+            println!("{}", arq.to_ascii());
+        }
+    }
 
     #[test]
     fn arq_unit_tests() {
