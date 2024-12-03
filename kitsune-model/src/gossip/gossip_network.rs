@@ -8,7 +8,7 @@ use exhaustive::Exhaustive;
 use polestar::{ext::MapExt, id::Id, prelude::*};
 use serde::{Deserialize, Serialize};
 
-use super::gossip_node::*;
+use super::gossip_node_timed::*;
 
 /*                   █████     ███
                     ░░███     ░░░

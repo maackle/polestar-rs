@@ -60,10 +60,9 @@ pub struct NodeState<N: Id> {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, derive_more::From)]
 pub enum PeerState {
     #[default]
-    Ready,
     Stale,
     Active,
-    Closed(GossipOutcome),
+    Complete(GossipOutcome, usize),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -115,21 +114,17 @@ impl<N: Id> Machine for NodeMachine<N> {
     fn transition(&self, mut state: Self::State, action: Self::Action) -> TransitionResult<Self> {
         match action {
             NodeAction::Tick => state.peers.values_mut().for_each(|peer| match peer {
-                PeerState::Ready => {
-                    *peer = PeerState::Stale;
-                }
                 PeerState::Stale => {}
                 PeerState::Active => {
-                    *peer = PeerState::Closed(GossipOutcome::Failure(FailureReason::Timeout))
+                    *peer = PeerState::Complete(GossipOutcome::Failure(FailureReason::Timeout), 0)
                 }
-                PeerState::Closed(_) => {
-                    *peer = PeerState::Ready;
-                    // if *time <= outcome.ticks(self) {
-                    //     *time += 1;
-                    // } else {
-                    //     // TODO: remove node?
-                    //     *peer = PeerState::Stale;
-                    // }
+                PeerState::Complete(outcome, time) => {
+                    if *time <= outcome.ticks(self) {
+                        *time += 1;
+                    } else {
+                        // TODO: remove node?
+                        *peer = PeerState::Stale;
+                    }
                 }
             }),
             NodeAction::AddPeer(peer) => {
@@ -138,30 +133,31 @@ impl<N: Id> Machine for NodeMachine<N> {
                 }
             }
             NodeAction::Incoming { from, msg } => match msg {
-                Msg::Initiate => state.peers.owned_update(from, |_, mut peer| {
+                Msg::Initiate => state.peers.owned_update(from, |peers, mut peer| {
                     match peer {
                         PeerState::Active => bail!("node {from} already in a gossip round"),
-                        PeerState::Closed(_) => {
+                        PeerState::Complete(outcome, time) if time < outcome.ticks(self) => {
                             bail!("too soon to be initiated with")
                         }
                         _ => peer = PeerState::Active,
                     }
                     Ok((peer, ()))
                 })?,
-                Msg::Complete(new_data) => state.peers.owned_update(from, |_, mut peer| {
+                Msg::Complete(new_data) => state.peers.owned_update(from, |peers, mut peer| {
                     match peer {
                         PeerState::Active => {
-                            peer = PeerState::Closed(GossipOutcome::Success(new_data));
+                            peer = PeerState::Complete(GossipOutcome::Success(new_data), 0);
                         }
                         _ => bail!("node {from} not in a gossip round"),
                     }
                     Ok((peer, ()))
                 })?,
             },
-            NodeAction::Error { from } => state.peers.owned_update(from, |_, mut peer| {
+            NodeAction::Error { from } => state.peers.owned_update(from, |peers, mut peer| {
                 match peer {
                     PeerState::Active => {
-                        peer = PeerState::Closed(GossipOutcome::Failure(FailureReason::Protocol));
+                        peer =
+                            PeerState::Complete(GossipOutcome::Failure(FailureReason::Protocol), 0);
                     }
                     _ => bail!("node {from} not in a gossip round"),
                 }
@@ -177,7 +173,7 @@ impl<N: Id> Machine for NodeMachine<N> {
         Ok((state, ()))
     }
 
-    fn is_terminal(&self, _s: &Self::State) -> bool {
+    fn is_terminal(&self, s: &Self::State) -> bool {
         false
     }
 }
@@ -237,11 +233,11 @@ mod tests {
                         .peers
                         .iter()
                         .map(|(n, peer)| match peer {
-                            PeerState::Closed(GossipOutcome::Success(_)) => {
-                                format!("{n}: Success")
+                            PeerState::Complete(GossipOutcome::Success(_), time) => {
+                                format!("{n}: Success({time})")
                             }
-                            PeerState::Closed(GossipOutcome::Failure(reason)) => {
-                                format!("{n}: Failure({reason:?})")
+                            PeerState::Complete(GossipOutcome::Failure(reason), time) => {
+                                format!("{n}: Failure({reason:?}, {time})")
                             }
                             _ => format!("{n}: {:?}", peer),
                         })
