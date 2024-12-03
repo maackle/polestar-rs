@@ -1,6 +1,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt::{Debug, Display},
+    marker::PhantomData,
 };
 
 use anyhow::{anyhow, bail};
@@ -59,7 +60,7 @@ pub struct NodeState<N: Id> {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, derive_more::From)]
 pub enum PeerState {
     #[default]
-    NeverStarted,
+    Stale,
     Active,
     Complete(GossipOutcome, usize),
 }
@@ -70,7 +71,13 @@ pub enum GossipOutcome {
     /// If true, new data was received. If false, nodes were already in sync.
     Success(bool),
     /// The last gossip attempt failed due to timeout or protocol error.
-    Failure,
+    Failure(FailureReason),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum FailureReason {
+    Timeout,
+    Protocol,
 }
 
 /*                                  █████       ███
@@ -84,7 +91,10 @@ pub enum GossipOutcome {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct NodeMachine<N: Id> {
-    fully_connected_peers: BTreeSet<N>,
+    success_ticks: usize,
+    error_ticks: usize,
+    stale_ticks: usize,
+    phantom: PhantomData<N>,
 }
 
 impl<N: Id> Machine for NodeMachine<N> {
@@ -95,12 +105,18 @@ impl<N: Id> Machine for NodeMachine<N> {
 
     fn transition(&self, mut state: Self::State, action: Self::Action) -> TransitionResult<Self> {
         match action {
-            NodeAction::Tick => state.peers.values_mut().for_each(|peer| {
-                // TODO: timeout
-                match peer {
-                    PeerState::NeverStarted => {}
-                    PeerState::Active => {}
-                    PeerState::Complete(_, time) => *time += 1,
+            NodeAction::Tick => state.peers.values_mut().for_each(|peer| match peer {
+                PeerState::Stale => {}
+                PeerState::Active => {
+                    *peer = PeerState::Complete(GossipOutcome::Failure(FailureReason::Timeout), 0)
+                }
+                PeerState::Complete(_, time) => {
+                    if *time < self.stale_ticks {
+                        *time += 1;
+                    } else {
+                        // TODO: remove node?
+                        *peer = PeerState::Stale;
+                    }
                 }
             }),
             NodeAction::AddPeer(peer) => {
@@ -112,6 +128,16 @@ impl<N: Id> Machine for NodeMachine<N> {
                 Msg::Initiate => state.peers.owned_update(from, |peers, mut peer| {
                     match peer {
                         PeerState::Active => bail!("node {from} already in a gossip round"),
+                        PeerState::Complete(outcome, time) => {
+                            let ticks = match outcome {
+                                GossipOutcome::Success(_) => self.success_ticks,
+                                GossipOutcome::Failure(_) => self.error_ticks,
+                            };
+                            if time < ticks {
+                                bail!("too soon to be initiated with")
+                            }
+                            peer = PeerState::Complete(GossipOutcome::Success(false), 0);
+                        }
                         _ => peer = PeerState::Active,
                     }
                     Ok((peer, ()))
@@ -129,7 +155,8 @@ impl<N: Id> Machine for NodeMachine<N> {
             NodeAction::Error { from } => state.peers.owned_update(from, |peers, mut peer| {
                 match peer {
                     PeerState::Active => {
-                        peer = PeerState::Complete(GossipOutcome::Failure, 0);
+                        peer =
+                            PeerState::Complete(GossipOutcome::Failure(FailureReason::Protocol), 0);
                     }
                     _ => bail!("node {from} not in a gossip round"),
                 }
@@ -153,7 +180,10 @@ impl<N: Id> Machine for NodeMachine<N> {
 impl<N: Id + Exhaustive> NodeMachine<N> {
     pub fn new() -> Self {
         Self {
-            fully_connected_peers: N::iter_exhaustive(None).collect(),
+            success_ticks: 1,
+            error_ticks: 2,
+            stale_ticks: 3,
+            phantom: PhantomData,
         }
     }
 
@@ -190,11 +220,11 @@ mod tests {
         let state = machine.initial();
 
         write_dot_state_diagram_mapped(
-            "gossip-node-7.dot",
+            "gossip-node.dot",
             machine,
             state,
             &DiagramConfig {
-                max_depth: Some(7),
+                max_depth: None,
                 ..Default::default()
             },
             |state| {
