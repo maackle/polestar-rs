@@ -51,7 +51,7 @@ pub enum Msg {
 ░░░░░░     ░░░░░   ░░░░░░░░    ░░░░░   ░░░░░░  */
 
 /// The state of a single node
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, derive_more::From)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, derive_more::Constructor)]
 pub struct NodeState<N: Id> {
     peers: BTreeMap<N, PeerState>,
     // rounds: BTreeSet<N>,
@@ -179,8 +179,15 @@ impl<N: Id> NodeMachine<N> {
         }
     }
 
-    pub fn initial(&self) -> NodeState<N> {
-        NodeState::default()
+    pub fn initial(&self) -> NodeState<N>
+    where
+        N: Exhaustive,
+    {
+        NodeState::new(
+            N::iter_exhaustive(None)
+                .map(|n| (n, Default::default()))
+                .collect(),
+        )
     }
 }
 
@@ -193,35 +200,33 @@ impl<N: Id> NodeMachine<N> {
   ░░█████ ░░██████  ██████   ░░█████  ██████
    ░░░░░   ░░░░░░  ░░░░░░     ░░░░░  ░░░░░░*/
 
-pub fn state_display<N: Id>(state: NodeState<N>) -> Option<String> {
-    Some({
-        state
-            .peers
-            .iter()
-            .map(|(n, peer)| match peer {
-                PeerState::Closed(GossipOutcome::Success(_)) => {
-                    format!("{n}: Success")
-                }
+impl<N: Id> Display for NodeState<N> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (n, peer) in self.peers.iter() {
+            match peer {
+                PeerState::Closed(GossipOutcome::Success(_)) => writeln!(f, "{n}: Success")?,
                 PeerState::Closed(GossipOutcome::Failure(reason)) => {
-                    format!("{n}: Failure({reason:?})")
+                    writeln!(f, "{n}: Failure({reason:?})")?
                 }
-                _ => format!("{n}: {:?}", peer),
-            })
-            .collect_vec()
-            .join("\n")
-    })
+                _ => writeln!(f, "{n}: {:?}", peer)?,
+            }
+        }
+        Ok(())
+    }
 }
 
-pub fn action_display<N: Id>(action: NodeAction<N>) -> Option<String> {
-    Some(match action {
-        NodeAction::Tick => "Tick".to_string(),
-        NodeAction::AddPeer(n) => format!("AddPeer({n})"),
-        NodeAction::Incoming { from, msg } => match msg {
-            Msg::Complete(_) => format!("Complete <- {from}"),
-            _ => format!("{msg:?} <- {from}"),
-        },
-        NodeAction::Error { from } => format!("Error({from})"),
-    })
+impl<N: Id> Display for NodeAction<N> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NodeAction::Tick => write!(f, "Tick"),
+            NodeAction::AddPeer(n) => write!(f, "AddPeer({n})"),
+            NodeAction::Incoming { from, msg } => match msg {
+                Msg::Complete(_) => write!(f, "Complete <- {from}"),
+                _ => write!(f, "{msg:?} <- {from}"),
+            },
+            NodeAction::Error { from } => write!(f, "Error({from})"),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -236,7 +241,8 @@ mod tests {
     #[test]
     #[ignore = "diagram"]
     fn diagram() {
-        type N = IdUnit;
+        // type N = IdUnit;
+        type N = UpTo<2>;
 
         let machine = NodeMachine::<N>::new();
         let state = machine.initial();
@@ -249,8 +255,8 @@ mod tests {
                 max_depth: None,
                 ..Default::default()
             },
-            state_display,
-            action_display,
+            Some,
+            Some,
         );
     }
 }

@@ -86,7 +86,8 @@ use ValidationType as VT;
     PartialEq,
     Eq,
     Hash,
-    /* derive_more::Display, */ Exhaustive,
+    derive_more::Display,
+    Exhaustive,
     Serialize,
     Deserialize,
 )]

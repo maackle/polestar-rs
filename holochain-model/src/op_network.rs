@@ -266,10 +266,10 @@ pub enum OpSendTarget {
 
 */
 
-#[derive(Clone, PartialEq, Eq, Hash, derive_more::From)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, derive_more::From)]
 pub struct OpNetworkStatePretty<N: Id, O: Id, T: Id>(pub OpNetworkState<N, O, T>);
 
-impl<N: Id, O: Id, T: Id> Debug for OpNetworkStatePretty<N, O, T> {
+impl<N: Id, O: Id, T: Id> Display for OpNetworkStatePretty<N, O, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (n, node) in self.0.nodes.iter() {
             write!(f, "n{n} [ ")?;
@@ -282,10 +282,10 @@ impl<N: Id, O: Id, T: Id> Debug for OpNetworkStatePretty<N, O, T> {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, derive_more::From)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, derive_more::From)]
 pub struct OpNetworkEdgePretty<N: Id, O: Id, T: Id>(N, pub OpNetworkAction<N, O, T>);
 
-impl<N: Id, O: Id, T: Id> Debug for OpNetworkEdgePretty<N, O, T> {
+impl<N: Id, O: Id, T: Id> Display for OpNetworkEdgePretty<N, O, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let Self(node, action) = self;
         match action {

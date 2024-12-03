@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
-    fmt::{Debug, Pointer},
+    fmt::{Debug, Display, Pointer},
 };
 
 use anyhow::{anyhow, bail};
@@ -328,10 +328,10 @@ fn detect_loop<O: Id, T: Id>(state: &OpFamilyState<O, T>, id: O) -> bool {
 
 */
 
-#[derive(Clone, PartialEq, Eq, Hash, derive_more::From)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, derive_more::From)]
 pub struct OpFamilyStatePretty<A: Id, T: Id>(pub OpFamilyState<A, T>);
 
-impl<A: Id, T: Id> Debug for OpFamilyStatePretty<A, T> {
+impl<A: Id, T: Id> Display for OpFamilyStatePretty<A, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (id, state) in self.0.iter() {
             writeln!(f, "{id} = {state}")?;
@@ -472,7 +472,7 @@ mod tests {
                 ..Default::default()
             },
             |state| Some(OpFamilyStatePretty(state)),
-            |action| Some(action),
+            |action| Some(format!("{action:?}")),
         );
     }
 

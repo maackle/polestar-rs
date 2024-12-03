@@ -1,9 +1,9 @@
 use exhaustive::Exhaustive;
-use petgraph::graph::{DiGraph, EdgeIndex, NodeIndex};
+use petgraph::graph::{DiGraph, NodeIndex};
 
 use std::{
     collections::{HashMap, HashSet, VecDeque},
-    fmt::Debug,
+    fmt::{Debug, Display},
     hash::Hash,
     path::Path,
 };
@@ -37,8 +37,8 @@ pub fn write_dot_state_diagram<M>(
     config: &DiagramConfig,
 ) where
     M: Machine,
-    M::State: Clone + Eq + Hash + Debug,
-    M::Action: Exhaustive + Clone + Eq + Hash + Debug,
+    M::State: Clone + Eq + Hash + Debug + Display,
+    M::Action: Exhaustive + Clone + Eq + Hash + Debug + Display,
     M::Error: Debug,
 {
     write_dot_state_diagram_mapped(path, machine, initial, config, |m| Some(m), |a| Some(a))
@@ -56,8 +56,8 @@ pub fn write_dot_state_diagram_mapped<M, N, E>(
     M::State: Clone + Eq + Hash,
     M::Action: Exhaustive + Clone + Eq + Hash,
     M::Error: Debug,
-    N: Clone + Eq + Hash + Debug,
-    E: Clone + Eq + Hash + Debug,
+    N: Clone + Eq + Hash + Debug + Display,
+    E: Clone + Eq + Hash + Debug + Display,
 {
     use std::fs::File;
     use std::io::Write;
@@ -75,8 +75,8 @@ pub fn write_dot_state_diagram_mapped<M, N, E>(
 pub fn print_dot_state_diagram<M>(machine: M, initial: M::State, config: &DiagramConfig)
 where
     M: Machine,
-    M::State: Clone + Eq + Hash + Debug,
-    M::Action: Exhaustive + Clone + Eq + Hash + Debug,
+    M::State: Clone + Eq + Hash + Debug + Display,
+    M::Action: Exhaustive + Clone + Eq + Hash + Debug + Display,
     M::Error: Debug,
 {
     print_dot_state_diagram_mapped::<M, M::State, M::Action>(
@@ -99,8 +99,8 @@ pub fn print_dot_state_diagram_mapped<M, N, E>(
     M::State: Clone + Eq + Hash,
     M::Action: Exhaustive + Clone + Eq + Hash,
     M::Error: Debug,
-    N: Clone + Eq + Hash + Debug,
-    E: Clone + Eq + Hash + Debug,
+    N: Clone + Eq + Hash + Debug + Display,
+    E: Clone + Eq + Hash + Debug + Display,
 {
     println!(
         "{}",
@@ -117,8 +117,8 @@ pub fn state_diagram<M>(
 ) -> DiGraph<M::State, M::Action>
 where
     M: Machine,
-    M::State: Clone + Eq + Hash + Debug,
-    M::Action: Exhaustive + Clone + Eq + Hash + Debug,
+    M::State: Clone + Eq + Hash + Debug + Display,
+    M::Action: Exhaustive + Clone + Eq + Hash + Debug + Display,
     M::Error: Debug,
 {
     state_diagram_mapped(machine, initial, config, |m| Some(m), |a| Some(a))
@@ -138,8 +138,8 @@ where
     M::State: Clone + Eq + Hash,
     M::Action: Exhaustive + Clone + Eq + Hash,
     M::Error: Debug,
-    N: Clone + Eq + Hash + Debug,
-    E: Clone + Eq + Hash + Debug,
+    N: Clone + Eq + Hash + Debug + Display,
+    E: Clone + Eq + Hash + Debug + Display,
 {
     let mut graph = DiGraph::new();
     let mut visited_states: HashSet<M::State> = HashSet::new();

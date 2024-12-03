@@ -5,7 +5,7 @@
 
 use std::{
     collections::{HashMap, HashSet},
-    fmt::Debug,
+    fmt::{Debug, Display},
     hash::Hash,
 };
 
@@ -26,8 +26,8 @@ pub struct DiagramConfig {
 pub fn print_dot_state_diagram<M>(m: M, initial: M::State, config: &DiagramConfig)
 where
     M: Machine + Clone,
-    M::State: Clone + Eq + Hash + Debug,
-    M::Action: Arbitrary + Clone + Eq + Hash + 'static,
+    M::State: Clone + Eq + Hash + Debug + Display,
+    M::Action: Arbitrary + Clone + Eq + Hash + Display + 'static,
 {
     println!("{}", to_dot(state_diagram(m, initial, &mut (), config)));
 }
@@ -62,8 +62,8 @@ pub fn state_diagram<M, S>(
 ) -> DiGraph<M::State, M::Action>
 where
     M: Machine + Clone,
-    M::State: Clone + Eq + Hash + Debug,
-    M::Action: Arbitrary + Clone + Eq + Hash + 'static,
+    M::State: Clone + Eq + Hash + Debug + Display,
+    M::Action: Arbitrary + Clone + Eq + Hash + Display + 'static,
     S: MonteCarloDiagramState<M>,
 {
     let mut graph = DiGraph::new();

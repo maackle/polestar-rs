@@ -139,14 +139,12 @@ mod tests {
                     state
                         .nodes
                         .into_iter()
-                        .map(|(n, s)| format!("{n}: {}", state_display(s).unwrap()))
+                        .map(|(n, s)| format!("{n}: {s}"))
                         .collect_vec()
                         .join("\n")
                 })
             },
-            |GossipAction(node, action)| {
-                Some(format!("{node}: {}", action_display(action).unwrap()))
-            },
+            |GossipAction(node, action)| Some(format!("{node}: {action}")),
         );
     }
 }

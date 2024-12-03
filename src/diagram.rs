@@ -7,17 +7,11 @@ pub mod montecarlo;
 
 pub fn to_dot<N, E>(graph: DiGraph<N, E>) -> String
 where
-    N: core::fmt::Debug,
-    E: core::fmt::Debug,
+    N: core::fmt::Display,
+    E: core::fmt::Display,
 {
     use petgraph::dot::Dot;
-    format!("{:?}", Dot::with_config(&graph, &[]))
-}
-
-pub trait DiagramNode {
-    type Node: Eq + std::hash::Hash + std::fmt::Debug;
-
-    fn to_diagram_node(&self) -> Self::Node;
+    format!("{}", Dot::with_config(&graph, &[]))
 }
 
 #[cfg(test)]
@@ -43,7 +37,18 @@ mod tests {
         D,
     }
 
-    #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Arbitrary, Exhaustive, ToPrimitive)]
+    #[derive(
+        Copy,
+        Clone,
+        Debug,
+        PartialEq,
+        Eq,
+        Hash,
+        Arbitrary,
+        Exhaustive,
+        ToPrimitive,
+        derive_more::Display,
+    )]
     enum Turn {
         One = 1,
         Two = 2,
