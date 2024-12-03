@@ -153,7 +153,7 @@ impl<M: Machine> CheckerState<M> {
             .next
             .iter()
             .filter(|(_, p)| matches!(p, Predicate::Eventually(_)))
-            .map(first_ref)
+            .map(|(name, _)| name)
             .collect::<Vec<_>>();
         if !eventuals.is_empty() {
             return Err((
@@ -220,7 +220,8 @@ where
 
 #[derive(Default, derive_more::From)]
 pub struct Predicates<S> {
-    next: im::Vector<(String, Predicate<S>)>,
+    // XXX: predicates keyed by strings which may not be unique
+    next: im::HashMap<String, Predicate<S>>,
 }
 
 impl<S> Clone for Predicates<S> {
@@ -241,8 +242,8 @@ impl<S> Predicates<S> {
 
 impl<S: std::fmt::Debug> Predicates<S> {
     pub fn step(&mut self, (old, new): (&S, &S)) -> Result<(), String> {
-        let mut next = vector![];
-        let mut now = vector![];
+        let mut next = im::hashmap![];
+        let mut now = im::hashmap![];
         tracing::debug!("");
         tracing::debug!("------------------------------------------------");
         tracing::debug!("STEP: {:?} -> {:?}", old, new);
@@ -269,31 +270,31 @@ impl<S: std::fmt::Debug> Predicates<S> {
 
     // TODO: include the Machine?
     fn visit(
-        next: &mut Vector<(String, Predicate<S>)>,
+        next: &mut im::HashMap<String, Predicate<S>>,
         negated: bool,
         name: String,
         predicate: BoxPredicate<S>,
         s: (&S, &S),
     ) -> bool {
         use Predicate::*;
-        let out = match *predicate.clone() {
+        let out = match *predicate {
             Next(p) => {
-                next.push_back((name, *p));
+                next.insert(name, *p);
                 true
             }
 
             // Eventually(Eventually(p)) => Self::visit(next, negated, Eventually(p), s),
             Eventually(p) => {
                 if !Self::visit(next, negated, name.clone(), p.clone(), s) {
-                    next.push_back((name, Eventually(p.clone()).negate(negated)));
+                    next.insert(name, Eventually(p.clone()).negate(negated));
                 }
                 true
             }
 
             // Always(Always(p)) => Self::visit(negated, Always(p), s),
             Always(p) => {
-                next.push_back((name.clone(), Always(p.clone()).negate(negated)));
-                Self::visit(next, negated, name.clone(), p.clone(), s)
+                next.insert(name.clone(), Always(p.clone()).negate(negated));
+                Self::visit(next, negated, name.clone(), p, s)
             }
 
             Not(p) => Self::visit(next, !negated, name, p, s),
@@ -320,11 +321,11 @@ impl<S: std::fmt::Debug> Predicates<S> {
                 }
             }
         };
-        if negated {
-            tracing::debug!("NEG {predicate:?} = {out}");
-        } else {
-            tracing::debug!("    {predicate:?} = {out}");
-        }
+        // if negated {
+        //     tracing::debug!("NEG {predicate:?} = {out}");
+        // } else {
+        //     tracing::debug!("    {predicate:?} = {out}");
+        // }
         out
     }
 }
@@ -508,7 +509,7 @@ mod tests {
 
         let err = checker.check_fold(0, [1, 2, 3, 23, 21]).unwrap_err();
         dbg!(&err);
-        assert_eq!(err.unwrap_predicate().path, vector![1, 2, 3, 23]);
+        assert_eq!(err.unwrap_predicate().path, vector![1, 2, 3, 23, 21]);
 
         let err = checker.check_fold(1, [2, 12, 33]).unwrap_err();
         dbg!(&err);

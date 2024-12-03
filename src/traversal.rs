@@ -132,11 +132,11 @@ where
         let mut lock = to_visit.lock();
         lock.pop_front()
     } {
-        tracing::debug!(
-            "to_visit: {:?}, dist={distance}, path={:?}",
-            to_visit.lock().len(),
-            path,
-        );
+        // tracing::debug!(
+        //     "to_visit: {:?}, dist={distance}, path={:?}",
+        //     to_visit.lock().len(),
+        //     path,
+        // );
         report.total_steps += 1;
         if report.total_steps % 1000 == 0 {
             tracing::debug!("iter {}", report.total_steps);
