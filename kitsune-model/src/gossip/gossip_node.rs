@@ -65,7 +65,7 @@ pub enum PeerState {
     Complete(GossipOutcome, usize),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum GossipOutcome {
     /// The last gossip attempt was successful.
     /// If true, new data was received. If false, nodes were already in sync.
@@ -83,7 +83,7 @@ impl GossipOutcome {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum FailureReason {
     Timeout,
     Protocol,
@@ -136,11 +136,8 @@ impl<N: Id> Machine for NodeMachine<N> {
                 Msg::Initiate => state.peers.owned_update(from, |peers, mut peer| {
                     match peer {
                         PeerState::Active => bail!("node {from} already in a gossip round"),
-                        PeerState::Complete(outcome, time) => {
-                            if time < outcome.ticks(self) {
-                                bail!("too soon to be initiated with")
-                            }
-                            peer = PeerState::Complete(GossipOutcome::Success(false), 0);
+                        PeerState::Complete(outcome, time) if time < outcome.ticks(self) => {
+                            bail!("too soon to be initiated with")
                         }
                         _ => peer = PeerState::Active,
                     }
@@ -238,6 +235,9 @@ mod tests {
                         .map(|(n, peer)| match peer {
                             PeerState::Complete(GossipOutcome::Success(_), time) => {
                                 format!("{n}: Success({time})")
+                            }
+                            PeerState::Complete(GossipOutcome::Failure(reason), time) => {
+                                format!("{n}: Failure({reason:?}, {time})")
                             }
                             _ => format!("{n}: {:?}", peer),
                         })
