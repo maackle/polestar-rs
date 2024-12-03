@@ -10,6 +10,11 @@ use itertools::Itertools;
 use polestar::{ext::MapExt, id::Id, prelude::*};
 use serde::{Deserialize, Serialize};
 
+use super::scheduler::{Schedule, ScheduleKv};
+
+const SUCCESS_TICKS: u8 = 1;
+const ERROR_TICKS: u8 = 2;
+
 /*                   █████     ███
                     ░░███     ░░░
   ██████    ██████  ███████   ████   ██████  ████████
@@ -50,11 +55,34 @@ pub enum Msg {
  ██████   ░░█████ ░░████████  ░░█████ ░░██████
 ░░░░░░     ░░░░░   ░░░░░░░░    ░░░░░   ░░░░░░  */
 
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, derive_more::Deref, derive_more::DerefMut)]
+pub struct Sched<N: Id>(ScheduleKv<N, PeerState>);
+
+impl<N: Id> Sched<N> {
+    pub fn insert_timed(&mut self, n: N, peer: PeerState) -> bool {
+        match peer {
+            PeerState::Ready => unreachable!(),
+            PeerState::Stale => unreachable!(),
+            PeerState::Active => unreachable!(),
+            PeerState::Closed(outcome) => self.0.insert_kv(outcome.ticks(), n, peer),
+        }
+    }
+}
+
 /// The state of a single node
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, derive_more::Constructor)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct NodeState<N: Id> {
-    peers: BTreeMap<N, PeerState>,
-    // rounds: BTreeSet<N>,
+    schedule: Sched<N>,
+}
+
+impl<N: Id> NodeState<N> {
+    pub fn new(peers: impl IntoIterator<Item = N>) -> Self {
+        let mut schedule = Sched::default();
+        for peer in peers {
+            schedule.insert_kv(0, peer, PeerState::default());
+        }
+        Self { schedule }
+    }
 }
 
 /// The state of a peer from the perspective of another
@@ -74,6 +102,15 @@ pub enum GossipOutcome {
     Success(bool),
     /// The last gossip attempt failed due to timeout or protocol error.
     Failure(FailureReason),
+}
+
+impl GossipOutcome {
+    pub fn ticks(&self) -> u8 {
+        match self {
+            GossipOutcome::Success(_) => SUCCESS_TICKS,
+            GossipOutcome::Failure(_) => ERROR_TICKS,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -104,65 +141,65 @@ impl<N: Id> Machine for NodeMachine<N> {
 
     fn transition(&self, mut state: Self::State, action: Self::Action) -> TransitionResult<Self> {
         match action {
-            NodeAction::Tick => state.peers.values_mut().for_each(|peer| match peer {
-                PeerState::Ready => {
-                    *peer = PeerState::Stale;
+            NodeAction::Tick => {
+                if let Some((n, peer)) = state.schedule.pop() {
+                    match peer {
+                        PeerState::Ready => {
+                            unreachable!()
+                        }
+                        PeerState::Stale => {
+                            unreachable!()
+                        }
+                        PeerState::Active => {
+                            let outcome = GossipOutcome::Failure(FailureReason::Timeout);
+                            state.schedule.insert_timed(n, PeerState::Closed(outcome));
+                        }
+                        PeerState::Closed(_) => {
+                            state.schedule.insert_timed(n, PeerState::Ready);
+                        }
+                    }
                 }
-                PeerState::Stale => {}
-                PeerState::Active => {
-                    *peer = PeerState::Closed(GossipOutcome::Failure(FailureReason::Timeout))
-                }
-                PeerState::Closed(_) => {
-                    *peer = PeerState::Ready;
-                    // if *time <= outcome.ticks(self) {
-                    //     *time += 1;
-                    // } else {
-                    //     // TODO: remove node?
-                    //     *peer = PeerState::Stale;
-                    // }
-                }
-            }),
+            }
             NodeAction::AddPeer(peer) => {
-                if let Some(_) = state.peers.insert(peer, PeerState::default()) {
+                if !state.schedule.insert_timed(peer, PeerState::default()) {
                     bail!("peer {peer} already exists");
                 }
             }
-            NodeAction::Incoming { from, msg } => match msg {
-                Msg::Initiate => state.peers.owned_update(from, |_, mut peer| {
-                    match peer {
+            NodeAction::Incoming { from, msg } => {
+                let (_, (_, peer)) = state.schedule.remove_key(&from).ok_or(anyhow!("no key"))?;
+                match msg {
+                    Msg::Initiate => match peer {
                         PeerState::Active => bail!("node {from} already in a gossip round"),
                         PeerState::Closed(_) => {
                             bail!("too soon to be initiated with")
                         }
-                        _ => peer = PeerState::Active,
-                    }
-                    Ok((peer, ()))
-                })?,
-                Msg::Complete(new_data) => state.peers.owned_update(from, |_, mut peer| {
-                    match peer {
+                        _ => {
+                            state.schedule.insert_timed(from, PeerState::Active);
+                        }
+                    },
+                    Msg::Complete(new_data) => match peer {
                         PeerState::Active => {
-                            peer = PeerState::Closed(GossipOutcome::Success(new_data));
+                            state.schedule.insert_timed(
+                                from,
+                                PeerState::Closed(GossipOutcome::Success(new_data)),
+                            );
                         }
                         _ => bail!("node {from} not in a gossip round"),
-                    }
-                    Ok((peer, ()))
-                })?,
-            },
-            NodeAction::Error { from } => state.peers.owned_update(from, |_, mut peer| {
+                    },
+                }
+            }
+            NodeAction::Error { from } => {
+                let (_, (_, peer)) = state.schedule.remove_key(&from).ok_or(anyhow!("no key"))?;
                 match peer {
                     PeerState::Active => {
-                        peer = PeerState::Closed(GossipOutcome::Failure(FailureReason::Protocol));
+                        state.schedule.insert_timed(
+                            from,
+                            PeerState::Closed(GossipOutcome::Failure(FailureReason::Protocol)),
+                        );
                     }
                     _ => bail!("node {from} not in a gossip round"),
                 }
-                Ok((peer, ()))
-            })?, // NodeAction::Hangup { to } => {
-                 //     state.peers.owned_update(to, |peers, mut peer| {
-                 //         peer.active_round = false;
-                 //         peer.last_outcome = None;
-                 //         Ok((peer, ()))
-                 //     })?
-                 // }
+            }
         }
         Ok((state, ()))
     }
@@ -183,11 +220,7 @@ impl<N: Id> NodeMachine<N> {
     where
         N: Exhaustive,
     {
-        NodeState::new(
-            N::iter_exhaustive(None)
-                .map(|n| (n, Default::default()))
-                .collect(),
-        )
+        NodeState::new(N::iter_exhaustive(None))
     }
 }
 
@@ -202,7 +235,7 @@ impl<N: Id> NodeMachine<N> {
 
 impl<N: Id> Display for NodeState<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for (n, peer) in self.peers.iter() {
+        for (_, (n, peer)) in self.schedule.iter() {
             match peer {
                 PeerState::Closed(GossipOutcome::Success(_)) => writeln!(f, "{n}: Success")?,
                 PeerState::Closed(GossipOutcome::Failure(reason)) => {

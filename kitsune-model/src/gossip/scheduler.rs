@@ -1,9 +1,12 @@
 use std::collections::VecDeque;
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, derive_more::Deref)]
 pub struct Schedule<V> {
     items: VecDeque<((u8, u8), V)>,
 }
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, derive_more::Deref, derive_more::DerefMut)]
+pub struct ScheduleKv<K, V>(Schedule<(K, V)>);
 
 impl<V> Schedule<V> {
     pub fn new() -> Self {
@@ -12,7 +15,7 @@ impl<V> Schedule<V> {
         }
     }
 
-    pub fn insert(&mut self, (t, v): (u8, V)) {
+    pub fn insert(&mut self, t: u8, v: V) {
         let b = if let Some(((_, b), _)) = self
             .items
             .iter()
@@ -39,8 +42,38 @@ impl<V> Schedule<V> {
         }
         Some(v)
     }
+
+    pub fn remove_by(&mut self, f: impl Fn(&V) -> bool) -> Option<((u8, u8), V)> {
+        let i = self
+            .items
+            .iter()
+            .enumerate()
+            .find(|(_, (_, v))| f(v))
+            .map(|(i, _)| i)?;
+        self.items.remove(i)
+    }
 }
 
+impl<K: Eq, V> ScheduleKv<K, V> {
+    pub fn remove_key(&mut self, k: &K) -> Option<((u8, u8), (K, V))> {
+        self.0.remove_by(|(kk, _)| kk == k)
+    }
+
+    pub fn has_key(&self, k: &K) -> bool {
+        self.0.items.iter().any(|((_, _), (kk, _))| kk == k)
+    }
+
+    pub fn insert_kv(&mut self, t: u8, k: K, v: V) -> bool {
+        if self.has_key(&k) {
+            false
+        } else {
+            self.0.insert(t, (k, v));
+            true
+        }
+    }
+}
+
+#[cfg(test)]
 #[cfg(test)]
 mod tests {
     use itertools::Itertools;
@@ -48,14 +81,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_schedule() {
+    fn test_remove() {
         let mut schedule = Schedule::new();
-        schedule.insert((2, "b"));
-        schedule.insert((5, "w"));
-        schedule.insert((2, "a"));
-        schedule.insert((0, "o"));
-        schedule.insert((1, "z"));
-        schedule.insert((1, "y"));
+        schedule.insert(2, "b");
+        schedule.insert(5, "w");
+        schedule.insert(2, "a");
+        schedule.insert(0, "o");
+        schedule.insert(1, "z");
+        schedule.insert(1, "y");
+
+        assert_eq!(schedule.remove_by(|v| *v == "a"), Some(((2, 1), "a")));
+    }
+
+    #[test]
+    fn test_insert_and_pop() {
+        let mut schedule = Schedule::new();
+        schedule.insert(2, "b");
+        schedule.insert(5, "w");
+        schedule.insert(2, "a");
+        schedule.insert(0, "o");
+        schedule.insert(1, "z");
+        schedule.insert(1, "y");
 
         assert_eq!(
             schedule.items,
