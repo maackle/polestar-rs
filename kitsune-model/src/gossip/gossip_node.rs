@@ -74,6 +74,15 @@ pub enum GossipOutcome {
     Failure(FailureReason),
 }
 
+impl GossipOutcome {
+    pub fn ticks<N: Id>(&self, machine: &NodeMachine<N>) -> usize {
+        match self {
+            GossipOutcome::Success(_) => machine.success_ticks,
+            GossipOutcome::Failure(_) => machine.error_ticks,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum FailureReason {
     Timeout,
@@ -93,7 +102,6 @@ pub enum FailureReason {
 pub struct NodeMachine<N: Id> {
     success_ticks: usize,
     error_ticks: usize,
-    stale_ticks: usize,
     phantom: PhantomData<N>,
 }
 
@@ -110,8 +118,8 @@ impl<N: Id> Machine for NodeMachine<N> {
                 PeerState::Active => {
                     *peer = PeerState::Complete(GossipOutcome::Failure(FailureReason::Timeout), 0)
                 }
-                PeerState::Complete(_, time) => {
-                    if *time < self.stale_ticks {
+                PeerState::Complete(outcome, time) => {
+                    if *time <= outcome.ticks(self) {
                         *time += 1;
                     } else {
                         // TODO: remove node?
@@ -129,11 +137,7 @@ impl<N: Id> Machine for NodeMachine<N> {
                     match peer {
                         PeerState::Active => bail!("node {from} already in a gossip round"),
                         PeerState::Complete(outcome, time) => {
-                            let ticks = match outcome {
-                                GossipOutcome::Success(_) => self.success_ticks,
-                                GossipOutcome::Failure(_) => self.error_ticks,
-                            };
-                            if time < ticks {
+                            if time < outcome.ticks(self) {
                                 bail!("too soon to be initiated with")
                             }
                             peer = PeerState::Complete(GossipOutcome::Success(false), 0);
@@ -182,7 +186,6 @@ impl<N: Id + Exhaustive> NodeMachine<N> {
         Self {
             success_ticks: 1,
             error_ticks: 2,
-            stale_ticks: 3,
             phantom: PhantomData,
         }
     }
@@ -232,7 +235,12 @@ mod tests {
                     state
                         .peers
                         .iter()
-                        .map(|(n, peer)| format!("{n}: {:?}", peer))
+                        .map(|(n, peer)| match peer {
+                            PeerState::Complete(GossipOutcome::Success(_), time) => {
+                                format!("{n}: Success({time})")
+                            }
+                            _ => format!("{n}: {:?}", peer),
+                        })
                         .collect_vec()
                         .join("\n")
                 })
@@ -241,7 +249,10 @@ mod tests {
                 Some(match action {
                     NodeAction::Tick => "Tick".to_string(),
                     NodeAction::AddPeer(n) => format!("AddPeer({n})"),
-                    NodeAction::Incoming { from, msg } => format!("{msg:?} <- {from}"),
+                    NodeAction::Incoming { from, msg } => match msg {
+                        Msg::Complete(_) => format!("Complete <- {from}"),
+                        _ => format!("{msg:?} <- {from}"),
+                    },
                     NodeAction::Error { from } => format!("Error({from})"),
                 })
             },

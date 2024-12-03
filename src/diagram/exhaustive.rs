@@ -1,5 +1,5 @@
 use exhaustive::Exhaustive;
-use petgraph::graph::{DiGraph, NodeIndex};
+use petgraph::graph::{DiGraph, EdgeIndex, NodeIndex};
 
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -139,14 +139,14 @@ where
     M::Action: Exhaustive + Clone + Eq + Hash,
     M::Error: Debug,
     N: Clone + Eq + Hash + Debug,
-    E: Debug,
+    E: Clone + Eq + Hash + Debug,
 {
     let mut graph = DiGraph::new();
     let mut visited_states: HashSet<M::State> = HashSet::new();
     let mut visited_nodes: HashMap<N, NodeIndex> = HashMap::new();
     let mut states_to_visit: VecDeque<(M::State, usize, Option<(M::Action, NodeIndex)>)> =
         VecDeque::new();
-    let mut actions = HashSet::new();
+    let mut visited_edges = HashSet::new();
 
     states_to_visit.push_back((initial, 0, None));
 
@@ -178,10 +178,10 @@ where
 
         // Add an edge from the previous node to this node.
         if let Some((prev_action, prev_ix)) = origin {
-            if !(config.ignore_loopbacks && prev_ix == ix)
-                && actions.insert((prev_ix, ix, prev_action.clone()))
-            {
-                if let Some(edge) = map_edge(prev_action) {
+            if let Some(edge) = map_edge(prev_action) {
+                if !(config.ignore_loopbacks && prev_ix == ix)
+                    && visited_edges.insert((prev_ix, ix, edge.clone()))
+                {
                     tracing::debug!("new edge : {edge:?}");
                     graph.add_edge(prev_ix, ix, edge);
                 }
