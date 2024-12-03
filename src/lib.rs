@@ -24,6 +24,7 @@ pub mod prelude {
     pub use crate::actor::{Actor, ShareRead, ShareRw};
     pub use crate::ext::MapExt;
     pub use crate::generate::Generator;
+    pub use crate::id::*;
     pub use crate::machine::{Machine, TransitionResult};
     pub use crate::projection::{Projection, ProjectionTests};
 

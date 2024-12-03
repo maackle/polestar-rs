@@ -12,3 +12,7 @@ Cargo.lock
 *.dot
 *.log
 
+flamegraph.svg
+perf.data
+perf.data.old
+
