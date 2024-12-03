@@ -1,4 +1,6 @@
 use exhaustive::Exhaustive;
+use im::Vector;
+use parking_lot::Mutex;
 
 use std::{
     collections::{HashSet, VecDeque},
@@ -14,16 +16,16 @@ use crate::{
 };
 
 #[derive(Clone)]
-pub struct TraversalConfig<E> {
+pub struct TraversalConfig<E: Send + Sync> {
     pub max_actions: Option<usize>,
     pub max_depth: Option<usize>,
     pub max_iters: Option<usize>,
     pub ignore_loopbacks: bool,
     pub trace_error: bool,
-    pub is_fatal_error: Option<Arc<dyn Fn(&E) -> bool>>,
+    pub is_fatal_error: Option<Arc<dyn Fn(&E) -> bool + Send + Sync>>,
 }
 
-impl<E> Default for TraversalConfig<E> {
+impl<E: Send + Sync> Default for TraversalConfig<E> {
     fn default() -> Self {
         Self {
             max_actions: None,
@@ -36,7 +38,7 @@ impl<E> Default for TraversalConfig<E> {
     }
 }
 
-impl<A: Clone, E> TraversalConfig<CheckerError<A, E>> {
+impl<A: Clone + Send + Sync, E: Send + Sync> TraversalConfig<CheckerError<A, E>> {
     pub fn stop_on_checker_error(mut self) -> Self {
         self.is_fatal_error = Some(Arc::new(|err| matches!(err, CheckerError::Predicate(_))));
         self
@@ -63,14 +65,14 @@ pub struct TraversalReport {
 // }
 
 pub fn traverse_checked<M>(
-    machine: &Checker<M>,
+    machine: Checker<M>,
     initial: CheckerState<M>,
 ) -> Result<TraversalReport, PredicateError<M::Action>>
 where
-    M: Machine + Debug,
-    M::State: Clone + Eq + Hash + Debug,
-    M::Action: Exhaustive + Clone + Eq + Hash + Debug,
-    M::Error: Debug,
+    M: Machine + Debug + Send + Sync,
+    M::State: Clone + Eq + Hash + Debug + Send + Sync,
+    M::Action: Exhaustive + Clone + Eq + Hash + Debug + Send + Sync,
+    M::Error: Debug + Send + Sync,
 {
     let config = TraversalConfig::default().stop_on_checker_error();
     let (terminals, report) = traverse(machine, initial, &config).map_err(|e| match e {
@@ -101,28 +103,38 @@ where
 }
 
 pub fn traverse<M>(
-    machine: &M,
+    machine: M,
     initial: M::State,
     config: &TraversalConfig<M::Error>,
 ) -> Result<(HashSet<(M::State, im::Vector<M::Action>)>, TraversalReport), M::Error>
 where
-    M: Machine,
-    M::State: Clone + Eq + Hash + Debug,
-    M::Action: Exhaustive + Clone + Eq + Hash + Debug,
-    M::Error: Debug,
+    M: Machine + Send + Sync,
+    M::State: Clone + Eq + Hash + Debug + Send + Sync,
+    M::Action: Exhaustive + Clone + Eq + Hash + Debug + Send + Sync,
+    M::Error: Debug + Send + Sync,
 {
+    use rayon::iter::*;
+
+    let machine = Arc::new(machine);
+
     let mut visited: HashSet<M::State> = HashSet::new();
     let mut terminals: HashSet<(M::State, im::Vector<M::Action>)> = HashSet::new();
-    let mut to_visit: VecDeque<(M::State, usize, im::Vector<M::Action>)> = VecDeque::new();
+    let to_visit: Mutex<VecDeque<(M::State, usize, im::Vector<M::Action>)>> =
+        Mutex::new(VecDeque::new());
 
-    to_visit.push_back((initial, 0, im::vector![]));
+    to_visit.lock().push_back((initial, 0, im::vector![]));
 
     let mut report = TraversalReport::default();
 
-    while let Some((state, distance, path)) = to_visit.pop_front() {
+    let all_actions: im::Vector<_> = M::Action::iter_exhaustive(config.max_actions).collect();
+
+    while let Some((state, distance, path)) = {
+        let mut lock = to_visit.lock();
+        lock.pop_front()
+    } {
         tracing::debug!(
             "to_visit: {:?}, dist={distance}, path={:?}",
-            to_visit.len(),
+            to_visit.lock().len(),
             path,
         );
         report.total_steps += 1;
@@ -153,24 +165,29 @@ where
         }
 
         // Queue up visits to all nodes reachable from this node..
-        for action in M::Action::iter_exhaustive(config.max_actions) {
-            match machine.transition(state.clone(), action.clone()).map(first) {
-                Ok(node) => {
-                    let mut path = path.clone();
-                    path.push_back(action);
-                    to_visit.push_back((node, distance + 1, path));
-                }
-                Err(err) => {
-                    report.num_errors += 1;
-                    tracing::debug!("traversal error: {:?}", err);
-                    if let Some(ref is_fatal_error) = config.is_fatal_error {
-                        if is_fatal_error(&err) {
-                            return Err(err);
+        all_actions
+            .par_iter()
+            .cloned()
+            .map(|action| {
+                match machine.transition(state.clone(), action.clone()).map(first) {
+                    Ok(node) => {
+                        let mut path = path.clone();
+                        path.push_back(action);
+                        to_visit.lock().push_back((node, distance + 1, path));
+                    }
+                    Err(err) => {
+                        // report.num_errors += 1;
+                        tracing::debug!("traversal error: {:?}", err);
+                        if let Some(ref is_fatal_error) = config.is_fatal_error {
+                            if is_fatal_error(&err) {
+                                return Err(err);
+                            }
                         }
                     }
                 }
-            }
-        }
+                Ok(())
+            })
+            .collect::<Result<Vec<_>, _>>()?;
     }
     report.num_visited = visited.len();
     Ok((terminals, report))
@@ -233,7 +250,7 @@ mod tests {
         assert!(err.unwrap_predicate().error.contains("div-by-3"));
 
         let initial = checker.initial(1);
-        let report = traverse_checked(&checker, initial).unwrap();
-        dbg!(report, checker);
+        let report = traverse_checked(checker, initial).unwrap();
+        dbg!(report);
     }
 }

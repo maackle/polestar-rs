@@ -107,7 +107,7 @@ fn main() {
     let initial = SpamState::default();
 
     let (states, _report) = polestar::traversal::traverse(
-        &machine,
+        machine,
         initial,
         &polestar::traversal::TraversalConfig {
             max_depth: Some(50),

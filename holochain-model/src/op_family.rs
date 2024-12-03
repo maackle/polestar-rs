@@ -434,13 +434,11 @@ mod tests {
         let checker = machine.clone().checked().with_predicates(predicates);
         let initial = checker.initial(machine.initial());
 
-        if let Err(err) = traverse_checked(&checker, initial) {
+        if let Err(err) = traverse_checked(checker, initial) {
             eprintln!("{:#?}", err.path);
             eprintln!("{}", err.error);
             panic!("properties failed");
         }
-
-        println!("{:#?}", checker);
     }
 
     #[test]

@@ -126,7 +126,7 @@ mod tests {
 
     #[test]
     fn properties() {
-        type N = UpTo<2>;
+        type N = UpTo<3>;
 
         let machine = GossipMachine::<N>::new();
         let initial = machine.initial();
@@ -154,7 +154,8 @@ mod tests {
         predicates.extend(liveness);
 
         let checker = machine.checked().with_predicates(predicates);
-        if let Err(err) = traverse_checked(&checker, checker.initial(initial)) {
+        let initial = checker.initial(initial);
+        if let Err(err) = traverse_checked(checker, initial) {
             eprintln!("{:#?}", err.path);
             eprintln!("{}", err.error);
             panic!("properties failed");

@@ -78,7 +78,7 @@ where
 
 #[derive(Debug)]
 #[cfg_attr(test, derive(derive_more::Unwrap))]
-pub enum CheckerError<A: Clone, E> {
+pub enum CheckerError<A: Clone, E: Send + Sync> {
     Predicate(PredicateError<A>),
     Machine(E),
 }
@@ -126,7 +126,7 @@ impl<M: Machine> Checker<M> {
         M: Debug,
         M::State: Clone + Debug,
         M::Action: Clone + Debug,
-        M::Error: Debug,
+        M::Error: Debug + Send + Sync,
     {
         let s = self.initial(initial);
         let (end, _) = self
@@ -181,6 +181,7 @@ where
     M: Machine + Debug,
     M::State: Clone + Debug,
     M::Action: Clone + Debug,
+    M::Error: Send + Sync,
 {
     type State = CheckerState<M>;
     type Action = M::Action;
@@ -332,7 +333,7 @@ pub type BoxPredicate<S> = Box<Predicate<S>>;
 
 // TODO: implementing an ordering would be nice
 pub enum Predicate<S> {
-    Atom(String, Arc<dyn Fn(&S, &S) -> bool>),
+    Atom(String, Arc<dyn Fn(&S, &S) -> bool + Send + Sync>),
     And(BoxPredicate<S>, BoxPredicate<S>),
     Or(BoxPredicate<S>, BoxPredicate<S>),
     Not(BoxPredicate<S>),
@@ -395,11 +396,11 @@ impl<S> Predicate<S> {
         Self::Or(Box::new(self), Box::new(p2))
     }
 
-    pub fn atom(name: impl ToString, f: impl Fn(&S) -> bool + 'static) -> Self {
+    pub fn atom(name: impl ToString, f: impl Fn(&S) -> bool + Send + Sync + 'static) -> Self {
         Self::atom2(name, move |_, s| f(s))
     }
 
-    pub fn atom2(name: impl ToString, f: impl Fn(&S, &S) -> bool + 'static) -> Self {
+    pub fn atom2(name: impl ToString, f: impl Fn(&S, &S) -> bool + Send + Sync + 'static) -> Self {
         Self::Atom(name.to_string(), Arc::new(f))
     }
 
