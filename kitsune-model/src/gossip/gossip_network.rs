@@ -8,7 +8,7 @@ use exhaustive::Exhaustive;
 use polestar::{ext::MapExt, id::Id, prelude::*};
 use serde::{Deserialize, Serialize};
 
-use super::gossip_node_timed::*;
+use super::gossip_node::*;
 
 /*                   █████     ███
                     ░░███     ░░░
@@ -32,7 +32,7 @@ pub struct GossipAction<N: Id>(N, NodeAction<N>);
 ░░░░░░     ░░░░░   ░░░░░░░░    ░░░░░   ░░░░░░  */
 
 /// The panoptic state of the whole network
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, derive_more::From)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, derive_more::Constructor)]
 pub struct GossipState<N: Id> {
     nodes: BTreeMap<N, NodeState<N>>,
 }
@@ -48,7 +48,7 @@ pub struct GossipState<N: Id> {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct GossipMachine<N: Id> {
-    phantom: std::marker::PhantomData<N>,
+    node_machine: NodeMachine<N>,
 }
 
 impl<N: Id> Machine for GossipMachine<N> {
@@ -57,7 +57,19 @@ impl<N: Id> Machine for GossipMachine<N> {
     type Fx = ();
     type Error = anyhow::Error;
 
-    fn transition(&self, mut state: Self::State, action: Self::Action) -> TransitionResult<Self> {
+    fn transition(
+        &self,
+        mut state: Self::State,
+        GossipAction(node, action): Self::Action,
+    ) -> TransitionResult<Self> {
+        match action {
+            NodeAction::AddPeer(peer) if node == peer => {
+                bail!("node cannot add itself as a peer");
+            }
+            action => state
+                .nodes
+                .owned_update(node, |_, node| self.node_machine.transition(node, action))?,
+        };
         Ok((state, ()))
     }
 
@@ -68,11 +80,20 @@ impl<N: Id> Machine for GossipMachine<N> {
 
 impl<N: Id> GossipMachine<N> {
     pub fn new() -> Self {
-        todo!()
+        Self {
+            node_machine: NodeMachine::new(),
+        }
     }
 
-    pub fn initial(&self) -> GossipState<N> {
-        todo!()
+    pub fn initial(&self) -> GossipState<N>
+    where
+        N: Exhaustive,
+    {
+        GossipState::new(
+            N::iter_exhaustive(None)
+                .map(|n| (n, Default::default()))
+                .collect(),
+        )
     }
 }
 
@@ -89,4 +110,43 @@ impl<N: Id> GossipMachine<N> {
 mod tests {
 
     use super::*;
+
+    use super::*;
+    use itertools::Itertools;
+    use polestar::{
+        diagram::exhaustive::*,
+        id::{IdUnit, UpTo},
+    };
+
+    #[test]
+    #[ignore = "diagram"]
+    fn diagram() {
+        type N = UpTo<2>;
+
+        let machine = GossipMachine::<N>::new();
+        let state = machine.initial();
+
+        write_dot_state_diagram_mapped(
+            "gossip-network.dot",
+            machine,
+            state,
+            &DiagramConfig {
+                max_depth: None,
+                ..Default::default()
+            },
+            |state| {
+                Some({
+                    state
+                        .nodes
+                        .into_iter()
+                        .map(|(n, s)| format!("{n}: {}", state_display(s).unwrap()))
+                        .collect_vec()
+                        .join("\n")
+                })
+            },
+            |GossipAction(node, action)| {
+                Some(format!("{node}: {}", action_display(action).unwrap()))
+            },
+        );
+    }
 }

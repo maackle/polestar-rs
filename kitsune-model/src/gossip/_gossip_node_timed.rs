@@ -133,7 +133,7 @@ impl<N: Id> Machine for NodeMachine<N> {
                 }
             }
             NodeAction::Incoming { from, msg } => match msg {
-                Msg::Initiate => state.peers.owned_update(from, |peers, mut peer| {
+                Msg::Initiate => state.peers.owned_update(from, |_, mut peer| {
                     match peer {
                         PeerState::Active => bail!("node {from} already in a gossip round"),
                         PeerState::Complete(outcome, time) if time < outcome.ticks(self) => {
@@ -143,7 +143,7 @@ impl<N: Id> Machine for NodeMachine<N> {
                     }
                     Ok((peer, ()))
                 })?,
-                Msg::Complete(new_data) => state.peers.owned_update(from, |peers, mut peer| {
+                Msg::Complete(new_data) => state.peers.owned_update(from, |_, mut peer| {
                     match peer {
                         PeerState::Active => {
                             peer = PeerState::Complete(GossipOutcome::Success(new_data), 0);
@@ -153,7 +153,7 @@ impl<N: Id> Machine for NodeMachine<N> {
                     Ok((peer, ()))
                 })?,
             },
-            NodeAction::Error { from } => state.peers.owned_update(from, |peers, mut peer| {
+            NodeAction::Error { from } => state.peers.owned_update(from, |_, mut peer| {
                 match peer {
                     PeerState::Active => {
                         peer =
@@ -163,7 +163,7 @@ impl<N: Id> Machine for NodeMachine<N> {
                 }
                 Ok((peer, ()))
             })?, // NodeAction::Hangup { to } => {
-                 //     state.peers.owned_update(to, |peers, mut peer| {
+                 //     state.peers.owned_update(to, |_, mut peer| {
                  //         peer.active_round = false;
                  //         peer.last_outcome = None;
                  //         Ok((peer, ()))

@@ -130,7 +130,7 @@ impl<O: Id, T: Id> Machine for OpFamilyMachine<O, T> {
         Ok((states, ()))
     }
 
-    fn is_terminal(&self, state: &Self::State) -> bool {
+    fn is_terminal(&self, _state: &Self::State) -> bool {
         false
         // state.values().all(|s| {
         //     matches!(

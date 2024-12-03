@@ -6,6 +6,7 @@ use std::{
 
 use anyhow::{anyhow, bail};
 use exhaustive::Exhaustive;
+use itertools::Itertools;
 use polestar::{ext::MapExt, id::Id, prelude::*};
 use serde::{Deserialize, Serialize};
 
@@ -75,15 +76,6 @@ pub enum GossipOutcome {
     Failure(FailureReason),
 }
 
-impl GossipOutcome {
-    pub fn ticks<N: Id>(&self, machine: &NodeMachine<N>) -> usize {
-        match self {
-            GossipOutcome::Success(_) => machine.success_ticks,
-            GossipOutcome::Failure(_) => machine.error_ticks,
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum FailureReason {
     Timeout,
@@ -101,8 +93,6 @@ pub enum FailureReason {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct NodeMachine<N: Id> {
-    success_ticks: usize,
-    error_ticks: usize,
     phantom: PhantomData<N>,
 }
 
@@ -182,11 +172,9 @@ impl<N: Id> Machine for NodeMachine<N> {
     }
 }
 
-impl<N: Id + Exhaustive> NodeMachine<N> {
+impl<N: Id> NodeMachine<N> {
     pub fn new() -> Self {
         Self {
-            success_ticks: 1,
-            error_ticks: 2,
             phantom: PhantomData,
         }
     }
@@ -205,11 +193,41 @@ impl<N: Id + Exhaustive> NodeMachine<N> {
   ░░█████ ░░██████  ██████   ░░█████  ██████
    ░░░░░   ░░░░░░  ░░░░░░     ░░░░░  ░░░░░░*/
 
+pub fn state_display<N: Id>(state: NodeState<N>) -> Option<String> {
+    Some({
+        state
+            .peers
+            .iter()
+            .map(|(n, peer)| match peer {
+                PeerState::Closed(GossipOutcome::Success(_)) => {
+                    format!("{n}: Success")
+                }
+                PeerState::Closed(GossipOutcome::Failure(reason)) => {
+                    format!("{n}: Failure({reason:?})")
+                }
+                _ => format!("{n}: {:?}", peer),
+            })
+            .collect_vec()
+            .join("\n")
+    })
+}
+
+pub fn action_display<N: Id>(action: NodeAction<N>) -> Option<String> {
+    Some(match action {
+        NodeAction::Tick => "Tick".to_string(),
+        NodeAction::AddPeer(n) => format!("AddPeer({n})"),
+        NodeAction::Incoming { from, msg } => match msg {
+            Msg::Complete(_) => format!("Complete <- {from}"),
+            _ => format!("{msg:?} <- {from}"),
+        },
+        NodeAction::Error { from } => format!("Error({from})"),
+    })
+}
+
 #[cfg(test)]
 mod tests {
 
     use super::*;
-    use itertools::Itertools;
     use polestar::{
         diagram::exhaustive::*,
         id::{IdUnit, UpTo},
@@ -231,35 +249,8 @@ mod tests {
                 max_depth: None,
                 ..Default::default()
             },
-            |state| {
-                Some({
-                    state
-                        .peers
-                        .iter()
-                        .map(|(n, peer)| match peer {
-                            PeerState::Closed(GossipOutcome::Success(_)) => {
-                                format!("{n}: Success")
-                            }
-                            PeerState::Closed(GossipOutcome::Failure(reason)) => {
-                                format!("{n}: Failure({reason:?})")
-                            }
-                            _ => format!("{n}: {:?}", peer),
-                        })
-                        .collect_vec()
-                        .join("\n")
-                })
-            },
-            |action| {
-                Some(match action {
-                    NodeAction::Tick => "Tick".to_string(),
-                    NodeAction::AddPeer(n) => format!("AddPeer({n})"),
-                    NodeAction::Incoming { from, msg } => match msg {
-                        Msg::Complete(_) => format!("Complete <- {from}"),
-                        _ => format!("{msg:?} <- {from}"),
-                    },
-                    NodeAction::Error { from } => format!("Error({from})"),
-                })
-            },
+            state_display,
+            action_display,
         );
     }
 }
