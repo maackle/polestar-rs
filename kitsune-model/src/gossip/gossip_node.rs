@@ -71,7 +71,7 @@ impl<N: Id> ScheduleTimed<N> {
 }
 
 /// The state of a single node
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, derive_more::IntoIterator)]
 pub struct NodeState<N: Id> {
     schedule: ScheduleTimed<N>,
 }
@@ -234,21 +234,46 @@ impl<N: Id> NodeMachine<N> {
   ░░█████ ░░██████  ██████   ░░█████  ██████
    ░░░░░   ░░░░░░  ░░░░░░     ░░░░░  ░░░░░░*/
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct NodeStateUnscheduled<N: Id>(BTreeMap<N, PeerState>);
+
+impl<N: Id> From<NodeState<N>> for NodeStateUnscheduled<N> {
+    fn from(state: NodeState<N>) -> Self {
+        Self(
+            state
+                .schedule
+                .0
+                .into_iter()
+                .map(|(_, (n, peer))| (n, peer))
+                .collect(),
+        )
+    }
+}
+
 impl<N: Id> Display for NodeState<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut first = true;
         for (_, (n, peer)) in self.schedule.iter() {
-            if first {
-                first = false;
-            } else {
-                writeln!(f)?;
-            }
             match peer {
-                PeerState::Closed(GossipOutcome::Success(_)) => write!(f, "{n}: Success")?,
+                PeerState::Closed(GossipOutcome::Success(_)) => writeln!(f, "{n}: Success")?,
                 PeerState::Closed(GossipOutcome::Failure(reason)) => {
-                    write!(f, "{n}: Failure({reason:?})")?
+                    writeln!(f, "{n}: Failure({reason:?})")?
                 }
-                _ => write!(f, "{n}: {:?}", peer)?,
+                _ => writeln!(f, "{n}: {:?}", peer)?,
+            }
+        }
+        Ok(())
+    }
+}
+
+impl<N: Id> Display for NodeStateUnscheduled<N> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (n, peer) in self.0.iter() {
+            match peer {
+                PeerState::Closed(GossipOutcome::Success(_)) => writeln!(f, "{n}: Success")?,
+                PeerState::Closed(GossipOutcome::Failure(reason)) => {
+                    writeln!(f, "{n}: Failure({reason:?})")?
+                }
+                _ => writeln!(f, "{n}: {:?}", peer)?,
             }
         }
         Ok(())
@@ -261,8 +286,8 @@ impl<N: Id> Display for NodeAction<N> {
             NodeAction::Tick => write!(f, "Tick"),
             NodeAction::AddPeer(n) => write!(f, "AddPeer({n})"),
             NodeAction::Incoming { from, msg } => match msg {
-                Msg::Complete(_) => write!(f, "Complete <- {from}"),
-                _ => write!(f, "{msg:?} <- {from}"),
+                Msg::Complete(_) => write!(f, "Complete << {from}"),
+                _ => write!(f, "{msg:?} << {from}"),
             },
             NodeAction::Error { from } => write!(f, "Error({from})"),
         }
@@ -295,8 +320,9 @@ mod tests {
                 max_depth: None,
                 ..Default::default()
             },
-            Some,
-            Some,
+            |s| Some(NodeStateUnscheduled::from(s)),
+            // Some,
+            |a| (!matches!(a, NodeAction::Tick)).then_some(a),
         );
     }
 }

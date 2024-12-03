@@ -62,6 +62,7 @@ impl<N: Id> Machine for GossipMachine<N> {
         mut state: Self::State,
         GossipAction(node, action): Self::Action,
     ) -> TransitionResult<Self> {
+        // TODO: probably need to be smarter about what actually happens here.
         match action {
             NodeAction::AddPeer(peer) if node == peer => {
                 bail!("node cannot add itself as a peer");
@@ -115,8 +116,6 @@ impl<N: Id> GossipMachine<N> {
 mod tests {
 
     use super::*;
-
-    use super::*;
     use itertools::Itertools;
     use polestar::{
         diagram::exhaustive::*,
@@ -126,9 +125,8 @@ mod tests {
     #[test]
     #[ignore = "diagram"]
     fn diagram() {
-        // With 3 nodes:
-        // wrote DOT diagram to 'gossip-network.dot'. nodes=13824, edges=107136
-        // finished in 52.91s
+        // With 3 nodes, scheduled:                nodes=13824, edges=107136, finished in 52.91s
+        // with 3 nodes, unscheduled with no tick: nodes=4096,  edges=18432,  finished in 68.64s
         type N = UpTo<2>;
 
         let machine = GossipMachine::<N>::new();
@@ -148,9 +146,10 @@ mod tests {
                         .nodes
                         .into_iter()
                         .map(|(n, s)| {
+                            let s = NodeStateUnscheduled::from(s);
                             format!("{s}")
                                 .split('\n')
-                                .map(|l| format!("{n}.{l}"))
+                                .filter_map(|l| (!l.is_empty()).then_some(format!("{n}.{l}")))
                                 .join("\n")
                         })
                         .collect_vec()
@@ -159,6 +158,9 @@ mod tests {
                 })
             },
             |GossipAction(node, action)| Some(format!("{node}: {action}")),
+            // |GossipAction(node, action)| {
+            //     (!matches!(action, NodeAction::Tick)).then_some(format!("{node}: {action}"))
+            // },
         );
     }
 }

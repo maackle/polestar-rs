@@ -2,12 +2,24 @@ use std::{cmp::Ordering, collections::VecDeque};
 
 pub type Time = Option<(u8, u8)>;
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, derive_more::Deref)]
+#[derive(
+    Clone, Debug, Default, PartialEq, Eq, Hash, derive_more::Deref, derive_more::IntoIterator,
+)]
 pub struct Schedule<V> {
     items: VecDeque<(Time, V)>,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, derive_more::Deref, derive_more::DerefMut)]
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    Hash,
+    derive_more::Deref,
+    derive_more::DerefMut,
+    derive_more::IntoIterator,
+)]
 pub struct ScheduleKv<K: Eq, V: Eq>(Schedule<(K, V)>);
 
 impl<V> Schedule<V>
