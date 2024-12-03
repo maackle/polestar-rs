@@ -73,7 +73,7 @@ impl<N: Id> ScheduleTimed<N> {
 /// The state of a single node
 #[derive(Clone, Debug, PartialEq, Eq, Hash, derive_more::IntoIterator)]
 pub struct NodeState<N: Id> {
-    schedule: ScheduleTimed<N>,
+    pub schedule: ScheduleTimed<N>,
 }
 
 impl<N: Id> NodeState<N> {

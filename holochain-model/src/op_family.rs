@@ -432,7 +432,6 @@ mod tests {
         dbg!(&predicates);
 
         let checker = machine.clone().checked().with_predicates(predicates);
-
         let initial = checker.initial(machine.initial());
 
         if let Err(err) = traverse_checked(&checker, initial) {

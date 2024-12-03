@@ -101,6 +101,14 @@ impl<K: Eq, V: Eq> ScheduleKv<K, V> {
         self.0.items.iter().any(|(_, (kk, _))| kk == k)
     }
 
+    pub fn get_key(&self, k: &K) -> Option<&V> {
+        self.0
+            .items
+            .iter()
+            .find(|(_, (kk, _))| kk == k)
+            .map(|(_, (_, v))| v)
+    }
+
     pub fn insert_kv(&mut self, t: Option<u8>, k: K, v: V) -> bool {
         if self.has_key(&k) {
             false
