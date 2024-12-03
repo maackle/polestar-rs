@@ -56,9 +56,9 @@ pub enum Msg {
 ░░░░░░     ░░░░░   ░░░░░░░░    ░░░░░   ░░░░░░  */
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, derive_more::Deref, derive_more::DerefMut)]
-pub struct Sched<N: Id>(ScheduleKv<N, PeerState>);
+pub struct ScheduleTimed<N: Id>(ScheduleKv<N, PeerState>);
 
-impl<N: Id> Sched<N> {
+impl<N: Id> ScheduleTimed<N> {
     pub fn insert_timed(&mut self, n: N, peer: PeerState) -> bool {
         let time = match peer {
             PeerState::Ready => None,
@@ -71,14 +71,14 @@ impl<N: Id> Sched<N> {
 }
 
 /// The state of a single node
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct NodeState<N: Id> {
-    schedule: Sched<N>,
+    schedule: ScheduleTimed<N>,
 }
 
 impl<N: Id> NodeState<N> {
     pub fn new(peers: impl IntoIterator<Item = N>) -> Self {
-        let mut schedule = Sched::default();
+        let mut schedule = ScheduleTimed::default();
         for peer in peers {
             schedule.insert_kv(None, peer, PeerState::default());
         }
@@ -236,13 +236,19 @@ impl<N: Id> NodeMachine<N> {
 
 impl<N: Id> Display for NodeState<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut first = true;
         for (_, (n, peer)) in self.schedule.iter() {
+            if first {
+                first = false;
+            } else {
+                writeln!(f)?;
+            }
             match peer {
-                PeerState::Closed(GossipOutcome::Success(_)) => writeln!(f, "{n}: Success")?,
+                PeerState::Closed(GossipOutcome::Success(_)) => write!(f, "{n}: Success")?,
                 PeerState::Closed(GossipOutcome::Failure(reason)) => {
-                    writeln!(f, "{n}: Failure({reason:?})")?
+                    write!(f, "{n}: Failure({reason:?})")?
                 }
-                _ => writeln!(f, "{n}: {:?}", peer)?,
+                _ => write!(f, "{n}: {:?}", peer)?,
             }
         }
         Ok(())

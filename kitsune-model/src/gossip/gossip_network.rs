@@ -91,7 +91,12 @@ impl<N: Id> GossipMachine<N> {
     {
         GossipState::new(
             N::iter_exhaustive(None)
-                .map(|n| (n, Default::default()))
+                .map(|n| {
+                    (
+                        n,
+                        NodeState::new(N::iter_exhaustive(None).filter(|p| p != &n)),
+                    )
+                })
                 .collect(),
         )
     }
@@ -121,6 +126,9 @@ mod tests {
     #[test]
     #[ignore = "diagram"]
     fn diagram() {
+        // With 3 nodes:
+        // wrote DOT diagram to 'gossip-network.dot'. nodes=13824, edges=107136
+        // finished in 52.91s
         type N = UpTo<2>;
 
         let machine = GossipMachine::<N>::new();
@@ -136,12 +144,18 @@ mod tests {
             },
             |state| {
                 Some({
-                    state
+                    let lines = state
                         .nodes
                         .into_iter()
-                        .map(|(n, s)| format!("{n}: {s}"))
+                        .map(|(n, s)| {
+                            format!("{s}")
+                                .split('\n')
+                                .map(|l| format!("{n}.{l}"))
+                                .join("\n")
+                        })
                         .collect_vec()
-                        .join("\n")
+                        .join("\n");
+                    format!("{lines}\n")
                 })
             },
             |GossipAction(node, action)| Some(format!("{node}: {action}")),
