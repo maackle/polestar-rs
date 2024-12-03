@@ -8,6 +8,7 @@ anyhow = "*"
 automap = "*"
 derive_more = { version = "1", features = ["full"] }
 exhaustive = "*"
+im = "*"
 itertools = "*"
 num-traits = "*"
 polestar = { version = "*", path = "/home/michael/proj/polestar-rs" }

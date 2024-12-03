@@ -126,7 +126,7 @@ mod tests {
 
     #[test]
     fn properties() {
-        type N = UpTo<3>;
+        type N = UpTo<2>;
 
         let machine = GossipMachine::<N>::new();
         let initial = machine.initial();

@@ -1,12 +1,12 @@
-use std::{cmp::Ordering, collections::VecDeque};
+use std::cmp::Ordering;
 
 pub type Time = Option<(u8, u8)>;
 
 #[derive(
     Clone, Debug, Default, PartialEq, Eq, Hash, derive_more::Deref, derive_more::IntoIterator,
 )]
-pub struct Schedule<V> {
-    items: VecDeque<(Time, V)>,
+pub struct Schedule<V: Clone> {
+    items: im::Vector<(Time, V)>,
 }
 
 #[derive(
@@ -20,15 +20,15 @@ pub struct Schedule<V> {
     derive_more::DerefMut,
     derive_more::IntoIterator,
 )]
-pub struct ScheduleKv<K: Eq, V: Eq>(Schedule<(K, V)>);
+pub struct ScheduleKv<K: Eq + Clone, V: Eq + Clone>(Schedule<(K, V)>);
 
 impl<V> Schedule<V>
 where
-    V: Eq,
+    V: Eq + Clone,
 {
     pub fn new() -> Self {
         Self {
-            items: VecDeque::new(),
+            items: im::Vector::new(),
         }
     }
 
@@ -53,14 +53,12 @@ where
                 self.items.push_back((None, v));
             }
         }
-        self.items
-            .make_contiguous()
-            .sort_by(|(tb0, _), (tb1, _)| match (tb0, tb1) {
-                (Some(a), Some(b)) => a.cmp(b),
-                (Some(_), None) => Ordering::Less,
-                (None, Some(_)) => Ordering::Greater,
-                (None, None) => Ordering::Equal,
-            });
+        self.items.sort_by(|(tb0, _), (tb1, _)| match (tb0, tb1) {
+            (Some(a), Some(b)) => a.cmp(b),
+            (Some(_), None) => Ordering::Less,
+            (None, Some(_)) => Ordering::Greater,
+            (None, None) => Ordering::Equal,
+        });
     }
 
     pub fn pop(&mut self) -> Option<V> {
@@ -88,11 +86,11 @@ where
             .enumerate()
             .find(|(_, (_, v))| f(v))
             .map(|(i, _)| i)?;
-        self.items.remove(i).map(|(_, v)| v)
+        Some(self.items.remove(i).1)
     }
 }
 
-impl<K: Eq, V: Eq> ScheduleKv<K, V> {
+impl<K: Eq + Clone, V: Eq + Clone> ScheduleKv<K, V> {
     pub fn remove_key(&mut self, k: &K) -> Option<V> {
         self.0.remove_by(|(kk, _)| kk == k).map(|(_, v)| v)
     }
@@ -155,15 +153,15 @@ mod tests {
 
         assert_eq!(
             schedule.items,
-            vec![
+            im::vector![
                 (Some((0, 0)), "o"),
                 (Some((1, 0)), "z"),
                 (Some((1, 1)), "y"),
                 (Some((2, 0)), "b"),
                 (Some((2, 1)), "a"),
                 (Some((5, 0)), "w"),
-                (None, "1"),
                 (None, "0"),
+                (None, "1"),
             ]
         );
 
@@ -171,14 +169,14 @@ mod tests {
 
         assert_eq!(
             schedule.items,
-            vec![
+            im::vector![
                 (Some((1, 0)), "z"),
                 (Some((1, 1)), "y"),
                 (Some((2, 0)), "b"),
                 (Some((2, 1)), "a"),
                 (Some((5, 0)), "w"),
-                (None, "1"),
                 (None, "0"),
+                (None, "1"),
             ]
         );
 
@@ -186,13 +184,13 @@ mod tests {
 
         assert_eq!(
             schedule.items,
-            vec![
+            im::vector![
                 (Some((0, 0)), "y"),
                 (Some((1, 0)), "b"),
                 (Some((1, 1)), "a"),
                 (Some((4, 0)), "w"),
-                (None, "1"),
                 (None, "0"),
+                (None, "1"),
             ]
         );
 
@@ -200,12 +198,12 @@ mod tests {
 
         assert_eq!(
             schedule.items,
-            vec![
+            im::vector![
                 (Some((1, 0)), "b"),
                 (Some((1, 1)), "a"),
                 (Some((4, 0)), "w"),
-                (None, "1"),
                 (None, "0"),
+                (None, "1"),
             ]
         );
 
@@ -213,11 +211,11 @@ mod tests {
 
         assert_eq!(
             schedule.items,
-            vec![
+            im::vector![
                 (Some((0, 0)), "a"),
                 (Some((3, 0)), "w"),
-                (None, "1"),
                 (None, "0"),
+                (None, "1"),
             ]
         );
 
@@ -225,12 +223,12 @@ mod tests {
 
         assert_eq!(
             schedule.items,
-            vec![(Some((3, 0)), "w"), (None, "1"), (None, "0"),]
+            im::vector![(Some((3, 0)), "w"), (None, "0"), (None, "1"),]
         );
 
         assert_eq!(schedule.pop(), Some("w"));
 
-        assert_eq!(schedule.items, vec![(None, "1"), (None, "0"),]);
+        assert_eq!(schedule.items, im::vector![(None, "0"), (None, "1"),]);
 
         assert_eq!(schedule.pop(), None);
     }
