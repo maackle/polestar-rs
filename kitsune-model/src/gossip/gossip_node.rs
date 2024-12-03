@@ -60,12 +60,13 @@ pub struct Sched<N: Id>(ScheduleKv<N, PeerState>);
 
 impl<N: Id> Sched<N> {
     pub fn insert_timed(&mut self, n: N, peer: PeerState) -> bool {
-        match peer {
-            PeerState::Ready => unreachable!(),
-            PeerState::Stale => unreachable!(),
-            PeerState::Active => unreachable!(),
-            PeerState::Closed(outcome) => self.0.insert_kv(outcome.ticks(), n, peer),
-        }
+        let time = match peer {
+            PeerState::Ready => None,
+            PeerState::Stale => None,
+            PeerState::Active => None,
+            PeerState::Closed(outcome) => Some(outcome.ticks()),
+        };
+        self.0.insert_kv(time, n, peer)
     }
 }
 
@@ -79,7 +80,7 @@ impl<N: Id> NodeState<N> {
     pub fn new(peers: impl IntoIterator<Item = N>) -> Self {
         let mut schedule = Sched::default();
         for peer in peers {
-            schedule.insert_kv(0, peer, PeerState::default());
+            schedule.insert_kv(None, peer, PeerState::default());
         }
         Self { schedule }
     }
@@ -166,7 +167,7 @@ impl<N: Id> Machine for NodeMachine<N> {
                 }
             }
             NodeAction::Incoming { from, msg } => {
-                let (_, (_, peer)) = state.schedule.remove_key(&from).ok_or(anyhow!("no key"))?;
+                let peer = state.schedule.remove_key(&from).ok_or(anyhow!("no key"))?;
                 match msg {
                     Msg::Initiate => match peer {
                         PeerState::Active => bail!("node {from} already in a gossip round"),
@@ -189,7 +190,7 @@ impl<N: Id> Machine for NodeMachine<N> {
                 }
             }
             NodeAction::Error { from } => {
-                let (_, (_, peer)) = state.schedule.remove_key(&from).ok_or(anyhow!("no key"))?;
+                let peer = state.schedule.remove_key(&from).ok_or(anyhow!("no key"))?;
                 match peer {
                     PeerState::Active => {
                         state.schedule.insert_timed(
