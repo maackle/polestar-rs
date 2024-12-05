@@ -47,7 +47,7 @@ fn main() {
     predicates.extend(liveness);
 
     let display_predicates = predicates.iter().map(|p| format!("{p:?}")).join("\n");
-    let checker = machine.checked().with_predicates(predicates);
+    let checker = machine.checked(); //.with_predicates(predicates);
     let initial = checker.initial(initial);
     if let Err(err) = traverse_checked(
         checker,

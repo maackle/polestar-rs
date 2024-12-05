@@ -106,18 +106,20 @@ fn main() {
     let machine = SpamMachine { target };
     let initial = SpamState::default();
 
-    let (states, _report) = polestar::traversal::traverse(
+    let (_report, terminals) = polestar::traversal::traverse(
         machine,
         initial,
         &polestar::traversal::TraversalConfig {
             max_depth: Some(50),
+            record_terminals: true,
             ..Default::default()
         },
     )
     .unwrap();
 
-    dbg!(&states.len());
-    let mut states: Vec<_> = states
+    let (terminals, _loop_terminals) = terminals.unwrap();
+    dbg!(&terminals.len());
+    let mut states: Vec<_> = terminals
         .into_iter()
         .filter(|(s, _)| s.len >= target)
         .collect();

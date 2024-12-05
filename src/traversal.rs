@@ -3,30 +3,44 @@ use im::Vector;
 use parking_lot::Mutex;
 
 use std::{
-    collections::{HashSet, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     fmt::Debug,
-    hash::Hash,
+    hash::{Hash, Hasher},
     sync::Arc,
 };
 
 use crate::{
-    machine::checked::{Checker, CheckerError, CheckerState, PredicateError},
+    machine::checked::{CheckerError, CheckerMachine, CheckerState, PredicateError},
     util::first,
     Machine,
 };
 
 #[derive(Clone)]
-pub struct TraversalConfig<E: Send + Sync> {
+pub struct TraversalConfig<M: Machine> {
     pub max_actions: Option<usize>,
     pub max_depth: Option<usize>,
     pub max_iters: Option<usize>,
     pub trace_every: usize,
     pub ignore_loopbacks: bool,
+    pub record_terminals: bool,
     pub trace_error: bool,
-    pub is_fatal_error: Option<Arc<dyn Fn(&E) -> bool + Send + Sync>>,
+    pub visitor: Option<
+        Arc<
+            dyn Fn(&M::State, &im::Vector<M::Action>, VisitType) -> Result<(), M::Error>
+                + Send
+                + Sync,
+        >,
+    >,
+    pub is_fatal_error: Option<Arc<dyn Fn(&M::Error) -> bool + Send + Sync>>,
 }
 
-impl<E: Send + Sync> Default for TraversalConfig<E> {
+pub enum VisitType {
+    Normal,
+    Terminal,
+    LoopTerminal,
+}
+
+impl<M: Machine> Default for TraversalConfig<M> {
     fn default() -> Self {
         Self {
             max_actions: None,
@@ -34,13 +48,20 @@ impl<E: Send + Sync> Default for TraversalConfig<E> {
             max_iters: None,
             trace_every: 1000,
             ignore_loopbacks: false,
+            record_terminals: false,
             trace_error: false,
+            visitor: None,
             is_fatal_error: None,
         }
     }
 }
 
-impl<A: Clone + Send + Sync, E: Send + Sync> TraversalConfig<CheckerError<A, E>> {
+impl<M: Machine> TraversalConfig<CheckerMachine<M>>
+where
+    M: Machine + Debug,
+    M::State: Clone + Debug,
+    M::Action: Clone + Debug,
+{
     pub fn stop_on_checker_error(mut self) -> Self {
         self.is_fatal_error = Some(Arc::new(|err| matches!(err, CheckerError::Predicate(_))));
         self
@@ -67,40 +88,33 @@ pub struct TraversalReport {
 // }
 
 pub fn traverse_checked<M>(
-    machine: Checker<M>,
+    machine: CheckerMachine<M>,
     initial: CheckerState<M>,
-    config: TraversalConfig<CheckerError<M::Action, M::Error>>,
-) -> Result<TraversalReport, PredicateError<M::Action>>
+    config: TraversalConfig<CheckerMachine<M>>,
+) -> Result<TraversalReport, PredicateError<M>>
 where
     M: Machine + Debug + Send + Sync,
     M::State: Clone + Eq + Hash + Debug + Send + Sync,
     M::Action: Exhaustive + Clone + Eq + Hash + Debug + Send + Sync,
     M::Error: Debug + Send + Sync,
 {
-    let config = config.stop_on_checker_error();
-    let (terminals, report) = traverse(machine, initial, &config).map_err(|e| match e {
+    let mut config = config.stop_on_checker_error();
+    config.visitor = Some(Arc::new(|s, path, visit_type| {
+        if matches!(visit_type, VisitType::Terminal | VisitType::LoopTerminal) {
+            s.clone().finalize().map_err(|error| {
+                CheckerError::Predicate(PredicateError {
+                    error,
+                    path: path.clone(),
+                })
+            })
+        } else {
+            Ok(())
+        }
+    }));
+    let (report, _) = traverse(machine, initial, &config).map_err(|e| match e {
         CheckerError::Predicate(e) => e,
         CheckerError::Machine(_) => unreachable!(),
     })?;
-    if terminals.is_empty() {
-        return Err(PredicateError {
-            error: "no states visited".into(),
-            path: Default::default(),
-        });
-    }
-    let results: Vec<_> = terminals.into_iter().map(|(s, _)| s.finalize()).collect();
-    if results.iter().all(|r| r.is_err()) {
-        let mut errors: Vec<_> = results
-            .into_iter()
-            .filter_map(|r| match r {
-                Ok(_) => None,
-                Err(e) => Some(e),
-            })
-            .collect();
-        errors.sort_by_key(|(_, p)| p.len());
-        let (error, path) = errors.pop().unwrap();
-        return Err(PredicateError { error, path });
-    }
 
     Ok(report)
 }
@@ -108,8 +122,8 @@ where
 pub fn traverse<M>(
     machine: M,
     initial: M::State,
-    config: &TraversalConfig<M::Error>,
-) -> Result<(HashSet<(M::State, im::Vector<M::Action>)>, TraversalReport), M::Error>
+    config: &TraversalConfig<M>,
+) -> Result<(TraversalReport, Option<(TerminalSet<M>, TerminalSet<M>)>), M::Error>
 where
     M: Machine + Send + Sync,
     M::State: Clone + Eq + Hash + Debug + Send + Sync,
@@ -120,8 +134,11 @@ where
 
     let machine = Arc::new(machine);
 
-    let mut visited: HashSet<M::State> = HashSet::new();
-    let mut terminals: HashSet<(M::State, im::Vector<M::Action>)> = HashSet::new();
+    let mut terminals: TerminalSet<M> = HashSet::new();
+    let mut loop_terminals: TerminalSet<M> = HashSet::new();
+
+    let mut visited: HashMap<M::State, ()> = HashMap::new();
+
     let to_visit: Mutex<VecDeque<(M::State, usize, im::Vector<M::Action>)>> =
         Mutex::new(VecDeque::new());
 
@@ -153,19 +170,32 @@ where
             panic!("max iters of {} reached", config.max_iters.unwrap());
         }
 
+        let already_seen = visited.insert(state.clone(), ()).is_some();
+
         // Don't explore the same node twice, and respect the depth limit
-        if depth > config.max_depth.unwrap_or(usize::MAX) || visited.contains(&state) {
-            terminals.insert((state, path));
+        if already_seen || depth > config.max_depth.unwrap_or(usize::MAX) {
+            if let Some(ref on_terminal) = config.visitor {
+                on_terminal(&state, &path, VisitType::LoopTerminal)?;
+            }
+            if config.record_terminals {
+                loop_terminals.insert((state, path));
+            }
             continue;
         }
-
-        visited.insert(state.clone());
-
         // If this is a terminal state, no need to explore further.
-        if machine.is_terminal(&state) {
+        else if machine.is_terminal(&state) {
             report.num_terminations += 1;
-            terminals.insert((state, path));
+            if let Some(ref on_terminal) = config.visitor {
+                on_terminal(&state, &path, VisitType::Terminal)?;
+            }
+            if config.record_terminals {
+                terminals.insert((state, path));
+            }
             continue;
+        } else {
+            if let Some(ref on_terminal) = config.visitor {
+                on_terminal(&state, &path, VisitType::Normal)?;
+            }
         }
 
         // Queue up visits to all nodes reachable from this node..
@@ -194,8 +224,11 @@ where
             .collect::<Result<Vec<_>, _>>()?;
     }
     report.num_visited = visited.len();
-    Ok((terminals, report))
+    let terminals = config.record_terminals.then(|| (terminals, loop_terminals));
+    Ok((report, terminals))
 }
+
+pub type TerminalSet<M> = HashSet<(<M as Machine>::State, im::Vector<<M as Machine>::Action>)>;
 
 #[cfg(test)]
 mod tests {
@@ -254,14 +287,20 @@ mod tests {
         assert!(err.unwrap_predicate().error.contains("div-by-3"));
 
         let initial = checker.initial(1);
-        let report = traverse_checked(
+        let err = traverse_checked(
             checker,
             initial,
             TraversalConfig {
                 ..Default::default()
             },
         )
-        .unwrap();
-        dbg!(report);
+        .unwrap_err();
+
+        assert_eq!(
+            err.path,
+            std::iter::repeat(Action::Double)
+                .take(10)
+                .collect::<im::Vector<_>>()
+        );
     }
 }

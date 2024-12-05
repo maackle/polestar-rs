@@ -5,45 +5,50 @@ use im::{vector, Vector};
 
 use crate::util::first_ref;
 
-use super::{Machine, TransitionResult};
+use super::{
+    store_path::{StorePathMachine, StorePathState},
+    Machine, TransitionResult,
+};
 
 #[derive(Debug)]
-pub struct Checker<M: Machine> {
-    machine: M,
+pub struct CheckerMachine<M: Machine> {
+    machine: StorePathMachine<M>,
     initial_predicates: Vec<Predicate<M::State>>,
 }
 
 #[derive(derive_more::Deref)]
-pub struct CheckerState<M: Machine> {
+pub struct CheckerState<M>
+where
+    M: Machine,
+    M::State: Clone + std::fmt::Debug,
+    M::Action: Clone + std::fmt::Debug,
+{
     predicates: Predicates<M::State>,
     #[deref]
-    pub state: M::State,
-
-    path: im::Vector<M::Action>,
+    pub state: StorePathState<M>,
 }
 
 impl<M> std::fmt::Debug for CheckerState<M>
 where
     M: Machine,
-    M::State: std::fmt::Debug,
-    M::Action: std::fmt::Debug,
+    M::State: Clone + std::fmt::Debug,
+    M::Action: Clone + std::fmt::Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "CheckerState({:?})", self.state)
+        write!(f, "CheckerState({:?})", self.state.state)
     }
 }
 
 impl<M> Clone for CheckerState<M>
 where
     M: Machine,
-    M::State: Clone,
-    M::Action: Clone,
+    M::State: Clone + std::fmt::Debug,
+    M::Action: Clone + std::fmt::Debug,
 {
     fn clone(&self) -> Self {
         Self {
             predicates: self.predicates.clone(),
             state: self.state.clone(),
-            path: self.path.clone(),
         }
     }
 }
@@ -52,24 +57,27 @@ where
 impl<M> PartialEq for CheckerState<M>
 where
     M: Machine,
-    M::State: PartialEq,
+    M::State: PartialEq + Clone + std::fmt::Debug,
+    M::Action: Clone + std::fmt::Debug,
 {
     fn eq(&self, other: &Self) -> bool {
-        self.state == other.state
+        self.state.state == other.state.state
     }
 }
 
 impl<M> Eq for CheckerState<M>
 where
     M: Machine,
-    M::State: Eq,
+    M::State: Eq + Clone + std::fmt::Debug,
+    M::Action: Clone + std::fmt::Debug,
 {
 }
 
 impl<M> std::hash::Hash for CheckerState<M>
 where
     M: Machine,
-    M::State: std::hash::Hash,
+    M::State: std::hash::Hash + Clone + std::fmt::Debug,
+    M::Action: Clone + std::fmt::Debug,
 {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.state.hash(state)
@@ -78,21 +86,31 @@ where
 
 #[derive(Debug)]
 #[cfg_attr(test, derive(derive_more::Unwrap))]
-pub enum CheckerError<A: Clone, E: Send + Sync> {
-    Predicate(PredicateError<A>),
-    Machine(E),
+pub enum CheckerError<M>
+where
+    M: Machine,
+    M::State: Clone + std::fmt::Debug,
+    M::Action: Clone + std::fmt::Debug,
+{
+    Predicate(PredicateError<M>),
+    Machine(anyhow::Error),
 }
 
 #[derive(Debug)]
-pub struct PredicateError<A: Clone> {
+pub struct PredicateError<M>
+where
+    M: Machine,
+    M::State: Clone + std::fmt::Debug,
+    M::Action: Clone + std::fmt::Debug,
+{
     pub error: String,
-    pub path: im::Vector<A>,
+    pub path: im::Vector<M::Action>,
 }
 
-impl<M: Machine> Checker<M> {
+impl<M: Machine> CheckerMachine<M> {
     pub fn new(machine: M) -> Self {
         Self {
-            machine,
+            machine: StorePathMachine::from(machine),
             initial_predicates: Vec::new(),
         }
     }
@@ -112,8 +130,7 @@ impl<M: Machine> Checker<M> {
     {
         CheckerState {
             predicates: Predicates::new(self.initial_predicates.clone().into_iter()),
-            state: s,
-            path: vector![],
+            state: StorePathState::new(s),
         }
     }
 
@@ -121,12 +138,11 @@ impl<M: Machine> Checker<M> {
         &self,
         initial: M::State,
         actions: impl IntoIterator<Item = M::Action>,
-    ) -> Result<(), CheckerError<M::Action, anyhow::Error>>
+    ) -> Result<(), CheckerError<M>>
     where
-        M: Debug,
+        M: Machine + Debug,
         M::State: Clone + Debug,
         M::Action: Clone + Debug,
-        M::Error: Debug + Send + Sync,
     {
         let s = self.initial(initial);
         let (end, _) = self
@@ -137,8 +153,9 @@ impl<M: Machine> Checker<M> {
                     CheckerError::Machine(anyhow!("{:?} state: {:?}, action: {:?}", e, s.state, a))
                 }
             })?;
+        let path = end.state.path.clone();
         end.finalize()
-            .map_err(|(error, path)| CheckerError::Predicate(PredicateError { error, path }))
+            .map_err(|error| CheckerError::Predicate(PredicateError { error, path }))
     }
 
     pub fn get_predicates(&self) -> &[Predicate<M::State>] {
@@ -146,8 +163,13 @@ impl<M: Machine> Checker<M> {
     }
 }
 
-impl<M: Machine> CheckerState<M> {
-    pub fn finalize(self) -> Result<(), (String, im::Vector<M::Action>)> {
+impl<M> CheckerState<M>
+where
+    M: Machine,
+    M::State: Clone + std::fmt::Debug,
+    M::Action: Clone + std::fmt::Debug,
+{
+    pub fn finalize(self) -> Result<(), String> {
         let eventuals = self
             .predicates
             .next
@@ -156,11 +178,8 @@ impl<M: Machine> CheckerState<M> {
             .map(|(name, _)| name)
             .collect::<Vec<_>>();
         if !eventuals.is_empty() {
-            return Err((
-                format!(
-                    "Checker finalized with unsatisfied 'eventually' predicates: {eventuals:?}"
-                ),
-                self.path,
+            return Err(format!(
+                "Checker finalized with unsatisfied 'eventually' predicates: {eventuals:?}"
             ));
         }
         Ok(())
@@ -176,38 +195,35 @@ impl<M: Machine> CheckerState<M> {
 //     }
 // }
 
-impl<M> Machine for Checker<M>
+impl<M> Machine for CheckerMachine<M>
 where
     M: Machine + Debug,
     M::State: Clone + Debug,
     M::Action: Clone + Debug,
-    M::Error: Send + Sync,
+    // M::Error: Send + Sync,
 {
     type State = CheckerState<M>;
     type Action = M::Action;
     type Fx = M::Fx;
-    type Error = CheckerError<M::Action, M::Error>;
+    type Error = CheckerError<M>;
 
     fn transition(&self, state: Self::State, action: Self::Action) -> TransitionResult<Self> {
         let prev = state.state;
         let mut predicates = state.predicates;
-        let mut path = state.path;
         let (next, fx) = self
             .machine
             .transition(prev.clone(), action.clone())
-            .map_err(CheckerError::Machine)?;
-        path.push_back(action);
+            .map_err(|e| CheckerError::Machine(anyhow!("{:?}", e)))?;
         predicates.step((&prev, &next)).map_err(|error| {
             CheckerError::Predicate(PredicateError {
                 error,
-                path: path.clone(),
+                path: next.path.clone(),
             })
         })?;
         Ok((
             CheckerState {
                 predicates,
                 state: next,
-                path,
             },
             fx,
         ))

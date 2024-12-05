@@ -1,4 +1,5 @@
 pub mod checked;
+pub mod store_path;
 
 // mod refcell;
 
@@ -46,8 +47,8 @@ where
 
     // }
 
-    fn checked(self) -> checked::Checker<Self> {
-        checked::Checker::new(self)
+    fn checked(self) -> checked::CheckerMachine<Self> {
+        checked::CheckerMachine::new(self)
     }
 
     fn apply_each_action(
