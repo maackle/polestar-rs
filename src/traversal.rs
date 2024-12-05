@@ -24,13 +24,7 @@ pub struct TraversalConfig<M: Machine> {
     pub ignore_loopbacks: bool,
     pub record_terminals: bool,
     pub trace_error: bool,
-    pub visitor: Option<
-        Arc<
-            dyn Fn(&M::State, &im::Vector<M::Action>, VisitType) -> Result<(), M::Error>
-                + Send
-                + Sync,
-        >,
-    >,
+    pub visitor: Option<Arc<dyn Fn(&M::State, VisitType) -> Result<(), M::Error> + Send + Sync>>,
     pub is_fatal_error: Option<Arc<dyn Fn(&M::Error) -> bool + Send + Sync>>,
 }
 
@@ -99,12 +93,12 @@ where
     M::Error: Debug + Send + Sync,
 {
     let mut config = config.stop_on_checker_error();
-    config.visitor = Some(Arc::new(|s, path, visit_type| {
+    config.visitor = Some(Arc::new(|s, visit_type| {
         if matches!(visit_type, VisitType::Terminal | VisitType::LoopTerminal) {
             s.clone().finalize().map_err(|error| {
                 CheckerError::Predicate(PredicateError {
                     error,
-                    path: path.clone(),
+                    path: s.state.path.clone(),
                 })
             })
         } else {
@@ -123,7 +117,13 @@ pub fn traverse<M>(
     machine: M,
     initial: M::State,
     config: &TraversalConfig<M>,
-) -> Result<(TraversalReport, Option<(TerminalSet<M>, TerminalSet<M>)>), M::Error>
+) -> Result<
+    (
+        TraversalReport,
+        Option<(TerminalSet<M::State>, TerminalSet<M::State>)>,
+    ),
+    M::Error,
+>
 where
     M: Machine + Send + Sync,
     M::State: Clone + Eq + Hash + Debug + Send + Sync,
@@ -134,21 +134,20 @@ where
 
     let machine = Arc::new(machine);
 
-    let mut terminals: TerminalSet<M> = HashSet::new();
-    let mut loop_terminals: TerminalSet<M> = HashSet::new();
+    let mut terminals: TerminalSet<M::State> = HashSet::new();
+    let mut loop_terminals: TerminalSet<M::State> = HashSet::new();
 
     let mut visited: HashMap<M::State, ()> = HashMap::new();
 
-    let to_visit: Mutex<VecDeque<(M::State, usize, im::Vector<M::Action>)>> =
-        Mutex::new(VecDeque::new());
+    let to_visit: Mutex<VecDeque<(M::State, usize)>> = Mutex::new(VecDeque::new());
 
-    to_visit.lock().push_back((initial, 0, im::vector![]));
+    to_visit.lock().push_back((initial, 0));
 
     let mut report = TraversalReport::default();
 
     let all_actions: im::Vector<_> = M::Action::iter_exhaustive(config.max_actions).collect();
 
-    while let Some((state, depth, path)) = {
+    while let Some((state, depth)) = {
         let mut lock = to_visit.lock();
         lock.pop_front()
     } {
@@ -175,10 +174,10 @@ where
         // Don't explore the same node twice, and respect the depth limit
         if already_seen || depth > config.max_depth.unwrap_or(usize::MAX) {
             if let Some(ref on_terminal) = config.visitor {
-                on_terminal(&state, &path, VisitType::LoopTerminal)?;
+                on_terminal(&state, VisitType::LoopTerminal)?;
             }
             if config.record_terminals {
-                loop_terminals.insert((state, path));
+                loop_terminals.insert(state);
             }
             continue;
         }
@@ -186,15 +185,15 @@ where
         else if machine.is_terminal(&state) {
             report.num_terminations += 1;
             if let Some(ref on_terminal) = config.visitor {
-                on_terminal(&state, &path, VisitType::Terminal)?;
+                on_terminal(&state, VisitType::Terminal)?;
             }
             if config.record_terminals {
-                terminals.insert((state, path));
+                terminals.insert(state);
             }
             continue;
         } else {
             if let Some(ref on_terminal) = config.visitor {
-                on_terminal(&state, &path, VisitType::Normal)?;
+                on_terminal(&state, VisitType::Normal)?;
             }
         }
 
@@ -205,9 +204,7 @@ where
             .map(|action| {
                 match machine.transition(state.clone(), action.clone()).map(first) {
                     Ok(node) => {
-                        let mut path = path.clone();
-                        path.push_back(action);
-                        to_visit.lock().push_back((node, depth + 1, path));
+                        to_visit.lock().push_back((node, depth + 1));
                     }
                     Err(err) => {
                         // report.num_errors += 1;
@@ -228,7 +225,7 @@ where
     Ok((report, terminals))
 }
 
-pub type TerminalSet<M> = HashSet<(<M as Machine>::State, im::Vector<<M as Machine>::Action>)>;
+pub type TerminalSet<S> = HashSet<S>;
 
 #[cfg(test)]
 mod tests {

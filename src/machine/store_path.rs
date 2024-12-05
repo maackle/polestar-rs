@@ -1,13 +1,14 @@
+use std::{fmt::Debug, hash::Hash};
+
 use crate::prelude::*;
 
 use derive_more::derive::Deref;
-use tracing_subscriber::field::debug;
 
 #[derive(Deref, derive_more::Debug)]
 pub struct StorePathState<M>
 where
     M: Machine,
-    M::State: std::fmt::Debug,
+    M::State: Debug,
 {
     #[deref]
     pub state: M::State,
@@ -18,7 +19,7 @@ where
 impl<M> StorePathState<M>
 where
     M: Machine,
-    M::State: std::fmt::Debug,
+    M::State: Debug,
     M::Action: Clone,
 {
     pub fn new(state: M::State) -> Self {
@@ -32,7 +33,7 @@ where
 impl<M> Clone for StorePathState<M>
 where
     M: Machine,
-    M::State: Clone + std::fmt::Debug,
+    M::State: Clone + Debug,
     M::Action: Clone,
 {
     fn clone(&self) -> Self {
@@ -40,6 +41,34 @@ where
             state: self.state.clone(),
             path: self.path.clone(),
         }
+    }
+}
+
+// XXX: equality and hash ignore path! This is necessary for traversal to work well.
+impl<M> PartialEq for StorePathState<M>
+where
+    M: Machine,
+    M::State: Debug + PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.state == other.state
+    }
+}
+
+impl<M> Eq for StorePathState<M>
+where
+    M: Machine,
+    M::State: Debug + Eq,
+{
+}
+
+impl<M> Hash for StorePathState<M>
+where
+    M: Machine,
+    M::State: Debug + Hash,
+{
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.state.hash(state);
     }
 }
 
@@ -54,7 +83,7 @@ where
 impl<M> Machine for StorePathMachine<M>
 where
     M: Machine,
-    M::State: std::fmt::Debug,
+    M::State: Debug,
     M::Action: Clone,
 {
     type State = StorePathState<M>;

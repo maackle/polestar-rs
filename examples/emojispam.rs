@@ -12,7 +12,10 @@
 
 use anyhow::bail;
 use exhaustive::Exhaustive;
-use polestar::prelude::*;
+use polestar::{
+    machine::store_path::{StorePathMachine, StorePathState},
+    prelude::*,
+};
 
 struct SpamMachine {
     target: usize,
@@ -103,10 +106,10 @@ fn main() {
 
     let target = 1_000;
 
-    let machine = SpamMachine { target };
-    let initial = SpamState::default();
+    let machine = StorePathMachine::from(SpamMachine { target });
+    let initial = StorePathState::new(SpamState::default());
 
-    let (_report, terminals) = polestar::traversal::traverse(
+    let (report, terminals) = polestar::traversal::traverse(
         machine,
         initial,
         &polestar::traversal::TraversalConfig {
@@ -117,24 +120,22 @@ fn main() {
     )
     .unwrap();
 
+    dbg!(&report);
     let (terminals, _loop_terminals) = terminals.unwrap();
-    dbg!(&terminals.len());
-    let mut states: Vec<_> = terminals
-        .into_iter()
-        .filter(|(s, _)| s.len >= target)
-        .collect();
-    states.sort_by_key(|(s, _)| s.cost);
-    let min_cost = states[0].0.cost;
+    let mut states: Vec<_> = terminals.into_iter().filter(|s| s.len >= target).collect();
+    states.sort_by_key(|s| s.cost);
+    let min_cost = states[0].cost;
 
     let mut solutions: Vec<_> = states
         .into_iter()
-        .take_while(|(s, _)| s.cost <= min_cost + 3)
+        .take_while(|s| s.cost <= min_cost + 3)
         .take(10)
         .collect();
-    solutions.sort_by_key(|(s, _)| (s.cost, s.len));
+    solutions.sort_by_key(|s| (s.cost, s.len));
 
-    for (i, (state, path)) in solutions.into_iter().enumerate() {
-        let path = path
+    for (i, state) in solutions.into_iter().enumerate() {
+        let path = state
+            .path
             .iter()
             .map(|a| a.to_string())
             .collect::<Vec<_>>()
