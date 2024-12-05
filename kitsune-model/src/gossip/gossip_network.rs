@@ -20,7 +20,7 @@ use super::gossip_node::*;
  ░░░░░░░░  ░░░░░░     ░░░░░  ░░░░░  ░░░░░░  ░░░░ ░░░░░   */
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Exhaustive, Serialize, Deserialize)]
-pub struct GossipAction<N: Id>(pub N, pub NodeAction<N>);
+pub struct GossipAction<N: Id>(pub N, pub NodeAction<N, bool>);
 
 /*        █████               █████
          ░░███               ░░███
@@ -74,7 +74,7 @@ impl<N: Id> Machine for GossipMachine<N> {
         Ok((state, ()))
     }
 
-    fn is_terminal(&self, s: &Self::State) -> bool {
+    fn is_terminal(&self, _s: &Self::State) -> bool {
         false
     }
 }

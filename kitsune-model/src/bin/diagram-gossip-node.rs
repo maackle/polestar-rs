@@ -8,10 +8,15 @@ use polestar::{
     diagram::exhaustive::*, machine::checked::Predicate as P, prelude::*,
     traversal::traverse_checked,
 };
+use tracing::Level;
 
 fn main() {
+    tracing_subscriber::fmt::fmt()
+        .with_max_level(Level::DEBUG)
+        .init();
+
     // type N = IdUnit;
-    type N = UpTo<2>;
+    type N = UpTo<1>;
 
     let machine = NodeMachine::<N>::new();
     let state = machine.initial();
@@ -24,8 +29,10 @@ fn main() {
             max_depth: None,
             ..Default::default()
         },
-        |s| Some(NodeStateUnscheduled::from(s)),
-        Some,
+        // Some,
+        |s| Some(NodeStateSimple::new(true, s)),
+        // Some,
+        |a| Some(NodeAction::<N, IdUnit>::from(a)),
         // |a| (!matches!(a, NodeAction::Tick)).then_some(a),
     );
 }

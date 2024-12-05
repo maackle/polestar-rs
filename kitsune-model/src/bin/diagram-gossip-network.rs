@@ -12,6 +12,7 @@ fn main() {
     // With 3 nodes, scheduled:                nodes=13824, edges=107136, finished in 52.91s
     // with 3 nodes, unscheduled with no tick: nodes=4096,  edges=18432,  finished in 68.64s
     type N = UpTo<2>;
+    const TIMED: bool = true;
 
     let machine = GossipMachine::<N>::new();
     let initial = machine.initial();
@@ -31,6 +32,7 @@ fn main() {
         initial,
         &DiagramConfig {
             max_depth: None,
+            ignore_loopbacks: true,
             ..Default::default()
         },
         |state| {
@@ -39,7 +41,7 @@ fn main() {
                     .nodes
                     .into_iter()
                     .map(|(n, s)| {
-                        let s = NodeStateUnscheduled::from(s);
+                        let s = NodeStateSimple::new(TIMED, s);
                         format!("{s}")
                             .split('\n')
                             .filter_map(|l| (!l.is_empty()).then_some(format!("{n}.{l}")))
@@ -50,7 +52,9 @@ fn main() {
                 format!("{lines}\n")
             })
         },
-        |GossipAction(node, action)| Some(format!("{node}: {action}")),
+        |GossipAction(node, action)| {
+            Some(format!("{node}: {}", NodeAction::<N, IdUnit>::from(action)))
+        },
         // |GossipAction(node, action)| {
         //     (!matches!(action, NodeAction::Tick)).then_some(format!("{node}: {action}"))
         // },

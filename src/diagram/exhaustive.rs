@@ -182,7 +182,7 @@ where
                 if !(config.ignore_loopbacks && prev_ix == ix)
                     && visited_edges.insert((prev_ix, ix, edge.clone()))
                 {
-                    tracing::debug!("new edge : {edge:?}");
+                    tracing::debug!("new edge : {prev_ix:?}->{ix:?} {edge:?}");
                     graph.add_edge(prev_ix, ix, edge);
                 }
             }

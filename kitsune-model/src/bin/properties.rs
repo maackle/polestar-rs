@@ -32,7 +32,7 @@ fn main() {
     let ready = |n: N, p: N| {
         assert_ne!(n, p);
         P::atom(format!("{n}_ready_for_{p}"), move |s: &GossipState<N>| {
-            s.nodes.get(&n).unwrap().schedule.get_key(&p).unwrap() == &PeerState::Ready
+            s.nodes.get(&n).unwrap().peers.get(&p).unwrap().phase == PeerPhase::Ready
         })
     };
 

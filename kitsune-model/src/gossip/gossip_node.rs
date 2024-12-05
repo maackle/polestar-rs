@@ -10,10 +10,8 @@ use itertools::Itertools;
 use polestar::{ext::MapExt, id::Id, prelude::*};
 use serde::{Deserialize, Serialize};
 
-use super::scheduler::{Schedule, ScheduleKv};
-
-const SUCCESS_TICKS: u8 = 1;
-const ERROR_TICKS: u8 = 2;
+const SUCCESS_TICKS: Timer = 1;
+const ERROR_TICKS: Timer = 2;
 
 /*                   █████     ███
                     ░░███     ░░░
@@ -25,25 +23,54 @@ const ERROR_TICKS: u8 = 2;
  ░░░░░░░░  ░░░░░░     ░░░░░  ░░░░░  ░░░░░░  ░░░░ ░░░░░   */
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Exhaustive, Serialize, Deserialize)]
-pub enum NodeAction<N: Id> {
+pub enum NodeAction<N: Id, CompleteStatus> {
     /// Tick the clock
     Tick,
     /// Add a peer to the node's peer set
     AddPeer(N),
-    /// Receive a message from another node
-    Incoming { from: N, msg: Msg },
-    /// Simulate a protocol error
-    Error { from: N },
+    // /// This active peer round was marked as timed-out
+    // Timeout(N),
+    /// Receive (and accept) a message from another node
+    Incoming { from: N, msg: Msg<CompleteStatus> },
     // /// Hang up on another node without telling them
     // Hangup { to: N },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Exhaustive, Serialize, Deserialize)]
-pub enum Msg {
+pub enum Msg<CompleteStatus> {
     /// Initiate a gossip round
     Initiate,
+    /// Receive a valid message, continuing the round (details hidden here)
+    Touch,
+    /// Receive a message that goes against protocol, causing an error
+    Junk,
     /// Complete a gossip round successfully, indicating whether new data was sent
-    Complete(bool),
+    Complete(CompleteStatus),
+}
+
+impl<N: Id> From<NodeAction<N, bool>> for NodeAction<N, IdUnit> {
+    fn from(action: NodeAction<N, bool>) -> Self {
+        match action {
+            NodeAction::Incoming { from, msg } => NodeAction::Incoming {
+                from,
+                msg: msg.into(),
+            },
+            NodeAction::Tick => NodeAction::Tick,
+            NodeAction::AddPeer(n) => NodeAction::AddPeer(n),
+            // NodeAction::Timeout(n) => NodeAction::Timeout(n),
+        }
+    }
+}
+
+impl From<Msg<bool>> for Msg<IdUnit> {
+    fn from(msg: Msg<bool>) -> Self {
+        match msg {
+            Msg::Initiate => Msg::Initiate,
+            Msg::Touch => Msg::Touch,
+            Msg::Junk => Msg::Junk,
+            Msg::Complete(_) => Msg::Complete(IdUnit),
+        }
+    }
 }
 
 /*        █████               █████
@@ -55,60 +82,98 @@ pub enum Msg {
  ██████   ░░█████ ░░████████  ░░█████ ░░██████
 ░░░░░░     ░░░░░   ░░░░░░░░    ░░░░░   ░░░░░░  */
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, derive_more::Deref, derive_more::DerefMut)]
-pub struct ScheduleTimed<N: Id>(ScheduleKv<N, PeerState>);
-
-impl<N: Id> ScheduleTimed<N> {
-    pub fn insert_timed(&mut self, n: N, peer: PeerState) -> bool {
-        let time = match peer {
-            PeerState::Ready => None,
-            PeerState::Stale => None,
-            PeerState::Active => None,
-            PeerState::Closed(outcome) => Some(outcome.ticks()),
-        };
-        self.0.insert_kv(time, n, peer)
-    }
-}
+pub type Timer = u16;
 
 /// The state of a single node
 #[derive(Clone, Debug, PartialEq, Eq, Hash, derive_more::IntoIterator)]
 pub struct NodeState<N: Id> {
-    pub schedule: ScheduleTimed<N>,
+    pub peers: BTreeMap<N, PeerState>,
 }
 
 impl<N: Id> NodeState<N> {
     pub fn new(peers: impl IntoIterator<Item = N>) -> Self {
-        let mut schedule = ScheduleTimed::default();
-        for peer in peers {
-            schedule.insert_kv(None, peer, PeerState::default());
-        }
-        Self { schedule }
+        let peers = peers
+            .into_iter()
+            .map(|n| (n, PeerState::default()))
+            .collect();
+        Self { peers }
+    }
+
+    pub fn set_peer(&mut self, n: N, phase: PeerPhase) -> bool {
+        self.peers.insert(n, PeerState::new(phase)).is_none()
     }
 }
 
 impl<N: Id> Display for NodeState<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for (_, (n, peer)) in self.schedule.iter() {
-            match peer {
-                PeerState::Closed(GossipOutcome::Success(_)) => writeln!(f, "{n}: Success")?,
-                PeerState::Closed(GossipOutcome::Failure(reason)) => {
-                    writeln!(f, "{n}: Failure({reason:?})")?
-                }
-                _ => writeln!(f, "{n}: {:?}", peer)?,
-            }
+        for (n, peer) in self.peers.iter() {
+            writeln!(f, "{n}: {}", peer)?
         }
         Ok(())
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, derive_more::From)]
+pub struct PeerState {
+    pub phase: PeerPhase,
+    pub timer: Timer,
+}
+
+impl PeerState {
+    pub fn new(phase: PeerPhase) -> Self {
+        Self {
+            timer: phase.initial_timer(),
+            phase,
+        }
+    }
+
+    /// When the timer expires, the peer transitions to another state.
+    pub fn timeout(&self) -> Self {
+        if self.timer == 0 {
+            Self::new(match self.phase {
+                PeerPhase::Ready => PeerPhase::Ready,
+                PeerPhase::Active => {
+                    PeerPhase::Closed(GossipOutcome::Failure(FailureReason::Timeout))
+                }
+                PeerPhase::Closed(_) => PeerPhase::Ready,
+            })
+        } else {
+            *self
+        }
+    }
+}
+
+impl Display for PeerState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.phase {
+            PeerPhase::Closed(GossipOutcome::Success(_)) => {
+                write!(f, "Success t={}", self.timer)
+            }
+            PeerPhase::Closed(GossipOutcome::Failure(reason)) => {
+                write!(f, "Failure({reason:?}) t={}", self.timer)
+            }
+            _ => write!(f, "{:?} t={}", self.phase, self.timer),
+        }
+    }
+}
+
 /// The state of a peer from the perspective of another
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, derive_more::From)]
-pub enum PeerState {
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, derive_more::From)]
+pub enum PeerPhase {
     #[default]
     Ready,
-    Stale,
     Active,
     Closed(GossipOutcome),
+}
+
+impl PeerPhase {
+    pub fn initial_timer(&self) -> Timer {
+        match self {
+            Self::Ready => 0,
+            Self::Active => 1,
+            Self::Closed(outcome) => outcome.ticks(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -121,7 +186,7 @@ pub enum GossipOutcome {
 }
 
 impl GossipOutcome {
-    pub fn ticks(&self) -> u8 {
+    pub fn ticks(&self) -> Timer {
         match self {
             GossipOutcome::Success(_) => SUCCESS_TICKS,
             GossipOutcome::Failure(_) => ERROR_TICKS,
@@ -151,69 +216,62 @@ pub struct NodeMachine<N: Id> {
 
 impl<N: Id> Machine for NodeMachine<N> {
     type State = NodeState<N>;
-    type Action = NodeAction<N>;
+    type Action = NodeAction<N, bool>;
     type Fx = ();
     type Error = anyhow::Error;
 
     fn transition(&self, mut state: Self::State, action: Self::Action) -> TransitionResult<Self> {
         match action {
             NodeAction::Tick => {
-                if let Some((n, peer)) = state.schedule.pop() {
-                    match peer {
-                        PeerState::Ready => {
-                            unreachable!()
-                        }
-                        PeerState::Stale => {
-                            unreachable!()
-                        }
-                        PeerState::Active => {
-                            let outcome = GossipOutcome::Failure(FailureReason::Timeout);
-                            state.schedule.insert_timed(n, PeerState::Closed(outcome));
-                        }
-                        PeerState::Closed(_) => {
-                            state.schedule.insert_timed(n, PeerState::Ready);
-                        }
+                state.peers.values_mut().for_each(|peer| {
+                    if peer.timer == 0 {
+                        *peer = peer.timeout();
+                    } else {
+                        peer.timer = peer.timer.saturating_sub(1);
                     }
-                }
+                });
             }
             NodeAction::AddPeer(peer) => {
-                if !state.schedule.insert_timed(peer, PeerState::default()) {
+                if !state.set_peer(peer, PeerPhase::default()) {
                     bail!("peer {peer} already exists");
                 }
             }
             NodeAction::Incoming { from, msg } => {
-                let peer = state.schedule.remove_key(&from).ok_or(anyhow!("no key"))?;
+                let peer = state.peers.get_mut(&from).ok_or(anyhow!("no key"))?;
                 match msg {
-                    Msg::Initiate => match peer {
-                        PeerState::Active => bail!("node {from} already in a gossip round"),
-                        PeerState::Closed(_) => {
+                    Msg::Initiate => match peer.phase {
+                        PeerPhase::Active => bail!("node {from} already in a gossip round"),
+                        PeerPhase::Closed(_) => {
                             bail!("too soon to be initiated with")
                         }
                         _ => {
-                            state.schedule.insert_timed(from, PeerState::Active);
+                            state.set_peer(from, PeerPhase::Active);
                         }
                     },
-                    Msg::Complete(new_data) => match peer {
-                        PeerState::Active => {
-                            state.schedule.insert_timed(
+                    Msg::Touch => match peer.phase {
+                        PeerPhase::Active => {
+                            peer.timer = peer.phase.initial_timer();
+                        }
+                        _ => bail!("node {from} not in a gossip round"),
+                    },
+                    Msg::Junk => match peer.phase {
+                        PeerPhase::Active => {
+                            state.set_peer(
                                 from,
-                                PeerState::Closed(GossipOutcome::Success(new_data)),
+                                PeerPhase::Closed(GossipOutcome::Failure(FailureReason::Protocol)),
                             );
                         }
                         _ => bail!("node {from} not in a gossip round"),
                     },
-                }
-            }
-            NodeAction::Error { from } => {
-                let peer = state.schedule.remove_key(&from).ok_or(anyhow!("no key"))?;
-                match peer {
-                    PeerState::Active => {
-                        state.schedule.insert_timed(
-                            from,
-                            PeerState::Closed(GossipOutcome::Failure(FailureReason::Protocol)),
-                        );
-                    }
-                    _ => bail!("node {from} not in a gossip round"),
+                    Msg::Complete(new_data) => match peer.phase {
+                        PeerPhase::Active => {
+                            state.set_peer(
+                                from,
+                                PeerPhase::Closed(GossipOutcome::Success(new_data)),
+                            );
+                        }
+                        _ => bail!("node {from} not in a gossip round"),
+                    },
                 }
             }
         }
@@ -250,46 +308,53 @@ impl<N: Id> NodeMachine<N> {
    ░░░░░   ░░░░░░  ░░░░░░     ░░░░░  ░░░░░░*/
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct NodeStateUnscheduled<N: Id>(BTreeMap<N, PeerState>);
+pub struct NodeStateSimple<N: Id>(BTreeMap<N, String>);
 
-impl<N: Id> From<NodeState<N>> for NodeStateUnscheduled<N> {
-    fn from(state: NodeState<N>) -> Self {
+impl<N: Id> NodeStateSimple<N> {
+    pub fn new(timed: bool, state: NodeState<N>) -> Self {
         Self(
             state
-                .schedule
-                .0
+                .peers
                 .into_iter()
-                .map(|(_, (n, peer))| (n, peer))
+                .map(|(n, peer)| {
+                    let phase = match peer.phase {
+                        PeerPhase::Ready => "Ready",
+                        PeerPhase::Active => "Active",
+                        PeerPhase::Closed(outcome) => match outcome {
+                            GossipOutcome::Success(_) => "Success",
+                            GossipOutcome::Failure(_) => "Failure",
+                        },
+                    };
+
+                    if timed {
+                        (n, format!("{phase} t={}", peer.timer))
+                    } else {
+                        (n, phase.to_string())
+                    }
+                })
                 .collect(),
         )
     }
 }
 
-impl<N: Id> Display for NodeStateUnscheduled<N> {
+impl<N: Id> Display for NodeStateSimple<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for (n, peer) in self.0.iter() {
-            match peer {
-                PeerState::Closed(GossipOutcome::Success(_)) => writeln!(f, "{n}: Success")?,
-                PeerState::Closed(GossipOutcome::Failure(reason)) => {
-                    writeln!(f, "{n}: Failure({reason:?})")?
-                }
-                _ => writeln!(f, "{n}: {:?}", peer)?,
-            }
+        for (n, phase) in self.0.iter() {
+            writeln!(f, "{n}: {}", phase)?
         }
         Ok(())
     }
 }
 
-impl<N: Id> Display for NodeAction<N> {
+impl<N: Id, CompleteStatus: Debug + Display> Display for NodeAction<N, CompleteStatus> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             NodeAction::Tick => write!(f, "Tick"),
             NodeAction::AddPeer(n) => write!(f, "AddPeer({n})"),
             NodeAction::Incoming { from, msg } => match msg {
-                Msg::Complete(_) => write!(f, "Complete << {from}"),
+                Msg::Complete(s) => write!(f, "Complete({s}) << {from}"),
                 _ => write!(f, "{msg:?} << {from}"),
             },
-            NodeAction::Error { from } => write!(f, "Error({from})"),
         }
     }
 }
