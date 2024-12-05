@@ -347,14 +347,14 @@ mod tests {
         diagram::exhaustive::write_dot_state_diagram_mapped,
         id::{IdUnit, UpTo},
         machine::checked::Predicate,
-        traversal::traverse_checked,
+        traversal::{traverse_checked, TraversalConfig},
     };
 
     #[test]
     #[ignore = "nonterminating"]
     fn op_family_properties() {
         tracing_subscriber::fmt::fmt()
-            .with_max_level(tracing::Level::DEBUG)
+            .with_max_level(tracing::Level::INFO)
             .init();
 
         use Predicate as P;
@@ -434,7 +434,13 @@ mod tests {
         let checker = machine.clone().checked().with_predicates(predicates);
         let initial = checker.initial(machine.initial());
 
-        if let Err(err) = traverse_checked(checker, initial) {
+        if let Err(err) = traverse_checked(
+            checker,
+            initial,
+            TraversalConfig {
+                ..Default::default()
+            },
+        ) {
             eprintln!("{:#?}", err.path);
             eprintln!("{}", err.error);
             panic!("properties failed");

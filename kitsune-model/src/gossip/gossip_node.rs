@@ -86,6 +86,21 @@ impl<N: Id> NodeState<N> {
     }
 }
 
+impl<N: Id> Display for NodeState<N> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (_, (n, peer)) in self.schedule.iter() {
+            match peer {
+                PeerState::Closed(GossipOutcome::Success(_)) => writeln!(f, "{n}: Success")?,
+                PeerState::Closed(GossipOutcome::Failure(reason)) => {
+                    writeln!(f, "{n}: Failure({reason:?})")?
+                }
+                _ => writeln!(f, "{n}: {:?}", peer)?,
+            }
+        }
+        Ok(())
+    }
+}
+
 /// The state of a peer from the perspective of another
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, derive_more::From)]
 pub enum PeerState {
@@ -250,21 +265,6 @@ impl<N: Id> From<NodeState<N>> for NodeStateUnscheduled<N> {
     }
 }
 
-impl<N: Id> Display for NodeState<N> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for (_, (n, peer)) in self.schedule.iter() {
-            match peer {
-                PeerState::Closed(GossipOutcome::Success(_)) => writeln!(f, "{n}: Success")?,
-                PeerState::Closed(GossipOutcome::Failure(reason)) => {
-                    writeln!(f, "{n}: Failure({reason:?})")?
-                }
-                _ => writeln!(f, "{n}: {:?}", peer)?,
-            }
-        }
-        Ok(())
-    }
-}
-
 impl<N: Id> Display for NodeStateUnscheduled<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (n, peer) in self.0.iter() {
@@ -302,27 +302,4 @@ mod tests {
         diagram::exhaustive::*,
         id::{IdUnit, UpTo},
     };
-
-    #[test]
-    #[ignore = "diagram"]
-    fn diagram() {
-        // type N = IdUnit;
-        type N = UpTo<2>;
-
-        let machine = NodeMachine::<N>::new();
-        let state = machine.initial();
-
-        write_dot_state_diagram_mapped(
-            "gossip-node.dot",
-            machine,
-            state,
-            &DiagramConfig {
-                max_depth: None,
-                ..Default::default()
-            },
-            |s| Some(NodeStateUnscheduled::from(s)),
-            // Some,
-            |a| (!matches!(a, NodeAction::Tick)).then_some(a),
-        );
-    }
 }

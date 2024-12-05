@@ -20,6 +20,7 @@ pub struct TraversalConfig<E: Send + Sync> {
     pub max_actions: Option<usize>,
     pub max_depth: Option<usize>,
     pub max_iters: Option<usize>,
+    pub trace_every: usize,
     pub ignore_loopbacks: bool,
     pub trace_error: bool,
     pub is_fatal_error: Option<Arc<dyn Fn(&E) -> bool + Send + Sync>>,
@@ -31,6 +32,7 @@ impl<E: Send + Sync> Default for TraversalConfig<E> {
             max_actions: None,
             max_depth: None,
             max_iters: None,
+            trace_every: 1000,
             ignore_loopbacks: false,
             trace_error: false,
             is_fatal_error: None,
@@ -67,6 +69,7 @@ pub struct TraversalReport {
 pub fn traverse_checked<M>(
     machine: Checker<M>,
     initial: CheckerState<M>,
+    config: TraversalConfig<CheckerError<M::Action, M::Error>>,
 ) -> Result<TraversalReport, PredicateError<M::Action>>
 where
     M: Machine + Debug + Send + Sync,
@@ -74,7 +77,7 @@ where
     M::Action: Exhaustive + Clone + Eq + Hash + Debug + Send + Sync,
     M::Error: Debug + Send + Sync,
 {
-    let config = TraversalConfig::default().stop_on_checker_error();
+    let config = config.stop_on_checker_error();
     let (terminals, report) = traverse(machine, initial, &config).map_err(|e| match e {
         CheckerError::Predicate(e) => e,
         CheckerError::Machine(_) => unreachable!(),
@@ -128,18 +131,19 @@ where
 
     let all_actions: im::Vector<_> = M::Action::iter_exhaustive(config.max_actions).collect();
 
-    while let Some((state, distance, path)) = {
+    while let Some((state, depth, path)) = {
         let mut lock = to_visit.lock();
         lock.pop_front()
     } {
-        // tracing::debug!(
-        //     "to_visit: {:?}, dist={distance}, path={:?}",
-        //     to_visit.lock().len(),
-        //     path,
-        // );
         report.total_steps += 1;
-        if report.total_steps % 1000 == 0 {
-            tracing::debug!("iter {}", report.total_steps);
+        if report.total_steps % config.trace_every == 0 {
+            tracing::info!(
+                "iter={}, to_visit={}, visited={}, depth={}",
+                report.total_steps,
+                to_visit.lock().len(),
+                visited.len(),
+                depth
+            );
         }
         if config
             .max_iters
@@ -150,7 +154,7 @@ where
         }
 
         // Don't explore the same node twice, and respect the depth limit
-        if distance > config.max_depth.unwrap_or(usize::MAX) || visited.contains(&state) {
+        if depth > config.max_depth.unwrap_or(usize::MAX) || visited.contains(&state) {
             terminals.insert((state, path));
             continue;
         }
@@ -173,7 +177,7 @@ where
                     Ok(node) => {
                         let mut path = path.clone();
                         path.push_back(action);
-                        to_visit.lock().push_back((node, distance + 1, path));
+                        to_visit.lock().push_back((node, depth + 1, path));
                     }
                     Err(err) => {
                         // report.num_errors += 1;
@@ -250,7 +254,14 @@ mod tests {
         assert!(err.unwrap_predicate().error.contains("div-by-3"));
 
         let initial = checker.initial(1);
-        let report = traverse_checked(checker, initial).unwrap();
+        let report = traverse_checked(
+            checker,
+            initial,
+            TraversalConfig {
+                ..Default::default()
+            },
+        )
+        .unwrap();
         dbg!(report);
     }
 }
