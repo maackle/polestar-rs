@@ -340,7 +340,7 @@ impl<N: Id> NodeStateSimple<N> {
 impl<N: Id> Display for NodeStateSimple<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (n, phase) in self.0.iter() {
-            writeln!(f, "{n}: {}", phase)?
+            writeln!(f, "{n} : {}", phase)?
         }
         Ok(())
     }

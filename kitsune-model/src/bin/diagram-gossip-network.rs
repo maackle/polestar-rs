@@ -44,7 +44,7 @@ fn main() {
                         let s = NodeStateSimple::new(TIMED, s);
                         format!("{s}")
                             .split('\n')
-                            .filter_map(|l| (!l.is_empty()).then_some(format!("{n}.{l}")))
+                            .filter_map(|l| (!l.is_empty()).then_some(format!("{n}↤{l}")))
                             .join("\n")
                     })
                     .collect_vec()
