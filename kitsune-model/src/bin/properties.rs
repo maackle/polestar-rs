@@ -14,7 +14,7 @@ fn main() {
         .with_max_level(Level::INFO)
         .init();
 
-    type N = UpTo<3>;
+    type N = UpTo<2>;
 
     let machine = GossipMachine::<N>::new();
 

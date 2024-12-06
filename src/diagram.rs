@@ -11,7 +11,19 @@ where
     E: core::fmt::Display,
 {
     use petgraph::dot::Dot;
-    format!("{}", Dot::with_config(&graph, &[]))
+
+    let dot = format!(
+        "{}",
+        Dot::with_attr_getters(
+            &graph,
+            &[],
+            &|_, _| "bgcolor=\"#222222\"  fontcolor = \"#777777\" color = \"#777777\" ".to_string(),
+            &|_, _| {
+                "bgcolor=\"#222222\"  fontcolor = \"#cccccc\" color = \"#cccccc\" ".to_string()
+            }
+        )
+    );
+    dot.replace("digraph {", "digraph {\n    bgcolor=\"#131313\" ")
 }
 
 #[cfg(test)]

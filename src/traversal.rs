@@ -177,7 +177,12 @@ where
         move |thread_index: usize| {
             if thread_index > 0 {
                 // Give the seen queue time to fill up
-                while seen.len() < 100 {
+                // XXX: this is a hack to avoid starvation, could be more robust
+                while seen.len() < 1000 {
+                    if stop.load(std::sync::atomic::Ordering::SeqCst) {
+                        // The first thread already completed all work
+                        return Ok(());
+                    }
                     std::thread::sleep(std::time::Duration::from_millis(10));
                 }
             }
@@ -252,6 +257,12 @@ where
                 }
             }
             tracing::info!("traversal thread {} done", thread_index);
+
+            // handle the case where the first thread rips through all work
+            // before any other threads even get started
+            if thread_index == 0 {
+                stop.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
             Ok(())
         }
     };
@@ -263,6 +274,7 @@ where
     } else {
         rayon::spawn_broadcast(move |broadcast_ctx: rayon::BroadcastContext<'_>| {
             if let Err(err) = task(broadcast_ctx.index()) {
+                stop.store(true, std::sync::atomic::Ordering::SeqCst);
                 err_tx.send(err).unwrap();
             }
         });
@@ -270,12 +282,10 @@ where
         match err_rx.recv() {
             Ok(err) => {
                 dbg!(&err);
-                stop.store(true, std::sync::atomic::Ordering::SeqCst);
                 return Err(err);
             }
             Err(crossbeam::channel::RecvError) => {
-                dbg!("recverror");
-                stop.store(true, std::sync::atomic::Ordering::SeqCst);
+                // success
             }
         }
     }
