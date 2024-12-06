@@ -1,12 +1,14 @@
 use exhaustive::Exhaustive;
-use im::Vector;
 use parking_lot::Mutex;
 
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     fmt::Debug,
     hash::{Hash, Hasher},
-    sync::Arc,
+    sync::{
+        atomic::{AtomicBool, AtomicUsize},
+        Arc,
+    },
 };
 
 use crate::{
@@ -15,7 +17,8 @@ use crate::{
     Machine,
 };
 
-#[derive(Clone)]
+#[derive(derive_bounded::Clone)]
+#[bounded_to(M::State)]
 pub struct TraversalConfig<M: Machine> {
     pub max_actions: Option<usize>,
     pub max_depth: Option<usize>,
@@ -87,10 +90,10 @@ pub fn traverse_checked<M>(
     config: TraversalConfig<CheckerMachine<M>>,
 ) -> Result<TraversalReport, PredicateError<M>>
 where
-    M: Machine + Debug + Send + Sync,
-    M::State: Clone + Eq + Hash + Debug + Send + Sync,
-    M::Action: Exhaustive + Clone + Eq + Hash + Debug + Send + Sync,
-    M::Error: Debug + Send + Sync,
+    M: Machine + Debug + Send + Sync + 'static,
+    M::State: Clone + Eq + Hash + Debug + Send + Sync + 'static,
+    M::Action: Exhaustive + Clone + Eq + Hash + Debug + Send + Sync + 'static,
+    M::Error: Debug + Send + Sync + 'static,
 {
     let mut config = config.stop_on_checker_error();
     config.visitor = Some(Arc::new(|s, visit_type| {
@@ -125,103 +128,155 @@ pub fn traverse<M>(
     M::Error,
 >
 where
-    M: Machine + Send + Sync,
-    M::State: Clone + Eq + Hash + Debug + Send + Sync,
-    M::Action: Exhaustive + Clone + Eq + Hash + Debug + Send + Sync,
-    M::Error: Debug + Send + Sync,
+    M: Machine + Send + Sync + 'static,
+    M::State: Clone + Eq + Hash + Debug + Send + Sync + 'static,
+    M::Action: Exhaustive + Clone + Eq + Hash + Debug + Send + Sync + 'static,
+    M::Error: Debug + Send + Sync + 'static,
 {
-    use rayon::iter::*;
-
     let machine = Arc::new(machine);
 
-    let mut terminals: TerminalSet<M::State> = HashSet::new();
-    let mut loop_terminals: TerminalSet<M::State> = HashSet::new();
+    let terminals: Arc<Mutex<TerminalSet<M::State>>> = Arc::new(Mutex::new(HashSet::new()));
+    let loop_terminals: Arc<Mutex<TerminalSet<M::State>>> = Arc::new(Mutex::new(HashSet::new()));
+    let visited: Arc<Mutex<HashMap<M::State, ()>>> = Arc::new(Mutex::new(HashMap::new()));
 
-    let mut visited: HashMap<M::State, ()> = HashMap::new();
+    let seen = Arc::new(crossbeam::queue::SegQueue::new());
 
-    let to_visit: Mutex<VecDeque<(M::State, usize)>> = Mutex::new(VecDeque::new());
+    let (err_tx, err_rx) = crossbeam::channel::bounded(1);
 
-    to_visit.lock().push_back((initial, 0));
+    seen.push((initial, 0));
+    // to_visit.lock().push_back((initial, 0));
 
-    let mut report = TraversalReport::default();
+    let stop = Arc::new(AtomicBool::new(false));
+    let total_steps = Arc::new(AtomicUsize::new(0));
+    let num_seen = Arc::new(AtomicUsize::new(0));
+    let num_terminations = Arc::new(AtomicUsize::new(0));
+    let num_errors = Arc::new(AtomicUsize::new(0));
 
     let all_actions: im::Vector<_> = M::Action::iter_exhaustive(config.max_actions).collect();
 
-    while let Some((state, depth)) = {
-        let mut lock = to_visit.lock();
-        lock.pop_front()
-    } {
-        report.total_steps += 1;
-        if report.total_steps % config.trace_every == 0 {
-            tracing::info!(
-                "iter={}, to_visit={}, visited={}, depth={}",
-                report.total_steps,
-                to_visit.lock().len(),
-                visited.len(),
-                depth
-            );
-        }
-        if config
-            .max_iters
-            .map(|m| report.total_steps >= m)
-            .unwrap_or(false)
-        {
-            panic!("max iters of {} reached", config.max_iters.unwrap());
-        }
+    let config: TraversalConfig<M> = config.clone();
 
-        let already_seen = visited.insert(state.clone(), ()).is_some();
+    rayon::spawn_broadcast({
+        let stop = stop.clone();
+        let total_steps = total_steps.clone();
+        let num_seen = num_seen.clone();
+        let num_terminations = num_terminations.clone();
+        let num_errors = num_errors.clone();
+        let visited = visited.clone();
+        let terminals = terminals.clone();
+        let loop_terminals = loop_terminals.clone();
 
-        // Don't explore the same node twice, and respect the depth limit
-        if already_seen || depth > config.max_depth.unwrap_or(usize::MAX) {
-            if let Some(ref on_terminal) = config.visitor {
-                on_terminal(&state, VisitType::LoopTerminal)?;
-            }
-            if config.record_terminals {
-                loop_terminals.insert(state);
-            }
-            continue;
-        }
-        // If this is a terminal state, no need to explore further.
-        else if machine.is_terminal(&state) {
-            report.num_terminations += 1;
-            if let Some(ref on_terminal) = config.visitor {
-                on_terminal(&state, VisitType::Terminal)?;
-            }
-            if config.record_terminals {
-                terminals.insert(state);
-            }
-            continue;
-        } else {
-            if let Some(ref on_terminal) = config.visitor {
-                on_terminal(&state, VisitType::Normal)?;
-            }
-        }
+        move |broadcast_ctx| {
+            let thread_index = broadcast_ctx.index();
 
-        // Queue up visits to all nodes reachable from this node..
-        all_actions
-            .par_iter()
-            .cloned()
-            .map(|action| {
-                match machine.transition(state.clone(), action.clone()).map(first) {
-                    Ok(node) => {
-                        to_visit.lock().push_back((node, depth + 1));
+            if thread_index > 0 {
+                // Give the seen queue time to fill up
+                std::thread::sleep(std::time::Duration::from_millis(1000));
+            }
+
+            let send_err = {
+                // let num_errors = num_errors.clone();
+                |err| {
+                    num_errors.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    err_tx.send(err).unwrap();
+                }
+            };
+
+            while let Some((state, depth)) = seen.pop() {
+                if stop.load(std::sync::atomic::Ordering::SeqCst) {
+                    break;
+                }
+                let iter = total_steps.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                if iter % config.trace_every == 0 {
+                    tracing::info!(
+                        "iter={iter}, seen={}, visited={}, depth={}",
+                        num_seen.load(std::sync::atomic::Ordering::SeqCst),
+                        visited.lock().len(),
+                        depth
+                    );
+                }
+                if config.max_iters.map(|m| iter >= m).unwrap_or(false) {
+                    panic!("max iters of {} reached", config.max_iters.unwrap());
+                }
+
+                let already_seen = visited.lock().insert(state.clone(), ()).is_some();
+
+                // Don't explore the same node twice, and respect the depth limit
+                if already_seen || depth > config.max_depth.unwrap_or(usize::MAX) {
+                    if let Some(ref on_terminal) = config.visitor {
+                        let _: Result<(), ()> =
+                            on_terminal(&state, VisitType::LoopTerminal).map_err(send_err);
                     }
-                    Err(err) => {
-                        // report.num_errors += 1;
-                        tracing::debug!("traversal error: {:?}", err);
-                        if let Some(ref is_fatal_error) = config.is_fatal_error {
-                            if is_fatal_error(&err) {
-                                return Err(err);
+                    if config.record_terminals {
+                        loop_terminals.lock().insert(state);
+                    }
+                    continue;
+                }
+                // If this is a terminal state, no need to explore further.
+                else if machine.is_terminal(&state) {
+                    num_terminations.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    if let Some(ref on_terminal) = config.visitor {
+                        let _: Result<(), ()> =
+                            on_terminal(&state, VisitType::Terminal).map_err(send_err);
+                    }
+                    if config.record_terminals {
+                        terminals.lock().insert(state);
+                    }
+                    continue;
+                } else {
+                    if let Some(ref on_terminal) = config.visitor {
+                        let _: Result<(), ()> =
+                            on_terminal(&state, VisitType::Normal).map_err(send_err);
+                    }
+                }
+
+                // Queue up visits to all nodes reachable from this node..
+                for action in all_actions.iter().cloned() {
+                    match machine.transition(state.clone(), action.clone()).map(first) {
+                        Ok(node) => {
+                            num_seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                            seen.push((node, depth + 1));
+                        }
+                        Err(err) => {
+                            num_errors.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                            tracing::debug!("traversal error: {:?}", err);
+                            if let Some(ref is_fatal_error) = config.is_fatal_error {
+                                if is_fatal_error(&err) {
+                                    err_tx.send(err).unwrap();
+                                }
                             }
                         }
                     }
                 }
-                Ok(())
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+            }
+            tracing::info!("traversal thread {} done", thread_index);
+        }
+    });
+
+    match err_rx.recv() {
+        Ok(err) => {
+            dbg!(&err);
+            stop.store(true, std::sync::atomic::Ordering::SeqCst);
+            return Err(err);
+        }
+        Err(crossbeam::channel::RecvError) => {
+            dbg!("recverror");
+            stop.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
     }
-    report.num_visited = visited.len();
-    let terminals = config.record_terminals.then(|| (terminals, loop_terminals));
+
+    let report = TraversalReport {
+        num_visited: visited.lock().len(),
+        num_terminations: num_terminations.load(std::sync::atomic::Ordering::SeqCst),
+        num_errors: num_errors.load(std::sync::atomic::Ordering::SeqCst),
+        total_steps: total_steps.load(std::sync::atomic::Ordering::SeqCst),
+    };
+    let terminals = config.record_terminals.then(|| {
+        (
+            Arc::into_inner(terminals).unwrap().into_inner(),
+            Arc::into_inner(loop_terminals).unwrap().into_inner(),
+        )
+    });
     Ok((report, terminals))
 }
 
