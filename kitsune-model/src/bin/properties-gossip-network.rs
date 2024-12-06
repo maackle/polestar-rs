@@ -11,7 +11,7 @@ use tracing::Level;
 
 fn main() {
     tracing_subscriber::fmt::fmt()
-        .with_max_level(Level::INFO)
+        .with_max_level(Level::DEBUG)
         .init();
 
     type N = UpTo<2>;
@@ -22,7 +22,8 @@ fn main() {
     let pairs = N::iter_exhaustive(None)
         .combinations(2)
         .map(|c| <[N; 2]>::try_from(c).unwrap())
-        .flat_map(|[a, b]| [[a, b], [b, a]]);
+        .flat_map(|[a, b]| [[a, b], [b, a]])
+        .collect_vec();
 
     // let initial = GossipState::new(
     //     [
@@ -37,23 +38,67 @@ fn main() {
     //     .into_iter()
     //     .map(|(n, p)| (N::new(n), N::new(p)));
 
+    fn peer_focus(s: &GossipState<N>, n: N, p: N) -> &PeerState {
+        s.nodes.get(&n).unwrap().peers.get(&p).unwrap()
+    }
+
     let ready = |n: N, p: N| {
         assert_ne!(n, p);
         P::atom(format!("ready({n},{p})"), move |s: &GossipState<N>| {
-            s.nodes.get(&n).unwrap().peers.get(&p).unwrap().phase == PeerPhase::Ready
+            peer_focus(s, n, p).phase == PeerPhase::Ready
         })
     };
 
-    // let safety =
+    let premature = |n: N, p: N| {
+        assert_ne!(n, p);
+        P::atom2(format!("early({n},{p})"), move |a, b| {
+            let a = peer_focus(a, n, p);
+            let b = peer_focus(b, n, p);
+            match (a.phase, b.phase) {
+                (PeerPhase::Closed(GossipOutcome::Failure(_)), PeerPhase::Active) => true,
+                (PeerPhase::Closed(GossipOutcome::Success(_)), PeerPhase::Active) => true,
+                (
+                    PeerPhase::Active,
+                    PeerPhase::Closed(GossipOutcome::Failure(FailureReason::Timeout)),
+                ) => a.timer > 0,
+                _ => false,
+            }
+        })
+    };
 
-    let liveness =
-        pairs.filter_map(|[n, p]| (n != p).then(|| P::always(P::eventually(ready(n, p)))));
+    let time_decreases = |n: N, p: N| {
+        assert_ne!(n, p);
+        P::atom2(format!("time_decreases({n},{p})"), move |a, b| {
+            let a = peer_focus(a, n, p);
+            let b = peer_focus(b, n, p);
+            a.phase != b.phase || b.timer <= a.timer
+        })
+    };
+
+    let safety = pairs
+        .iter()
+        .copied()
+        .filter_map(|[n, p]| {
+            (n != p).then(|| {
+                [
+                    P::always(P::not(premature(n, p))),
+                    P::always(time_decreases(n, p)),
+                ]
+            })
+        })
+        .flatten();
+
+    let liveness = pairs
+        .iter()
+        .copied()
+        .filter_map(|[n, p]| (n != p).then(|| P::always(P::eventually(ready(n, p)))));
 
     let mut predicates = vec![];
+    predicates.extend(safety);
     predicates.extend(liveness);
 
     let display_predicates = predicates.iter().map(|p| format!("{p:?}")).join("\n");
-    let checker = machine.checked(); //.with_predicates(predicates);
+    let checker = machine.checked().with_predicates(predicates);
     let initial = checker.initial(initial);
     let result = traverse_checked(
         checker,
@@ -93,8 +138,8 @@ fn main() {
     match result {
         Ok(report) => println!("Complete. Report:\n{report:?}"),
         Err(err) => {
-            eprintln!("{:#?}", err.path);
-            eprintln!("{}", err.error);
+            eprintln!("Actions: {:#?}", err.path);
+            eprintln!("Error: {}", err.error);
             panic!("properties failed");
         }
     }

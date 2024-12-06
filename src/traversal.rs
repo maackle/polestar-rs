@@ -99,6 +99,7 @@ where
     S: Clone + Eq + Hash + Debug + Send + Sync + 'static,
 {
     let mut config = config.stop_on_checker_error();
+
     config.visitor = Some(Arc::new(|s, visit_type| {
         if matches!(visit_type, VisitType::Terminal | VisitType::LoopTerminal) {
             s.clone().finalize().map_err(|error| {
@@ -111,6 +112,7 @@ where
             Ok(())
         }
     }));
+
     let (report, _) = traverse(machine, initial, &config, move |s| map_state(s.state.state))
         .map_err(|e| match e {
             CheckerError::Predicate(e) => e,
@@ -246,7 +248,7 @@ where
                         }
                         Err(err) => {
                             num_errors.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                            tracing::debug!("traversal error: {:?}", err);
+                            tracing::trace!("traversal error: {:?}", err);
                             if let Some(ref is_fatal_error) = config.is_fatal_error {
                                 if is_fatal_error(&err) {
                                     return Err(err);
@@ -281,7 +283,6 @@ where
 
         match err_rx.recv() {
             Ok(err) => {
-                dbg!(&err);
                 return Err(err);
             }
             Err(crossbeam::channel::RecvError) => {

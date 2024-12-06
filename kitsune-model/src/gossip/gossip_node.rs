@@ -40,6 +40,8 @@ pub enum NodeAction<N: Id, CompleteStatus> {
 pub enum Msg<CompleteStatus> {
     /// Initiate a gossip round
     Initiate,
+    /// Accept an Initiate
+    Accept,
     /// Receive a valid message, continuing the round (details hidden here)
     Touch,
     /// Receive a message that goes against protocol, causing an error
@@ -66,6 +68,7 @@ impl From<Msg<bool>> for Msg<IdUnit> {
     fn from(msg: Msg<bool>) -> Self {
         match msg {
             Msg::Initiate => Msg::Initiate,
+            Msg::Accept => Msg::Accept,
             Msg::Touch => Msg::Touch,
             Msg::Junk => Msg::Junk,
             Msg::Complete(_) => Msg::Complete(IdUnit),
@@ -239,7 +242,7 @@ impl<N: Id> Machine for NodeMachine<N> {
             NodeAction::Incoming { from, msg } => {
                 let peer = state.peers.get_mut(&from).ok_or(anyhow!("no key"))?;
                 match msg {
-                    Msg::Initiate => match peer.phase {
+                    Msg::Initiate | Msg::Accept => match peer.phase {
                         PeerPhase::Active => bail!("node {from} already in a gossip round"),
                         PeerPhase::Closed(_) => {
                             bail!("too soon to be initiated with")

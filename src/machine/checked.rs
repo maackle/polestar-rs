@@ -179,7 +179,7 @@ where
             .collect::<Vec<_>>();
         if !eventuals.is_empty() {
             return Err(format!(
-                "Checker finalized with unsatisfied 'eventually' predicates: {eventuals:?}"
+                "Checker finalized with unsatisfied 'eventually' predicates: {eventuals:#?}"
             ));
         }
         Ok(())
@@ -234,7 +234,7 @@ where
     }
 }
 
-#[derive(Default, derive_more::From)]
+#[derive(derive_more::From)]
 pub struct Predicates<S> {
     // XXX: predicates keyed by strings which may not be unique
     next: im::HashMap<String, Predicate<S>>,
