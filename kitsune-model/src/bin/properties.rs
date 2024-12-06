@@ -18,30 +18,36 @@ fn main() {
 
     let machine = GossipMachine::<N>::new();
 
-    // let initial = machine.initial();
-    let initial = GossipState::new(
-        [
-            (N::new(0), NodeState::new([N::new(1), N::new(2)])),
-            (N::new(1), NodeState::new([N::new(0)])),
-            (N::new(2), NodeState::new([N::new(0)])),
-        ]
-        .into_iter()
-        .collect(),
-    );
+    let initial = machine.initial();
+    let pairs = N::iter_exhaustive(None)
+        .combinations(2)
+        .map(|c| <[N; 2]>::try_from(c).unwrap())
+        .flat_map(|[a, b]| [[a, b], [b, a]]);
+
+    // let initial = GossipState::new(
+    //     [
+    //         (N::new(0), NodeState::new([N::new(1), N::new(2)])),
+    //         (N::new(1), NodeState::new([N::new(0)])),
+    //         (N::new(2), NodeState::new([N::new(0)])),
+    //     ]
+    //     .into_iter()
+    //     .collect(),
+    // );
+    // let pairs = [(0, 1), (0, 2), (1, 0), (2, 0)]
+    //     .into_iter()
+    //     .map(|(n, p)| (N::new(n), N::new(p)));
 
     let ready = |n: N, p: N| {
         assert_ne!(n, p);
-        P::atom(format!("{n}_ready_for_{p}"), move |s: &GossipState<N>| {
+        P::atom(format!("ready({n},{p})"), move |s: &GossipState<N>| {
             s.nodes.get(&n).unwrap().peers.get(&p).unwrap().phase == PeerPhase::Ready
         })
     };
 
-    let pairs = [(0, 1), (0, 2), (1, 0), (2, 0)]
-        .into_iter()
-        .map(|(n, p)| (N::new(n), N::new(p)));
+    // let safety =
 
     let liveness =
-        pairs.filter_map(|(n, p)| (n != p).then(|| P::always(P::eventually(ready(n, p)))));
+        pairs.filter_map(|[n, p]| (n != p).then(|| P::always(P::eventually(ready(n, p)))));
 
     let mut predicates = vec![];
     predicates.extend(liveness);
@@ -49,19 +55,49 @@ fn main() {
     let display_predicates = predicates.iter().map(|p| format!("{p:?}")).join("\n");
     let checker = machine.checked(); //.with_predicates(predicates);
     let initial = checker.initial(initial);
-    if let Err(err) = traverse_checked(
+    let result = traverse_checked(
         checker,
         initial,
         TraversalConfig {
             max_depth: None,
-            trace_every: 10_000,
+            trace_every: 25_000,
             ..Default::default()
         },
-    ) {
-        eprintln!("{:#?}", err.path);
-        eprintln!("{}", err.error);
-        panic!("properties failed");
-    };
+        |s| {
+            let view = s
+                .nodes
+                .into_iter()
+                .map(|(n, ns)| {
+                    let ns: Vec<_> = ns
+                        .peers
+                        .into_iter()
+                        .map(|(p, peer)| {
+                            (
+                                p,
+                                peer.timer,
+                                match peer.phase {
+                                    PeerPhase::Ready => 1,
+                                    PeerPhase::Active => 2,
+                                    PeerPhase::Closed(outcome) => 3 + outcome.ticks(),
+                                },
+                            )
+                        })
+                        .collect();
+                    (n, ns)
+                })
+                .collect_vec();
+            Some(view)
+        },
+    );
+
+    match result {
+        Ok(report) => println!("Complete. Report:\n{report:?}"),
+        Err(err) => {
+            eprintln!("{:#?}", err.path);
+            eprintln!("{}", err.error);
+            panic!("properties failed");
+        }
+    }
 
     println!("properties satisfied:\n\n{}\n", display_predicates);
 }

@@ -117,6 +117,7 @@ fn main() {
             record_terminals: true,
             ..Default::default()
         },
+        Some,
     )
     .unwrap();
 

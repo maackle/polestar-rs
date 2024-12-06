@@ -71,6 +71,7 @@ pub struct TraversalReport {
     pub num_terminations: usize,
     pub num_errors: usize,
     pub total_steps: usize,
+    pub time_taken: std::time::Duration,
 }
 
 // impl Default for TraversalReport {
@@ -84,16 +85,18 @@ pub struct TraversalReport {
 //     }
 // }
 
-pub fn traverse_checked<M>(
+pub fn traverse_checked<M, S>(
     machine: CheckerMachine<M>,
     initial: CheckerState<M>,
     config: TraversalConfig<CheckerMachine<M>>,
+    map_state: impl Fn(M::State) -> Option<S> + Send + Sync + 'static,
 ) -> Result<TraversalReport, PredicateError<M>>
 where
     M: Machine + Debug + Send + Sync + 'static,
     M::State: Clone + Eq + Hash + Debug + Send + Sync + 'static,
     M::Action: Exhaustive + Clone + Eq + Hash + Debug + Send + Sync + 'static,
     M::Error: Debug + Send + Sync + 'static,
+    S: Clone + Eq + Hash + Debug + Send + Sync + 'static,
 {
     let mut config = config.stop_on_checker_error();
     config.visitor = Some(Arc::new(|s, visit_type| {
@@ -108,18 +111,20 @@ where
             Ok(())
         }
     }));
-    let (report, _) = traverse(machine, initial, &config).map_err(|e| match e {
-        CheckerError::Predicate(e) => e,
-        CheckerError::Machine(_) => unreachable!(),
-    })?;
+    let (report, _) = traverse(machine, initial, &config, move |s| map_state(s.state.state))
+        .map_err(|e| match e {
+            CheckerError::Predicate(e) => e,
+            CheckerError::Machine(_) => unreachable!(),
+        })?;
 
     Ok(report)
 }
 
-pub fn traverse<M>(
+pub fn traverse<M, S>(
     machine: M,
     initial: M::State,
     config: &TraversalConfig<M>,
+    map_state: impl Fn(M::State) -> Option<S> + Send + Sync + 'static,
 ) -> Result<
     (
         TraversalReport,
@@ -132,12 +137,13 @@ where
     M::State: Clone + Eq + Hash + Debug + Send + Sync + 'static,
     M::Action: Exhaustive + Clone + Eq + Hash + Debug + Send + Sync + 'static,
     M::Error: Debug + Send + Sync + 'static,
+    S: Clone + Eq + Hash + Debug + Send + Sync + 'static,
 {
     let machine = Arc::new(machine);
 
     let terminals: Arc<Mutex<TerminalSet<M::State>>> = Arc::new(Mutex::new(HashSet::new()));
     let loop_terminals: Arc<Mutex<TerminalSet<M::State>>> = Arc::new(Mutex::new(HashSet::new()));
-    let visited: Arc<Mutex<HashMap<M::State, ()>>> = Arc::new(Mutex::new(HashMap::new()));
+    let visited: Arc<Mutex<HashMap<S, ()>>> = Arc::new(Mutex::new(HashMap::new()));
 
     let seen = Arc::new(crossbeam::queue::SegQueue::new());
 
@@ -156,7 +162,9 @@ where
 
     let config: TraversalConfig<M> = config.clone();
 
-    rayon::spawn_broadcast({
+    let start_time = std::time::Instant::now();
+
+    let task = {
         let stop = stop.clone();
         let total_steps = total_steps.clone();
         let num_seen = num_seen.clone();
@@ -166,21 +174,13 @@ where
         let terminals = terminals.clone();
         let loop_terminals = loop_terminals.clone();
 
-        move |broadcast_ctx| {
-            let thread_index = broadcast_ctx.index();
-
+        move |thread_index: usize| {
             if thread_index > 0 {
                 // Give the seen queue time to fill up
-                std::thread::sleep(std::time::Duration::from_millis(1000));
-            }
-
-            let send_err = {
-                // let num_errors = num_errors.clone();
-                |err| {
-                    num_errors.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                    err_tx.send(err).unwrap();
+                while seen.len() < 100 {
+                    std::thread::sleep(std::time::Duration::from_millis(10));
                 }
-            };
+            }
 
             while let Some((state, depth)) = seen.pop() {
                 if stop.load(std::sync::atomic::Ordering::SeqCst) {
@@ -199,13 +199,17 @@ where
                     panic!("max iters of {} reached", config.max_iters.unwrap());
                 }
 
-                let already_seen = visited.lock().insert(state.clone(), ()).is_some();
+                let already_seen = if let Some(mapped) = map_state(state.clone()) {
+                    visited.lock().insert(mapped, ()).is_some()
+                } else {
+                    // skip a node with no mapping
+                    continue;
+                };
 
                 // Don't explore the same node twice, and respect the depth limit
                 if already_seen || depth > config.max_depth.unwrap_or(usize::MAX) {
                     if let Some(ref on_terminal) = config.visitor {
-                        let _: Result<(), ()> =
-                            on_terminal(&state, VisitType::LoopTerminal).map_err(send_err);
+                        on_terminal(&state, VisitType::LoopTerminal)?
                     }
                     if config.record_terminals {
                         loop_terminals.lock().insert(state);
@@ -216,8 +220,7 @@ where
                 else if machine.is_terminal(&state) {
                     num_terminations.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                     if let Some(ref on_terminal) = config.visitor {
-                        let _: Result<(), ()> =
-                            on_terminal(&state, VisitType::Terminal).map_err(send_err);
+                        on_terminal(&state, VisitType::Terminal)?
                     }
                     if config.record_terminals {
                         terminals.lock().insert(state);
@@ -225,8 +228,7 @@ where
                     continue;
                 } else {
                     if let Some(ref on_terminal) = config.visitor {
-                        let _: Result<(), ()> =
-                            on_terminal(&state, VisitType::Normal).map_err(send_err);
+                        on_terminal(&state, VisitType::Normal)?
                     }
                 }
 
@@ -242,7 +244,7 @@ where
                             tracing::debug!("traversal error: {:?}", err);
                             if let Some(ref is_fatal_error) = config.is_fatal_error {
                                 if is_fatal_error(&err) {
-                                    err_tx.send(err).unwrap();
+                                    return Err(err);
                                 }
                             }
                         }
@@ -250,22 +252,36 @@ where
                 }
             }
             tracing::info!("traversal thread {} done", thread_index);
+            Ok(())
         }
-    });
+    };
 
-    match err_rx.recv() {
-        Ok(err) => {
-            dbg!(&err);
-            stop.store(true, std::sync::atomic::Ordering::SeqCst);
-            return Err(err);
-        }
-        Err(crossbeam::channel::RecvError) => {
-            dbg!("recverror");
-            stop.store(true, std::sync::atomic::Ordering::SeqCst);
+    const THREADED: bool = true;
+
+    if !THREADED {
+        task(0)?;
+    } else {
+        rayon::spawn_broadcast(move |broadcast_ctx: rayon::BroadcastContext<'_>| {
+            if let Err(err) = task(broadcast_ctx.index()) {
+                err_tx.send(err).unwrap();
+            }
+        });
+
+        match err_rx.recv() {
+            Ok(err) => {
+                dbg!(&err);
+                stop.store(true, std::sync::atomic::Ordering::SeqCst);
+                return Err(err);
+            }
+            Err(crossbeam::channel::RecvError) => {
+                dbg!("recverror");
+                stop.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
         }
     }
 
     let report = TraversalReport {
+        time_taken: std::time::Instant::now().duration_since(start_time),
         num_visited: visited.lock().len(),
         num_terminations: num_terminations.load(std::sync::atomic::Ordering::SeqCst),
         num_errors: num_errors.load(std::sync::atomic::Ordering::SeqCst),
@@ -345,6 +361,7 @@ mod tests {
             TraversalConfig {
                 ..Default::default()
             },
+            Some,
         )
         .unwrap_err();
 

@@ -440,6 +440,7 @@ mod tests {
             TraversalConfig {
                 ..Default::default()
             },
+            Some,
         ) {
             eprintln!("{:#?}", err.path);
             eprintln!("{}", err.error);
