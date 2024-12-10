@@ -1,11 +1,14 @@
 pub mod parser;
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, fmt::Debug, hash::Hash, sync::Arc};
 
 use anyhow::anyhow;
 use parser::*;
 
-use super::{Machine, TransitionResult};
+use super::{
+    store_path::{StorePathMachine, StorePathState},
+    Machine, TransitionResult,
+};
 
 #[derive(Debug)]
 pub enum BuchiError<E> {
@@ -18,13 +21,14 @@ where
     M: Machine,
 {
     buchi: PromelaBuchi,
-    machine: M,
+    machine: StorePathMachine<M>,
 }
 
 impl<M> Machine for PromelaMachine<M>
 where
     M: Machine,
-    M::State: Propositions + Clone,
+    M::State: Propositions + Clone + Debug + Eq + Hash,
+    M::Action: Clone + Debug,
 {
     type State = PromelaState<M>;
     type Action = M::Action;
@@ -32,8 +36,8 @@ where
     type Fx = M::Fx;
 
     fn transition(&self, state: Self::State, action: Self::Action) -> TransitionResult<Self> {
-        let PromelaState(state, buchi_state) = state;
-        if let Some((_, next_state_name)) = buchi_state.iter().find(|(ltl, _)| ltl.eval(&state)) {
+        let PromelaState { state, buchi } = state;
+        if let Some((_, next_state_name)) = buchi.iter().find(|(ltl, _)| ltl.eval(&state.state)) {
             let (next, fx) = self
                 .machine
                 .transition(state, action)
@@ -46,7 +50,10 @@ where
                     "no buchi state '{next_state_name}'"
                 )))?
                 .clone();
-            let next = PromelaState(next, buchi_next);
+            let next = PromelaState {
+                state: next,
+                buchi: buchi_next,
+            };
             Ok((next, fx))
         } else {
             Err(BuchiError::Buchi(anyhow!("no buchi transition found")))
@@ -54,46 +61,73 @@ where
     }
 
     fn is_terminal(&self, state: &Self::State) -> bool {
-        self.machine.is_terminal(&state.0)
+        self.machine.is_terminal(&state.state)
     }
 }
 
 impl<M> PromelaMachine<M>
 where
     M: Machine,
-    M::State: Clone,
+    M::State: Clone + Debug + Eq + Hash,
+    M::Action: Clone + Debug,
 {
     pub fn new(machine: M, ltl: &str) -> Self {
         let buchi = PromelaBuchi::from_ltl(ltl);
-        Self { buchi, machine }
+        Self {
+            buchi,
+            machine: StorePathMachine::from(machine),
+        }
     }
 
     pub fn initial(&self, state: M::State) -> PromelaState<M> {
-        let buchi_init = self
+        let buchi = self
             .buchi
             .states
             .get("accept_init")
             .or_else(|| self.buchi.states.get("T0_init"))
             .unwrap()
             .clone();
-        PromelaState(state, buchi_init)
+        PromelaState::new(state, buchi)
     }
 }
 
-#[derive(Debug, derive_bounded::Clone, derive_bounded::PartialEq, derive_bounded::Eq, Hash)]
-#[bounded_to(M::State)]
-pub struct PromelaState<M>(M::State, Arc<BuchiState>)
+#[derive(
+    Debug, derive_bounded::Clone, derive_bounded::PartialEq, derive_bounded::Eq, derive_more::Deref,
+)]
+#[bounded_to(StorePathState<M>)]
+pub struct PromelaState<M>
 where
     M: Machine,
-    M::State: Clone;
+    M::State: Clone + Debug + Eq + Hash,
+    M::Action: Clone + Debug,
+{
+    #[deref]
+    state: StorePathState<M>,
+    buchi: Arc<BuchiState>,
+}
+
+impl<M> Hash for PromelaState<M>
+where
+    M: Machine,
+    M::State: Clone + Debug + Eq + Hash,
+    M::Action: Clone + Debug,
+{
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.state.hash(state);
+    }
+}
 
 impl<M> PromelaState<M>
 where
     M: Machine,
-    M::State: Clone,
+    M::State: Clone + Debug + Eq + Hash,
+    M::Action: Clone + Debug,
 {
     pub fn new(state: M::State, buchi_state: Arc<BuchiState>) -> Self {
-        Self(state, buchi_state)
+        Self {
+            state: StorePathState::new(state),
+            buchi: buchi_state,
+        }
     }
 }
 
