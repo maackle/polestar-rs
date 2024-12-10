@@ -25,6 +25,12 @@ const ERROR_TICKS: Timer = 2;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Exhaustive, Serialize, Deserialize)]
 pub enum NodeAction<N: Id, CompleteStatus> {
     /// Tick the clock
+    ///
+    /// In the system, you have to be careful about when to tick.
+    /// There needs to be a global static for LAST_TICK.
+    /// Every time there's a time-related action that's about to be emitted, check how long it's been since LAST_TICK.
+    /// If you want a tick every minute, then emit a Tick for every minute that's passed since LAST_TICK, and if there were any ticks, update LAST_TICK.
+    /// Then the ticks are guaranteed to precede any actions which depend on it. No race condition!
     Tick,
     /// Add a peer to the node's peer set
     AddPeer(N),

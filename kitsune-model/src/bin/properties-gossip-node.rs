@@ -10,10 +10,10 @@ use tracing::Level;
 
 fn main() {
     tracing_subscriber::fmt::fmt()
-        .with_max_level(Level::DEBUG)
+        .with_max_level(Level::INFO)
         .init();
 
-    type N = UpTo<2>;
+    type N = UpTo<1>;
 
     let machine = NodeMachine::<N>::new();
 
@@ -85,24 +85,25 @@ fn main() {
             trace_every: 25_000,
             ..Default::default()
         },
-        |s: NodeState<N>| {
-            let view = s
-                .peers
-                .into_iter()
-                .map(|(p, peer)| {
-                    (
-                        p,
-                        peer.timer,
-                        match peer.phase {
-                            PeerPhase::Ready => 1,
-                            PeerPhase::Active => 2,
-                            PeerPhase::Closed(outcome) => 3 + outcome.ticks(),
-                        },
-                    )
-                })
-                .collect_vec();
-            Some(view)
-        },
+        Some,
+        // |s: NodeState<N>| {
+        //     let view = s
+        //         .peers
+        //         .into_iter()
+        //         .map(|(p, peer)| {
+        //             (
+        //                 p,
+        //                 peer.timer,
+        //                 match peer.phase {
+        //                     PeerPhase::Ready => 1,
+        //                     PeerPhase::Active => 2,
+        //                     PeerPhase::Closed(outcome) => 3 + outcome.ticks(),
+        //                 },
+        //             )
+        //         })
+        //         .collect_vec();
+        //     Some(view)
+        // },
     );
 
     match result {

@@ -29,10 +29,10 @@ fn main() {
             max_depth: None,
             ..Default::default()
         },
-        // Some,
-        |s| Some(NodeStateSimple::new(true, s)),
-        // Some,
-        |a| Some(NodeAction::<N, IdUnit>::from(a)),
+        Some,
+        // |s| Some(NodeStateSimple::new(true, s)),
+        Some,
+        // |a| Some(NodeAction::<N, IdUnit>::from(a)),
         // |a| (!matches!(a, NodeAction::Tick)).then_some(a),
     );
 }

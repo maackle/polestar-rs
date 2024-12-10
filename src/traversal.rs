@@ -31,6 +31,17 @@ pub struct TraversalConfig<M: Machine> {
     pub is_fatal_error: Option<Arc<dyn Fn(&M::Error) -> bool + Send + Sync>>,
 }
 
+impl<M: Machine> TraversalConfig<M> {
+    pub fn with_fatal_error(
+        mut self,
+        is_fatal_error: impl Fn(&M::Error) -> bool + Send + Sync + 'static,
+    ) -> Self {
+        self.is_fatal_error = Some(Arc::new(is_fatal_error));
+        self
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum VisitType {
     Normal,
     Terminal,
@@ -101,6 +112,7 @@ where
     let mut config = config.stop_on_checker_error();
 
     config.visitor = Some(Arc::new(|s, visit_type| {
+        dbg!(&visit_type, &s, &s.state.path);
         if matches!(visit_type, VisitType::Terminal | VisitType::LoopTerminal) {
             s.clone().finalize().map_err(|error| {
                 CheckerError::Predicate(PredicateError {

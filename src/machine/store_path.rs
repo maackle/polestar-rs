@@ -84,7 +84,7 @@ impl<M> Machine for StorePathMachine<M>
 where
     M: Machine,
     M::State: Debug,
-    M::Action: Clone,
+    M::Action: Clone + Debug,
 {
     type State = StorePathState<M>;
     type Action = M::Action;
@@ -95,6 +95,7 @@ where
         let (next, fx) = self.machine.transition(state.state, action.clone())?;
         state.state = next;
         state.path.push_back(action);
+        dbg!(&state.state, &state.path);
         Ok((state, fx))
     }
 
