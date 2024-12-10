@@ -67,7 +67,7 @@ where
                     .map_err(BuchiError::MachineError)?;
                 Ok((PromelaState { state: next, buchi }, fx))
             }
-            BuchiState::Predicates(predicates) => {
+            BuchiState::Conditional { predicates, .. } => {
                 if let Some((_, next_state_name)) =
                     predicates.iter().find(|(ltl, _)| ltl.eval(&state.state))
                 {
@@ -176,23 +176,43 @@ where
 mod tests {
     use crate::{
         id::UpTo,
-        traversal::{traverse, TraversalConfig},
+        traversal::{traverse, TraversalConfig, TraversalGraphingConfig},
     };
+    use itertools::Itertools;
+    use petgraph::visit::IntoNeighborsDirected;
 
     use super::*;
     use crate::diagram::exhaustive::*;
 
+    const MODULO: usize = 16;
+
     #[derive(Debug, Hash, PartialEq, Eq)]
-    struct TestMachine;
+    struct TestMachine1;
 
-    impl Machine for TestMachine {
+    #[derive(Debug, Hash, PartialEq, Eq)]
+    struct TestMachine2;
+
+    impl Machine for TestMachine1 {
         type State = u8;
-        type Action = UpTo<4>;
+        type Action = ();
 
-        fn transition(&self, state: Self::State, action: Self::Action) -> TransitionResult<Self> {
-            // Ok((state.wrapping_mul(*action as u8), ()))
+        fn transition(&self, state: Self::State, (): Self::Action) -> TransitionResult<Self> {
+            Ok((state.wrapping_add(2) % MODULO as u8, ()))
+        }
 
-            Ok((state.wrapping_add(2), ()))
+        fn is_terminal(&self, _: &Self::State) -> bool {
+            false
+        }
+    }
+
+    impl Machine for TestMachine2 {
+        type State = u8;
+        type Action = ();
+
+        fn transition(&self, state: Self::State, (): Self::Action) -> TransitionResult<Self> {
+            let group = state / 4;
+            let next = (group + 1) % 4 * 4 + state % 4;
+            Ok((next, ()))
         }
 
         fn is_terminal(&self, _: &Self::State) -> bool {
@@ -204,49 +224,88 @@ mod tests {
         fn eval(&self, p: &str) -> bool {
             match p {
                 "even" => self % 2 == 0,
-                "max" => *self == 255,
+                "max" => *self == (MODULO - 1) as u8,
                 _ => unreachable!(),
             }
         }
     }
 
+    #[derive(Debug, derive_more::Display, Clone, Copy, PartialEq, Eq)]
+    #[display("({}, {})", _0, _1)]
+    struct Node(u8, bool);
+
     #[test]
     fn promela_test() {
-        let machine = PromelaMachine::new(TestMachine, "F max");
-        let initial = machine.initial(0);
+        let machine = PromelaMachine::new(TestMachine1, "G F even");
+        let initial = machine.initial(1);
 
-        let (report, terminals) = traverse(
+        let (report, graph, terminals) = traverse(
             machine,
             initial,
-            &TraversalConfig {
+            TraversalConfig {
                 record_terminals: true,
+                trace_every: 1,
+                graphing: Some(TraversalGraphingConfig::new(
+                    |s: &PromelaState<_>| Node(s.state.state, s.buchi.is_accepting()),
+                    |_| 0,
+                )),
                 ..Default::default()
             }
             .with_fatal_error(|e| matches!(e, BuchiError::LtlError { .. })),
             Some,
         )
         .unwrap();
+
+        let graph = graph.unwrap();
+
+        crate::diagram::write_dot(
+            "promela-verify.dot",
+            &graph,
+            &[petgraph::dot::Config::EdgeNoLabel],
+        );
+
         dbg!(&report);
 
-        let (terminals, loop_terminals) = terminals.unwrap();
-        for t in loop_terminals.into_iter() {
-            dbg!(&t.state.path.len());
-        }
-    }
+        let condensed = petgraph::algo::condensation(graph, true);
 
-    #[test]
-    #[ignore = "diagram"]
-    fn promela_diagram() {
-        write_dot_state_diagram_mapped(
-            "promela-test.dot",
-            TestMachine,
-            1,
-            &DiagramConfig {
-                max_depth: None,
-                ..Default::default()
-            },
-            Some,
-            Some,
-        );
+        let leaves = condensed.node_indices().filter(|n| {
+            let outgoing = condensed
+                .neighbors_directed(*n, petgraph::Direction::Outgoing)
+                .count();
+            outgoing == 0
+        });
+        for index in leaves {
+            let scc = condensed.node_weight(index).unwrap();
+            let accepting = scc.iter().any(|Node(n, a)| *a);
+            if !accepting {
+                panic!("non-accepting SCC found");
+            }
+        }
+
+        {
+            let condensed = condensed.map(
+                |_, n| n.iter().map(|n| format!("{n}")).collect_vec().join("\n"),
+                |_, e| e,
+            );
+
+            crate::diagram::write_dot(
+                "promela-verify-condensed.dot",
+                &condensed,
+                &[petgraph::dot::Config::EdgeNoLabel],
+            );
+        }
+
+        // let scc = petgraph::algo::kosaraju_scc(&graph);
+
+        // dbg!(&scc);
+
+        // for (i, nodes) in scc.iter().enumerate() {
+        //     let accepting = nodes.iter().any(|n| graph.node_weight(*n).unwrap().1);
+        //     if !accepting {
+        //         panic!("non-accepting SCC found");
+        //     } else {
+        //         println!("SCC {i} accepting");
+        //     }
+        // }
     }
 }

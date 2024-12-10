@@ -5,7 +5,16 @@ use crate::prelude::*;
 pub mod exhaustive;
 pub mod montecarlo;
 
-pub fn to_dot<N, E>(graph: DiGraph<N, E>) -> String
+pub fn write_dot<N, E>(filename: &str, graph: &DiGraph<N, E>, config: &[petgraph::dot::Config])
+where
+    N: core::fmt::Display,
+    E: core::fmt::Display,
+{
+    let dot = to_dot(graph, config);
+    std::fs::write(filename, dot).unwrap();
+}
+
+pub fn to_dot<N, E>(graph: &DiGraph<N, E>, config: &[petgraph::dot::Config]) -> String
 where
     N: core::fmt::Display,
     E: core::fmt::Display,
@@ -16,7 +25,7 @@ where
         "{}",
         Dot::with_attr_getters(
             &graph,
-            &[],
+            config,
             &|_, _| "bgcolor=\"#222222\"  fontcolor = \"#777777\" color = \"#777777\" ".to_string(),
             &|_, _| {
                 "bgcolor=\"#222222\"  fontcolor = \"#cccccc\" color = \"#cccccc\" ".to_string()
@@ -107,7 +116,7 @@ mod tests {
             assert_eq!(nodes1, nodes2);
             assert_eq!(edges1, edges2);
 
-            println!("{}", to_dot(graph1));
+            println!("{}", to_dot(&graph1, &[]));
 
             (nodes1, edges1)
         };
@@ -127,7 +136,7 @@ mod tests {
             assert_eq!(nodes1, nodes2);
             assert_eq!(edges1, edges2);
 
-            println!("{}", to_dot(graph1));
+            println!("{}", to_dot(&graph1, &[]));
 
             (nodes1, edges1)
         };
@@ -152,6 +161,7 @@ mod tests {
 
         assert_eq!(nodes1, nodes2);
         assert_eq!(edges1, edges2);
-        println!("{}", to_dot(graph1));
+        println!("{}", to_dot(&graph1, &[]));
     }
 }
+

@@ -1,5 +1,6 @@
 use exhaustive::Exhaustive;
 use parking_lot::Mutex;
+use petgraph::graph::{DiGraph, NodeIndex};
 
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -18,8 +19,8 @@ use crate::{
 };
 
 #[derive(derive_bounded::Clone)]
-#[bounded_to(M::State)]
-pub struct TraversalConfig<M: Machine> {
+#[bounded_to(M::State, N, E)]
+pub struct TraversalConfig<M: Machine, N = (), E = ()> {
     pub max_actions: Option<usize>,
     pub max_depth: Option<usize>,
     pub max_iters: Option<usize>,
@@ -27,17 +28,46 @@ pub struct TraversalConfig<M: Machine> {
     pub ignore_loopbacks: bool,
     pub record_terminals: bool,
     pub trace_error: bool,
+    pub graphing: Option<TraversalGraphingConfig<M, N, E>>,
     pub visitor: Option<Arc<dyn Fn(&M::State, VisitType) -> Result<(), M::Error> + Send + Sync>>,
     pub is_fatal_error: Option<Arc<dyn Fn(&M::Error) -> bool + Send + Sync>>,
 }
 
-impl<M: Machine> TraversalConfig<M> {
+impl<M: Machine, N, E> TraversalConfig<M, N, E> {
     pub fn with_fatal_error(
         mut self,
         is_fatal_error: impl Fn(&M::Error) -> bool + Send + Sync + 'static,
     ) -> Self {
         self.is_fatal_error = Some(Arc::new(is_fatal_error));
         self
+    }
+}
+
+#[derive(derive_bounded::Clone)]
+#[bounded_to(M::State)]
+pub struct TraversalGraphingConfig<M: Machine, N, E> {
+    pub map_node: Arc<dyn Fn(&M::State) -> N + Send + Sync + 'static>,
+    pub map_edge: Arc<dyn Fn(&M::Action) -> E + Send + Sync + 'static>,
+}
+
+// impl<M: Machine> Default for TraversalGraphingConfig<M, (), ()> {
+//     fn default() -> Self {
+//         Self {
+//             map_node: Arc::new(|_| ()),
+//             map_edge: Arc::new(|_| ()),
+//         }
+//     }
+// }
+
+impl<M: Machine, N, E> TraversalGraphingConfig<M, N, E> {
+    pub fn new(
+        map_node: impl Fn(&M::State) -> N + Send + Sync + 'static,
+        map_edge: impl Fn(&M::Action) -> E + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            map_node: Arc::new(map_node),
+            map_edge: Arc::new(map_edge),
+        }
     }
 }
 
@@ -48,7 +78,7 @@ pub enum VisitType {
     LoopTerminal,
 }
 
-impl<M: Machine> Default for TraversalConfig<M> {
+impl<M: Machine, N, E> Default for TraversalConfig<M, N, E> {
     fn default() -> Self {
         Self {
             max_actions: None,
@@ -60,6 +90,7 @@ impl<M: Machine> Default for TraversalConfig<M> {
             trace_error: false,
             visitor: None,
             is_fatal_error: None,
+            graphing: None,
         }
     }
 }
@@ -125,7 +156,7 @@ where
         }
     }));
 
-    let (report, _) = traverse(machine, initial, &config, move |s| map_state(s.state.state))
+    let (report, _, _) = traverse(machine, initial, config, move |s| map_state(s.state.state))
         .map_err(|e| match e {
             CheckerError::Predicate(e) => e,
             CheckerError::Machine(_) => unreachable!(),
@@ -134,14 +165,15 @@ where
     Ok(report)
 }
 
-pub fn traverse<M, S>(
+pub fn traverse<M, S, N, E>(
     machine: M,
     initial: M::State,
-    config: &TraversalConfig<M>,
+    config: TraversalConfig<M, N, E>,
     map_state: impl Fn(M::State) -> Option<S> + Send + Sync + 'static,
 ) -> Result<
     (
         TraversalReport,
+        Option<DiGraph<N, E>>,
         Option<(TerminalSet<M::State>, TerminalSet<M::State>)>,
     ),
     M::Error,
@@ -152,18 +184,24 @@ where
     M::Action: Exhaustive + Clone + Eq + Hash + Debug + Send + Sync + 'static,
     M::Error: Debug + Send + Sync + 'static,
     S: Clone + Eq + Hash + Debug + Send + Sync + 'static,
+    N: Clone + Send + Sync + 'static,
+    E: Eq + Hash + Clone + Send + Sync + 'static,
 {
     let machine = Arc::new(machine);
 
     let terminals: Arc<Mutex<TerminalSet<M::State>>> = Arc::new(Mutex::new(HashSet::new()));
     let loop_terminals: Arc<Mutex<TerminalSet<M::State>>> = Arc::new(Mutex::new(HashSet::new()));
-    let visited: Arc<Mutex<HashMap<S, ()>>> = Arc::new(Mutex::new(HashMap::new()));
+    let visited_states: Arc<Mutex<HashMap<S, NodeIndex>>> = Arc::new(Mutex::new(HashMap::new()));
+    let visited_edges: Arc<Mutex<HashSet<(NodeIndex, NodeIndex, E)>>> =
+        Arc::new(Mutex::new(HashSet::new()));
+
+    let graph = Arc::new(Mutex::new(DiGraph::new()));
 
     let seen = Arc::new(crossbeam::queue::SegQueue::new());
 
     let (err_tx, err_rx) = crossbeam::channel::bounded(1);
 
-    seen.push((initial, 0));
+    seen.push((initial, Option::<(NodeIndex, E)>::None, 0));
     // to_visit.lock().push_back((initial, 0));
 
     let stop = Arc::new(AtomicBool::new(false));
@@ -174,17 +212,17 @@ where
 
     let all_actions: im::Vector<_> = M::Action::iter_exhaustive(config.max_actions).collect();
 
-    let config: TraversalConfig<M> = config.clone();
-
     let start_time = std::time::Instant::now();
 
     let task = {
+        let config = config.clone();
+        let graph = graph.clone();
         let stop = stop.clone();
         let total_steps = total_steps.clone();
         let num_seen = num_seen.clone();
         let num_terminations = num_terminations.clone();
         let num_errors = num_errors.clone();
-        let visited = visited.clone();
+        let visited = visited_states.clone();
         let terminals = terminals.clone();
         let loop_terminals = loop_terminals.clone();
 
@@ -201,7 +239,7 @@ where
                 }
             }
 
-            while let Some((state, depth)) = seen.pop() {
+            while let Some((state, prev_node, depth)) = seen.pop() {
                 if stop.load(std::sync::atomic::Ordering::SeqCst) {
                     break;
                 }
@@ -218,12 +256,37 @@ where
                     panic!("max iters of {} reached", config.max_iters.unwrap());
                 }
 
-                let already_seen = if let Some(mapped) = map_state(state.clone()) {
-                    visited.lock().insert(mapped, ()).is_some()
+                let (already_seen, node_ix) = if let Some(mapped) = map_state(state.clone()) {
+                    let mut visited = visited.lock();
+                    match visited.entry(mapped) {
+                        std::collections::hash_map::Entry::Occupied(entry) => (true, *entry.get()),
+                        std::collections::hash_map::Entry::Vacant(entry) => {
+                            if let Some(g) = config.graphing.as_ref() {
+                                let node_ix = graph.lock().add_node((g.map_node)(&state));
+                                entry.insert(node_ix);
+                                (false, node_ix)
+                            } else {
+                                entry.insert(NodeIndex::end());
+                                (false, NodeIndex::end())
+                            }
+                        }
+                    }
                 } else {
                     // skip a node with no mapping
                     continue;
                 };
+
+                if let Some(g) = config.graphing.as_ref() {
+                    let mut graph = graph.lock();
+                    if let Some((prev_node_ix, edge)) = prev_node {
+                        if visited_edges
+                            .lock()
+                            .insert((prev_node_ix, node_ix, edge.clone()))
+                        {
+                            let _ = graph.add_edge(prev_node_ix, node_ix, edge);
+                        }
+                    }
+                }
 
                 // Don't explore the same node twice, and respect the depth limit
                 if already_seen || depth > config.max_depth.unwrap_or(usize::MAX) {
@@ -233,10 +296,12 @@ where
                     if config.record_terminals {
                         loop_terminals.lock().insert(state);
                     }
+
                     continue;
                 }
+
                 // If this is a terminal state, no need to explore further.
-                else if machine.is_terminal(&state) {
+                if machine.is_terminal(&state) {
                     num_terminations.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                     if let Some(ref on_terminal) = config.visitor {
                         on_terminal(&state, VisitType::Terminal)?
@@ -253,10 +318,15 @@ where
 
                 // Queue up visits to all nodes reachable from this node..
                 for action in all_actions.iter().cloned() {
+                    let prev_node = if let Some(g) = config.graphing.as_ref() {
+                        Some((node_ix, (g.map_edge)(&action)))
+                    } else {
+                        None
+                    };
                     match machine.transition(state.clone(), action.clone()).map(first) {
                         Ok(node) => {
                             num_seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                            seen.push((node, depth + 1));
+                            seen.push((node, prev_node, depth + 1));
                         }
                         Err(err) => {
                             num_errors.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -305,7 +375,7 @@ where
 
     let report = TraversalReport {
         time_taken: std::time::Instant::now().duration_since(start_time),
-        num_visited: visited.lock().len(),
+        num_visited: visited_states.lock().len(),
         num_terminations: num_terminations.load(std::sync::atomic::Ordering::SeqCst),
         num_errors: num_errors.load(std::sync::atomic::Ordering::SeqCst),
         total_steps: total_steps.load(std::sync::atomic::Ordering::SeqCst),
@@ -316,7 +386,11 @@ where
             Arc::into_inner(loop_terminals).unwrap().into_inner(),
         )
     });
-    Ok((report, terminals))
+    let graph = config
+        .graphing
+        .is_some()
+        .then_some(Arc::into_inner(graph).unwrap().into_inner());
+    Ok((report, graph, terminals))
 }
 
 pub type TerminalSet<S> = HashSet<S>;

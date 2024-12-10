@@ -65,7 +65,7 @@ pub fn write_dot_state_diagram_mapped<M, N, E>(
     let graph = state_diagram_mapped(machine, initial, config, map_node, map_edge);
     let nodes = graph.node_count();
     let edges = graph.edge_count();
-    write!(file, "{}", crate::diagram::to_dot(graph)).unwrap();
+    write!(file, "{}", crate::diagram::to_dot(&graph, &[])).unwrap();
     println!(
         "wrote DOT diagram to '{}'. nodes={nodes}, edges={edges}",
         path.as_ref().display(),
@@ -104,9 +104,10 @@ pub fn print_dot_state_diagram_mapped<M, N, E>(
 {
     println!(
         "{}",
-        crate::diagram::to_dot(state_diagram_mapped(
-            machine, initial, config, map_node, map_edge
-        ))
+        crate::diagram::to_dot(
+            &state_diagram_mapped(machine, initial, config, map_node, map_edge),
+            &[]
+        )
     );
 }
 

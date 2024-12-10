@@ -35,11 +35,19 @@ impl PromelaBuchi {
                     states.insert(name.to_string(), Arc::new(state));
                 }
                 let name = captures.get(1).unwrap().as_str().to_string();
-                current = Some((name, BuchiState::Predicates(vec![])));
+                let accepting = name.contains("accept_");
+                current = Some((
+                    name,
+                    BuchiState::Conditional {
+                        accepting,
+                        predicates: vec![],
+                    },
+                ));
             } else if let Some(captures) = pat_transition.captures(line) {
                 let ltl = captures.get(1).unwrap().as_str();
                 let next = captures.get(2).unwrap().as_str();
-                if let BuchiState::Predicates(predicates) = &mut current.as_mut().unwrap().1 {
+                if let BuchiState::Conditional { predicates, .. } = &mut current.as_mut().unwrap().1
+                {
                     predicates.push((parse_ltl(&ltl).unwrap(), next.to_string()));
                 } else {
                     unreachable!()
@@ -52,28 +60,48 @@ impl PromelaBuchi {
         let (state_name, state) = current.unwrap();
         states.insert(state_name, Arc::new(state));
 
-        dbg!(&states);
         Self { states }
     }
 }
 
 pub type StateName = String;
 
-#[derive(PartialEq, Eq, Hash, derive_more::Unwrap)]
+#[derive(PartialEq, Eq, Hash)]
 pub enum BuchiState {
-    Predicates(Vec<(Ltl, StateName)>),
+    Conditional {
+        accepting: bool,
+        predicates: Vec<(Ltl, StateName)>,
+    },
     AcceptAll,
+}
+
+impl BuchiState {
+    pub fn is_accepting(&self) -> bool {
+        match self {
+            BuchiState::AcceptAll => true,
+            BuchiState::Conditional { accepting, .. } => *accepting,
+        }
+    }
 }
 
 impl Debug for BuchiState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            BuchiState::Predicates(predicates) => {
-                let mut list = f.debug_list();
-                for (ltl, next) in predicates.iter() {
-                    list.entry(&format_args!("{ltl:?} -> {next}"));
-                }
-                list.finish()
+            BuchiState::Conditional {
+                accepting,
+                predicates,
+            } => {
+                let predicates = {
+                    let mut list = f.debug_list();
+                    for (ltl, next) in predicates.iter() {
+                        list.entry(&format_args!("{ltl:?} -> {next}"));
+                    }
+                    list.finish()?
+                };
+                f.debug_struct("Conditional")
+                    .field("accepting", accepting)
+                    .field("predicates", &predicates)
+                    .finish()
             }
             BuchiState::AcceptAll => write!(f, "AllAccepting"),
         }

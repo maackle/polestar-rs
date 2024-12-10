@@ -29,7 +29,10 @@ where
     M::State: Clone + Eq + Hash + Debug + Display,
     M::Action: Arbitrary + Clone + Eq + Hash + Display + 'static,
 {
-    println!("{}", to_dot(state_diagram(m, initial, &mut (), config)));
+    println!(
+        "{}",
+        to_dot(&state_diagram(m, initial, &mut (), config), &[])
+    );
 }
 
 pub trait MonteCarloDiagramState<M>

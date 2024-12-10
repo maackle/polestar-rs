@@ -109,10 +109,10 @@ fn main() {
     let machine = StorePathMachine::from(SpamMachine { target });
     let initial = StorePathState::new(SpamState::default());
 
-    let (report, terminals) = polestar::traversal::traverse(
+    let (report, _graph, terminals) = polestar::traversal::traverse(
         machine,
         initial,
-        &polestar::traversal::TraversalConfig {
+        polestar::traversal::TraversalConfig::<_, (), ()> {
             max_depth: Some(50),
             record_terminals: true,
             ..Default::default()

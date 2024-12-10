@@ -9,6 +9,7 @@ crossbeam = { version = "0.8.4", features = ["crossbeam-channel"] }
 derive_bounded = "*"
 derive_more = { version = "1", features = ["full"] }
 im = { version = "*", features = ["rayon"] }
+itertools = "*"
 ltl = { path = "/home/michael/gitfork/mcltl-rs" }
 nom = "*"
 num-derive = "0.4"
