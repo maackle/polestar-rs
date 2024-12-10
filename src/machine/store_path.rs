@@ -95,7 +95,6 @@ where
         let (next, fx) = self.machine.transition(state.state, action.clone())?;
         state.state = next;
         state.path.push_back(action);
-        dbg!(&state.state, &state.path);
         Ok((state, fx))
     }
 

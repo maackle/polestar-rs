@@ -1,4 +1,4 @@
-use std::{collections::HashMap, process::Command, sync::Arc};
+use std::{collections::HashMap, fmt::Debug, process::Command, sync::Arc};
 
 use nom::{
     branch::alt, bytes::complete::tag, character::complete::*, combinator::map_res,
@@ -27,24 +27,30 @@ impl PromelaBuchi {
 
         let mut states = HashMap::new();
 
-        let mut state = BuchiState::default();
-        let mut state_name: Option<String> = None;
+        let mut current: Option<(StateName, BuchiState)> = None;
 
         for line in lines {
             if let Some(captures) = pat_state.captures(line) {
-                if let Some(state_name) = state_name {
-                    states.insert(state_name.to_string(), Arc::new(state));
+                if let Some((name, state)) = current {
+                    states.insert(name.to_string(), Arc::new(state));
                 }
-                state_name = Some(captures.get(1).unwrap().as_str().to_string());
-                state = BuchiState::default();
+                let name = captures.get(1).unwrap().as_str().to_string();
+                current = Some((name, BuchiState::Predicates(vec![])));
             } else if let Some(captures) = pat_transition.captures(line) {
                 let ltl = captures.get(1).unwrap().as_str();
                 let next = captures.get(2).unwrap().as_str();
-                state.0.push((parse_ltl(&ltl).unwrap(), next.to_string()));
+                if let BuchiState::Predicates(predicates) = &mut current.as_mut().unwrap().1 {
+                    predicates.push((parse_ltl(&ltl).unwrap(), next.to_string()));
+                } else {
+                    unreachable!()
+                }
+            } else if line.contains("skip") {
+                current.as_mut().unwrap().1 = BuchiState::AcceptAll
             }
         }
 
-        states.insert(state_name.unwrap(), Arc::new(state));
+        let (state_name, state) = current.unwrap();
+        states.insert(state_name, Arc::new(state));
 
         dbg!(&states);
         Self { states }
@@ -53,8 +59,26 @@ impl PromelaBuchi {
 
 pub type StateName = String;
 
-#[derive(Debug, Default, PartialEq, Eq, Hash, derive_more::Deref)]
-pub struct BuchiState(Vec<(Ltl, StateName)>);
+#[derive(PartialEq, Eq, Hash, derive_more::Unwrap)]
+pub enum BuchiState {
+    Predicates(Vec<(Ltl, StateName)>),
+    AcceptAll,
+}
+
+impl Debug for BuchiState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BuchiState::Predicates(predicates) => {
+                let mut list = f.debug_list();
+                for (ltl, next) in predicates.iter() {
+                    list.entry(&format_args!("{ltl:?} -> {next}"));
+                }
+                list.finish()
+            }
+            BuchiState::AcceptAll => write!(f, "AllAccepting"),
+        }
+    }
+}
 
 fn parse_prop(input: &str) -> IResult<&str, Ltl> {
     let (rest, s) = input.split_at_position1_complete(
