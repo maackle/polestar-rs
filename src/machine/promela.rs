@@ -38,6 +38,15 @@ where
     machine: StorePathMachine<M>,
 }
 
+/*                                   █████       ███
+                                   ░░███       ░░░
+ █████████████    ██████    ██████  ░███████   ████  ████████    ██████
+░░███░░███░░███  ░░░░░███  ███░░███ ░███░░███ ░░███ ░░███░░███  ███░░███
+ ░███ ░███ ░███   ███████ ░███ ░░░  ░███ ░███  ░███  ░███ ░███ ░███████
+ ░███ ░███ ░███  ███░░███ ░███  ███ ░███ ░███  ░███  ░███ ░███ ░███░░░
+ █████░███ █████░░████████░░██████  ████ █████ █████ ████ █████░░██████
+░░░░░ ░░░ ░░░░░  ░░░░░░░░  ░░░░░░  ░░░░ ░░░░░ ░░░░░ ░░░░ ░░░░░  ░░░░░░   */
+
 impl<M> Machine for PromelaMachine<M>
 where
     M: Machine,
@@ -52,26 +61,32 @@ where
     fn transition(&self, state: Self::State, action: Self::Action) -> TransitionResult<Self> {
         let PromelaState { state, buchi } = state;
 
+        (&state.state);
+        (buchi.0.len());
         let buchi_next = buchi
             .0
             .into_iter()
-            .flat_map(|buchi_state| match &*buchi_state {
-                BuchiState::AcceptAll => vec![Ok(buchi_state)],
-                BuchiState::Conditional { predicates, .. } => predicates
-                    .iter()
-                    .filter_map(|(ltl, name)| ltl.eval(&state.state).then_some(name))
-                    .map(|next_state_name| {
-                        self.buchi
-                            .states
-                            .get(next_state_name)
-                            .cloned()
-                            .ok_or_else(|| {
-                                BuchiError::Internal(anyhow!(
-                                "no buchi state named '{next_state_name}'. This is a polestar bug."
-                            ))
-                            })
-                    })
-                    .collect_vec(),
+            .flat_map(|(buchi_name, buchi_state)| {
+                (&buchi_name);
+                match &*buchi_state {
+                    BuchiState::AcceptAll => todo!(), // vec![Ok((buchi_name, buchi_state))],
+                    BuchiState::Conditional { predicates, .. } => {
+                        (predicates.len());
+                        predicates
+                        .iter()
+                        .filter_map(|(ltl, name)| ((ltl).eval(&state.state)).then_some(name))
+                        .map(|next_state_name| {
+                            self.buchi
+                                .states
+                                .get(next_state_name)
+                                .cloned()
+                                .map(|buchi_state| (next_state_name.clone(), buchi_state))
+                                .ok_or_else(|| {
+                                    BuchiError::Internal(anyhow!("no buchi state named '{next_state_name}'. This is a polestar bug."))
+                                })
+                        })
+                        .collect_vec()}
+                }
             })
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -117,17 +132,11 @@ where
         let inits = self
             .buchi
             .states
-            .keys()
-            .filter(|name| name.ends_with("_init"))
-            .collect_vec();
+            .iter()
+            .filter(|(name, _)| name.ends_with("_init"))
+            .map(|(name, state)| (name.clone(), state.clone()));
 
-        if inits.len() != 1 {
-            panic!("expected exactly one initial state, found {inits:?}");
-        }
-
-        let buchi_init = self.buchi.states.get(inits[0]).cloned().unwrap();
-
-        PromelaState::new(state, [buchi_init])
+        PromelaState::new(state, inits)
     }
 }
 
@@ -153,7 +162,7 @@ where
     M::Action: Clone + Debug,
 {
     fn eq(&self, other: &Self) -> bool {
-        self.state == other.state
+        self.state.state == other.state.state && self.buchi == other.buchi
     }
 }
 
@@ -172,7 +181,8 @@ where
     M::Action: Clone + Debug,
 {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.state.hash(state);
+        self.state.state.hash(state);
+        self.buchi.hash(state);
     }
 }
 
@@ -182,7 +192,10 @@ where
     M::State: Clone + Debug + Eq + Hash,
     M::Action: Clone + Debug,
 {
-    pub fn new(state: M::State, buchi_states: impl IntoIterator<Item = Arc<BuchiState>>) -> Self {
+    pub fn new(
+        state: M::State,
+        buchi_states: impl IntoIterator<Item = (StateName, Arc<BuchiState>)>,
+    ) -> Self {
         Self {
             state: StorePathState::new(state),
             buchi: BuchiPaths(buchi_states.into_iter().collect()),
@@ -229,14 +242,14 @@ mod tests {
 
         fn transition(&self, state: Self::State, bump: Self::Action) -> TransitionResult<Self> {
             let group = state / 4;
-            let next = if group == 0 {
+            let next = if state < 3 {
                 if bump {
                     state + 1
                 } else {
                     state * 4
                 }
             } else {
-                (group * 4) + ((state + 1) % 4)
+                (group * 4) + ((state + 1) % 3)
             };
             Ok((next, ()))
         }
@@ -254,8 +267,11 @@ mod tests {
                 "is2" => *self == 2,
                 "is3" => *self == 3,
                 "is4" => *self == 4,
+                "is5" => *self == 5,
+                "is6" => *self == 6,
                 "is7" => *self == 7,
                 "is8" => *self == 8,
+                "is9" => *self == 9,
                 "is11" => *self == 11,
                 "is15" => *self == 15,
                 p => unreachable!("can't eval unknown prop '{p}' with state {self}"),
@@ -267,13 +283,26 @@ mod tests {
     #[display("({}, {})", _0, _1)]
     struct Node(u8, bool);
 
+    //  ███████████ ██████████  █████████  ███████████
+    // ░█░░░███░░░█░░███░░░░░█ ███░░░░░███░█░░░███░░░█
+    // ░   ░███  ░  ░███  █ ░ ░███    ░░░ ░   ░███  ░
+    //     ░███     ░██████   ░░█████████     ░███
+    //     ░███     ░███░░█    ░░░░░░░░███    ░███
+    //     ░███     ░███ ░   █ ███    ░███    ░███
+    //     █████    ██████████░░█████████     █████
+    //    ░░░░░    ░░░░░░░░░░  ░░░░░░░░░     ░░░░░
+
     #[test]
     fn promela_test() {
-        // let ltl = "G F (is7 || is11 || is15)";
+        // true negatives:
+        let ltl = "G (is4 -> X is5) ";
+        let ltl = "G (is4 -> X is8) ";
+        let ltl = "G ( is4 -> F is2 )";
 
-        // let ltl = "F (is2 && X is8) ";
-        let ltl = "G ( is8 -> G F is15 )";
-        // let ltl = "G ( (is2 && X is8) -> G F is11)";
+        // true positives:
+        let ltl = "G ( (is2 && X is6) -> G F is5)";
+
+        // false positives:
         // let ltl = "G( is3 -> G F is15 )";
         // let ltl = "G( is4 -> G F is7  )";
 
@@ -301,7 +330,11 @@ mod tests {
                 |e| *e,
             )),
             visitor: Some(Arc::new(|s: &PromelaState<TestMachine2>, _| {
-                dbg!((&s.state.state, &s.buchi));
+                let buchis = s.buchi.iter().map(|(n, s)| (n)).collect_vec();
+                println!(
+                    "<:> {}: buchi {:?} path {:?}",
+                    &s.state.state, &buchis, s.state.path
+                );
                 Ok(())
             })),
             ..Default::default()
@@ -335,7 +368,21 @@ mod tests {
 
         {
             let condensed = condensed.map(
-                |_, n| n.iter().map(|n| format!("{n:?}")).collect_vec().join("\n"),
+                |_, n| {
+                    n.iter()
+                        .map(|s| {
+                            let tup = (
+                                s.state.state,
+                                s.buchi
+                                    .iter()
+                                    .map(|(name, b)| (name, b.is_accepting()))
+                                    .collect_vec(),
+                            );
+                            format!("{tup:?}")
+                        })
+                        .collect_vec()
+                        .join("\n")
+                },
                 |_, e| e,
             );
 
