@@ -24,7 +24,7 @@ where
     LtlError {
         error: anyhow::Error,
         path: Vector<M::Action>,
-        state: Arc<BuchiState>,
+        // state: Arc<BuchiPaths>,
     },
     MachineError(M::Error),
 }
@@ -52,56 +52,46 @@ where
     fn transition(&self, state: Self::State, action: Self::Action) -> TransitionResult<Self> {
         let PromelaState { state, buchi } = state;
 
-        // // If the buchi state is empty, it is all-accepting, and we never have to check it again.
-        // if buchi.is_empty() {
-        //     return self
-        //         .machine
-        //         .transition(state, action)
-        //         .map(|(next, fx)| (PromelaState { state: next, buchi }, fx))
-        //         .map_err(BuchiError::MachineError);
-        // }
-
-        match &*buchi {
-            BuchiState::AcceptAll => {
-                let (next, fx) = self
-                    .machine
-                    .transition(state, action)
-                    .map_err(BuchiError::MachineError)?;
-                Ok((PromelaState { state: next, buchi }, fx))
-            }
-            BuchiState::Conditional { predicates, .. } => {
-                if let Some((_, next_state_name)) = predicates
+        let buchi_next = buchi
+            .0
+            .into_iter()
+            .flat_map(|buchi_state| match &*buchi_state {
+                BuchiState::AcceptAll => vec![Ok(buchi_state)],
+                BuchiState::Conditional { predicates, .. } => predicates
                     .iter()
-                    .find(|(ltl, _)| dbg!(ltl).eval(&state.state))
-                {
-                    let (next, fx) = self
-                        .machine
-                        .transition(state, action)
-                        .map_err(BuchiError::MachineError)?;
-                    let buchi_next = self
-                        .buchi
-                        .states
-                        .get(next_state_name)
-                        .ok_or_else(|| {
-                            BuchiError::Internal(anyhow!(
+                    .filter_map(|(ltl, name)| ltl.eval(&state.state).then_some(name))
+                    .map(|next_state_name| {
+                        self.buchi
+                            .states
+                            .get(next_state_name)
+                            .cloned()
+                            .ok_or_else(|| {
+                                BuchiError::Internal(anyhow!(
                                 "no buchi state named '{next_state_name}'. This is a polestar bug."
                             ))
-                        })?
-                        .clone();
-                    let next = PromelaState {
-                        state: next,
-                        buchi: buchi_next,
-                    };
-                    Ok((next, fx))
-                } else {
-                    Err(BuchiError::LtlError {
-                        error: anyhow!("LTL not satisfied"),
-                        state: buchi.clone(),
-                        path: state.path,
+                            })
                     })
-                }
-            }
+                    .collect_vec(),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        if buchi_next.is_empty() {
+            return Err(BuchiError::LtlError {
+                error: anyhow!("LTL not satisfied"),
+                path: state.path,
+            });
         }
+
+        let (next, fx) = self
+            .machine
+            .transition(state, action)
+            .map_err(BuchiError::MachineError)?;
+
+        let next = PromelaState {
+            state: next,
+            buchi: buchi_next.into(),
+        };
+        Ok((next, fx))
     }
 
     fn is_terminal(&self, state: &Self::State) -> bool {
@@ -137,7 +127,7 @@ where
 
         let buchi_init = self.buchi.states.get(inits[0]).cloned().unwrap();
 
-        PromelaState::new(state, buchi_init)
+        PromelaState::new(state, [buchi_init])
     }
 }
 
@@ -152,7 +142,7 @@ where
     #[deref]
     state: StorePathState<M>,
     #[debug(skip)]
-    buchi: Arc<BuchiState>,
+    buchi: BuchiPaths,
 }
 
 // XXX: equality and hash ignore path! This is necessary for traversal to work well.
@@ -192,10 +182,10 @@ where
     M::State: Clone + Debug + Eq + Hash,
     M::Action: Clone + Debug,
 {
-    pub fn new(state: M::State, buchi_state: Arc<BuchiState>) -> Self {
+    pub fn new(state: M::State, buchi_states: impl IntoIterator<Item = Arc<BuchiState>>) -> Self {
         Self {
             state: StorePathState::new(state),
-            buchi: buchi_state,
+            buchi: BuchiPaths(buchi_states.into_iter().collect()),
         }
     }
 }
@@ -281,7 +271,9 @@ mod tests {
     fn promela_test() {
         // let ltl = "G F (is7 || is11 || is15)";
 
-        let ltl = "( F (is2 && X is8) -> G F is11 )";
+        // let ltl = "F (is2 && X is8) ";
+        let ltl = "G ( is8 -> G F is15 )";
+        // let ltl = "G ( (is2 && X is8) -> G F is11)";
         // let ltl = "G( is3 -> G F is15 )";
         // let ltl = "G( is4 -> G F is7  )";
 
@@ -308,6 +300,10 @@ mod tests {
                 // |s: &PromelaState<_>| Node(s.state.state, s.buchi.is_accepting()),
                 |e| *e,
             )),
+            visitor: Some(Arc::new(|s: &PromelaState<TestMachine2>, _| {
+                dbg!((&s.state.state, &s.buchi));
+                Ok(())
+            })),
             ..Default::default()
         }
         .with_fatal_error(|e| !matches!(e, BuchiError::MachineError(_)));

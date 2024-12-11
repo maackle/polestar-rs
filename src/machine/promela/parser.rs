@@ -67,6 +67,15 @@ impl PromelaBuchi {
 
 pub type StateName = String;
 
+#[derive(Debug, Clone, derive_more::Deref, derive_more::From)]
+pub struct BuchiPaths(pub(crate) Vec<Arc<(BuchiState)>>);
+
+impl BuchiPaths {
+    pub fn is_accepting(&self) -> bool {
+        self.iter().any(|s| s.is_accepting())
+    }
+}
+
 #[derive(PartialEq, Eq, Hash)]
 pub enum BuchiState {
     Conditional {
@@ -116,10 +125,16 @@ fn parse_prop(input: &str) -> IResult<&str, Ltl> {
     )?;
 
     Ok((rest, Ltl::Prop(s.to_string())))
+}
 
-    // map_res(alpha1, |s: &str| {
-    //     Result::<_, nom::error::Error<&str>>::Ok(Ltl::Prop(s.to_string()))
-    // })(input)
+fn parse_one(input: &str) -> IResult<&str, Ltl> {
+    map_res(tag("1"), |_| {
+        Result::<_, nom::error::Error<&str>>::Ok(Ltl::True)
+    })(input)
+}
+
+fn parse_atom(input: &str) -> IResult<&str, Ltl> {
+    alt((parse_one, parse_prop))(input)
 }
 
 fn parse_neg(input: &str) -> IResult<&str, Ltl> {
@@ -129,7 +144,7 @@ fn parse_neg(input: &str) -> IResult<&str, Ltl> {
 }
 
 fn parse_conj(input: &str) -> IResult<&str, Ltl> {
-    let (rest, vs) = separated_list1(tag(" && "), alt((parse_neg, parse_prop)))(input)?;
+    let (rest, vs) = separated_list1(tag(" && "), alt((parse_neg, parse_atom)))(input)?;
     Ok((
         rest,
         vs.into_iter()
@@ -160,6 +175,8 @@ pub fn parse_ltl(input: &str) -> Result<Ltl, nom::error::Error<&str>> {
 
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub enum Ltl {
+    True,
+    False,
     Prop(String),
     Not(Box<Ltl>),
     And(Box<Ltl>, Box<Ltl>),
@@ -169,6 +186,8 @@ pub enum Ltl {
 impl Ltl {
     pub fn eval(&self, props: &impl Propositions) -> bool {
         match self {
+            Ltl::True => true,
+            Ltl::False => false,
             Ltl::Prop(s) => props.eval(s),
             Ltl::Not(e) => !e.eval(props),
             Ltl::And(a, b) => a.eval(props) && b.eval(props),
