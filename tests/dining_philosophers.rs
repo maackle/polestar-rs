@@ -88,16 +88,6 @@ impl Machine for Model {
     }
 }
 
-impl Model {
-    pub fn new() -> Self {
-        todo!()
-    }
-
-    pub fn initial(&self) -> State {
-        todo!()
-    }
-}
-
 /*        █████               █████
          ░░███               ░░███
   █████  ███████    ██████   ███████    ██████
@@ -201,23 +191,29 @@ pub struct Philosopher {
     hungry: bool,
 }
 
+/*█████                      █████
+ ░░███                      ░░███
+ ███████    ██████   █████  ███████    █████
+░░░███░    ███░░███ ███░░  ░░░███░    ███░░
+  ░███    ░███████ ░░█████   ░███    ░░█████
+  ░███ ███░███░░░   ░░░░███  ░███ ███ ░░░░███
+  ░░█████ ░░██████  ██████   ░░█████  ██████
+   ░░░░░   ░░░░░░  ░░░░░░     ░░░░░  ░░░░░░*/
+
 #[test]
 fn test_dining_philosophers() {
     let dining_philosophers = State::default();
 
-    let (report, graph, _) = traverse::<Model, State>(
-        Model,
-        dining_philosophers,
-        TraversalConfig::builder()
-            .graphing(
-                TraversalGraphingConfig::builder()
-                    .ignore_loopbacks(true)
-                    .build(),
-            )
-            .build(),
-        Some,
-    )
-    .unwrap();
+    let traversal_config = TraversalConfig::builder()
+        .graphing(
+            TraversalGraphingConfig::builder()
+                .ignore_loopbacks(true)
+                .build(),
+        )
+        .build();
+
+    let (report, graph, _) =
+        traverse::<Model, State>(Model, dining_philosophers, traversal_config, Some).unwrap();
 
     {
         let graph = graph.unwrap().map(

@@ -25,25 +25,21 @@ pub struct TraversalConfig<M: Machine> {
     pub max_depth: Option<usize>,
     pub max_iters: Option<usize>,
     pub trace_every: Option<usize>,
+
+    pub graphing: Option<TraversalGraphingConfig>,
+
     #[builder(default)]
     pub ignore_loopbacks: bool,
     #[builder(default)]
     pub record_terminals: bool,
     #[builder(default)]
     pub trace_error: bool,
-    pub graphing: Option<TraversalGraphingConfig>,
-    pub visitor: Option<Arc<dyn Fn(&M::State, VisitType) -> Result<(), M::Error> + Send + Sync>>,
-    pub is_fatal_error: Option<Arc<dyn Fn(&M::Error) -> bool + Send + Sync>>,
-}
 
-impl<M: Machine> TraversalConfig<M> {
-    pub fn with_fatal_error(
-        mut self,
-        is_fatal_error: impl Fn(&M::Error) -> bool + Send + Sync + 'static,
-    ) -> Self {
-        self.is_fatal_error = Some(Arc::new(is_fatal_error));
-        self
-    }
+    #[builder(with = |f: impl Fn(&M::State, VisitType) -> Result<(), M::Error> + Send + Sync + 'static| Arc::new(f))]
+    pub visitor: Option<Arc<dyn Fn(&M::State, VisitType) -> Result<(), M::Error> + Send + Sync>>,
+
+    #[builder(with = |f: impl Fn(&M::Error) -> bool + Send + Sync + 'static| Arc::new(f))]
+    pub is_fatal_error: Option<Arc<dyn Fn(&M::Error) -> bool + Send + Sync>>,
 }
 
 #[derive(derive_bounded::Clone, bon::Builder)]

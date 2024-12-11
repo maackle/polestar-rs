@@ -15,6 +15,7 @@ use exhaustive::Exhaustive;
 use polestar::{
     machine::store_path::{StorePathMachine, StorePathState},
     prelude::*,
+    traversal::TraversalConfig,
 };
 
 struct SpamMachine {
@@ -108,18 +109,13 @@ fn main() {
 
     let machine = StorePathMachine::from(SpamMachine { target });
     let initial = StorePathState::new(SpamState::default());
+    let config = TraversalConfig::builder()
+        .max_depth(50)
+        .record_terminals(true)
+        .build();
 
-    let (report, _graph, terminals) = polestar::traversal::traverse(
-        machine,
-        initial,
-        polestar::traversal::TraversalConfig::<_, (), ()> {
-            max_depth: Some(50),
-            record_terminals: true,
-            ..Default::default()
-        },
-        Some,
-    )
-    .unwrap();
+    let (report, _graph, terminals) =
+        polestar::traversal::traverse(machine, initial, config, Some).unwrap();
 
     dbg!(&report);
     let (terminals, _loop_terminals) = terminals.unwrap();

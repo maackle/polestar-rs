@@ -325,20 +325,19 @@ mod tests {
         //     Some,
         // );
 
-        let config = TraversalConfig {
-            record_terminals: false,
-            trace_every: Some(1000),
-            graphing: Some(Default::default()),
-            visitor: Some(Arc::new(|s: &PromelaState<TestMachine2>, _| {
+        let config = TraversalConfig::builder()
+            .record_terminals(false)
+            .trace_every(1000)
+            .graphing(TraversalGraphingConfig::default())
+            .is_fatal_error(|e| !matches!(e, BuchiError::MachineError(_)))
+            .visitor(|s: &PromelaState<TestMachine2>, _| {
                 println!(
                     "<:> {}: buchi {:?} path {:?}",
                     &s.state.state, &s.buchi, s.state.path
                 );
                 Ok(())
-            })),
-            ..Default::default()
-        }
-        .with_fatal_error(|e| !matches!(e, BuchiError::MachineError(_)));
+            })
+            .build();
 
         let (report, graph, _) = traverse(machine, initial, config, Some).unwrap();
 
