@@ -1,4 +1,9 @@
-use std::{collections::HashMap, fmt::Debug, process::Command, sync::Arc};
+use std::{
+    collections::{BTreeSet, HashMap, HashSet},
+    fmt::Debug,
+    process::Command,
+    sync::Arc,
+};
 
 use nom::{
     branch::alt, bytes::complete::tag, character::complete::*, combinator::map_res,
@@ -68,11 +73,11 @@ impl PromelaBuchi {
 pub type StateName = String;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, derive_more::Deref, derive_more::From)]
-pub struct BuchiPaths(pub(crate) Vec<(StateName, Arc<BuchiState>)>);
+pub struct BuchiPaths(pub(crate) BTreeSet<StateName>);
 
 impl BuchiPaths {
     pub fn is_accepting(&self) -> bool {
-        self.iter().any(|(_, s)| s.is_accepting())
+        self.iter().any(|n| n.starts_with("accept_"))
     }
 }
 

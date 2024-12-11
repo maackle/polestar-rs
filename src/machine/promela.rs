@@ -1,6 +1,11 @@
 pub mod parser;
 
-use std::{collections::HashMap, fmt::Debug, hash::Hash, sync::Arc};
+use std::{
+    collections::{BTreeSet, HashMap},
+    fmt::Debug,
+    hash::Hash,
+    sync::Arc,
+};
 
 use anyhow::anyhow;
 use im::Vector;
@@ -66,29 +71,30 @@ where
         let buchi_next = buchi
             .0
             .into_iter()
-            .flat_map(|(buchi_name, buchi_state)| {
-                (&buchi_name);
-                match &*buchi_state {
+            .flat_map(|buchi_name| {
+                let buchi_state = self
+                    .buchi
+                    .states
+                    .get(&buchi_name)
+                    .expect("no buchi state named '{buchi_name}'. This is a polestar bug.");
+                // .ok_or_else(|| {
+                //     BuchiError::Internal(anyhow!(
+                //         "no buchi state named '{buchi_name}'. This is a polestar bug."
+                //     ))
+                // })?;
+                match &**buchi_state {
                     BuchiState::AcceptAll => todo!(), // vec![Ok((buchi_name, buchi_state))],
                     BuchiState::Conditional { predicates, .. } => {
                         (predicates.len());
                         predicates
-                        .iter()
-                        .filter_map(|(ltl, name)| ((ltl).eval(&state.state)).then_some(name))
-                        .map(|next_state_name| {
-                            self.buchi
-                                .states
-                                .get(next_state_name)
-                                .cloned()
-                                .map(|buchi_state| (next_state_name.clone(), buchi_state))
-                                .ok_or_else(|| {
-                                    BuchiError::Internal(anyhow!("no buchi state named '{next_state_name}'. This is a polestar bug."))
-                                })
-                        })
-                        .collect_vec()}
+                            .iter()
+                            .filter_map(|(ltl, name)| ((ltl).eval(&state.state)).then_some(name))
+                            .cloned()
+                            .collect::<BTreeSet<_>>()
+                    }
                 }
             })
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<BTreeSet<_>>();
 
         if buchi_next.is_empty() {
             return Err(BuchiError::LtlError {
@@ -132,9 +138,9 @@ where
         let inits = self
             .buchi
             .states
-            .iter()
-            .filter(|(name, _)| name.ends_with("_init"))
-            .map(|(name, state)| (name.clone(), state.clone()));
+            .keys()
+            .cloned()
+            .filter(|name| name.ends_with("_init"));
 
         PromelaState::new(state, inits)
     }
@@ -192,10 +198,7 @@ where
     M::State: Clone + Debug + Eq + Hash,
     M::Action: Clone + Debug,
 {
-    pub fn new(
-        state: M::State,
-        buchi_states: impl IntoIterator<Item = (StateName, Arc<BuchiState>)>,
-    ) -> Self {
+    pub fn new(state: M::State, buchi_states: impl IntoIterator<Item = StateName>) -> Self {
         Self {
             state: StorePathState::new(state),
             buchi: BuchiPaths(buchi_states.into_iter().collect()),
@@ -264,6 +267,7 @@ mod tests {
             match p {
                 "even" => self % 2 == 0,
                 "max" => *self == (MODULO - 1) as u8,
+                "is1" => *self == 1,
                 "is2" => *self == 2,
                 "is3" => *self == 3,
                 "is4" => *self == 4,
@@ -295,16 +299,16 @@ mod tests {
     #[test]
     fn promela_test() {
         // true negatives:
-        let ltl = "G (is4 -> X is5) ";
-        let ltl = "G (is4 -> X is8) ";
+        let ltl = "G ( is4 -> X is5 ) ";
+        let ltl = "G ( is4 -> X is8 ) ";
         let ltl = "G ( is4 -> F is2 )";
+        let ltl = "G ( (F is4 && !(F is2)) || (F is2 && !(F is4)) )";
+        let ltl = "G ( is3 -> G F is5 )";
 
         // true positives:
         let ltl = "G ( (is2 && X is6) -> G F is5)";
-
-        // false positives:
-        // let ltl = "G( is3 -> G F is15 )";
-        // let ltl = "G( is4 -> G F is7  )";
+        let ltl = "G ( is1 -> (G F is5 || G F is3 || G F is8) )";
+        let ltl = "G ( is2 -> F is4 )";
 
         let machine = PromelaMachine::new(TestMachine2, ltl);
         let initial = machine.initial(1);
@@ -330,10 +334,9 @@ mod tests {
                 |e| *e,
             )),
             visitor: Some(Arc::new(|s: &PromelaState<TestMachine2>, _| {
-                let buchis = s.buchi.iter().map(|(n, s)| (n)).collect_vec();
                 println!(
                     "<:> {}: buchi {:?} path {:?}",
-                    &s.state.state, &buchis, s.state.path
+                    &s.state.state, &s.buchi, s.state.path
                 );
                 Ok(())
             })),
@@ -371,13 +374,7 @@ mod tests {
                 |_, n| {
                     n.iter()
                         .map(|s| {
-                            let tup = (
-                                s.state.state,
-                                s.buchi
-                                    .iter()
-                                    .map(|(name, b)| (name, b.is_accepting()))
-                                    .collect_vec(),
-                            );
+                            let tup = (s.state.state, &s.buchi);
                             format!("{tup:?}")
                         })
                         .collect_vec()
