@@ -9,6 +9,12 @@ use nom::{
 
 use super::LogicPredicate;
 
+impl LogicPredicate {
+    pub fn from_promela_predicate(input: &str) -> Result<Self, nom::error::Error<&str>> {
+        parse_promela(input)
+    }
+}
+
 fn parse_prop(input: &str) -> IResult<&str, LogicPredicate> {
     let (rest, name) = input.split_at_position1_complete(
         |item| !item.is_alphanum() && !['_'].contains(&item),
@@ -59,14 +65,10 @@ fn parse_disj(input: &str) -> IResult<&str, LogicPredicate> {
     ))
 }
 
-pub fn parse_promela(input: &str) -> Result<LogicPredicate, nom::error::Error<&str>> {
+fn parse_promela(input: &str) -> Result<LogicPredicate, nom::error::Error<&str>> {
     let (rest, expr) = parse_disj(input).finish()?;
     assert!(rest.is_empty());
     Ok(expr)
-}
-
-pub trait Propositions {
-    fn eval(&self, prop: &str) -> bool;
 }
 
 #[cfg(test)]

@@ -5,10 +5,7 @@ use std::{
     sync::Arc,
 };
 
-use nom::{
-    branch::alt, bytes::complete::tag, character::complete::*, combinator::map_res,
-    error::ErrorKind, multi::*, sequence::*, AsChar, IResult, InputTakeAtPosition,
-};
+use crate::logic::LogicPredicate;
 
 #[derive(Clone)]
 pub struct PromelaBuchi {
@@ -50,11 +47,14 @@ impl PromelaBuchi {
                     },
                 ));
             } else if let Some(captures) = pat_transition.captures(line) {
-                let ltl = captures.get(1).unwrap().as_str();
+                let predicate = captures.get(1).unwrap().as_str();
                 let next = captures.get(2).unwrap().as_str();
                 if let BuchiState::Conditional { predicates, .. } = &mut current.as_mut().unwrap().1
                 {
-                    predicates.push((parse_ltl(&ltl).unwrap(), next.to_string()));
+                    predicates.push((
+                        LogicPredicate::from_promela_predicate(&predicate).unwrap(),
+                        next.to_string(),
+                    ));
                 } else {
                     unreachable!()
                 }
@@ -85,7 +85,7 @@ impl BuchiPaths {
 pub enum BuchiState {
     Conditional {
         accepting: bool,
-        predicates: Vec<(Ltl, StateName)>,
+        predicates: Vec<(LogicPredicate, StateName)>,
     },
     AcceptAll,
 }
@@ -121,88 +121,6 @@ impl Debug for BuchiState {
             BuchiState::AcceptAll => write!(f, "AllAccepting"),
         }
     }
-}
-
-fn parse_prop(input: &str) -> IResult<&str, Ltl> {
-    let (rest, s) = input.split_at_position1_complete(
-        |item| !item.is_alphanum() && !['_'].contains(&item),
-        ErrorKind::AlphaNumeric,
-    )?;
-
-    Ok((rest, Ltl::Prop(s.to_string())))
-}
-
-fn parse_one(input: &str) -> IResult<&str, Ltl> {
-    map_res(tag("1"), |_| {
-        Result::<_, nom::error::Error<&str>>::Ok(Ltl::True)
-    })(input)
-}
-
-fn parse_atom(input: &str) -> IResult<&str, Ltl> {
-    alt((parse_one, parse_prop))(input)
-}
-
-fn parse_neg(input: &str) -> IResult<&str, Ltl> {
-    map_res(preceded(char('!'), parse_prop), |s| {
-        Result::<_, nom::error::Error<&str>>::Ok(Ltl::Not(Box::new(s)))
-    })(input)
-}
-
-fn parse_conj(input: &str) -> IResult<&str, Ltl> {
-    let (rest, vs) = separated_list1(tag(" && "), alt((parse_neg, parse_atom)))(input)?;
-    Ok((
-        rest,
-        vs.into_iter()
-            .reduce(|a, b| Ltl::And(Box::new(a), Box::new(b)))
-            .unwrap(),
-    ))
-}
-
-fn parse_parens(input: &str) -> IResult<&str, Ltl> {
-    delimited(char('('), parse_conj, char(')'))(input)
-}
-
-fn parse_disj(input: &str) -> IResult<&str, Ltl, nom::error::Error<&str>> {
-    let (rest, vs) = separated_list1(tag(" || "), parse_parens)(input)?;
-    Ok((
-        rest,
-        vs.into_iter()
-            .reduce(|a, b| Ltl::Or(Box::new(a), Box::new(b)))
-            .unwrap(),
-    ))
-}
-
-pub fn parse_ltl(input: &str) -> Result<Ltl, nom::error::Error<&str>> {
-    let (rest, expr) = parse_disj(input).unwrap();
-    assert!(rest.is_empty());
-    Ok(expr)
-}
-
-#[derive(Debug, PartialEq, Eq, Hash)]
-pub enum Ltl {
-    True,
-    False,
-    Prop(String),
-    Not(Box<Ltl>),
-    And(Box<Ltl>, Box<Ltl>),
-    Or(Box<Ltl>, Box<Ltl>),
-}
-
-impl Ltl {
-    pub fn eval(&self, props: &impl Propositions) -> bool {
-        match self {
-            Ltl::True => true,
-            Ltl::False => false,
-            Ltl::Prop(s) => props.eval(s),
-            Ltl::Not(e) => !e.eval(props),
-            Ltl::And(a, b) => a.eval(props) && b.eval(props),
-            Ltl::Or(a, b) => a.eval(props) || b.eval(props),
-        }
-    }
-}
-
-pub trait Propositions {
-    fn eval(&self, prop: &str) -> bool;
 }
 
 #[cfg(test)]

@@ -12,6 +12,8 @@ use im::Vector;
 use itertools::Itertools;
 use parser::*;
 
+use crate::logic::Propositions;
+
 use super::{
     store_path::{StorePathMachine, StorePathState},
     Machine, TransitionResult,
@@ -210,6 +212,7 @@ where
 mod tests {
     use crate::{
         id::UpTo,
+        logic::Propositions,
         traversal::{traverse, TraversalConfig, TraversalGraphingConfig},
     };
     use itertools::Itertools;
