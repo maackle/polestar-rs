@@ -4,6 +4,7 @@ use std::{collections::HashMap, fmt::Debug, hash::Hash, sync::Arc};
 
 use anyhow::anyhow;
 use im::Vector;
+use itertools::Itertools;
 use parser::*;
 
 use super::{
@@ -28,6 +29,7 @@ where
     MachineError(M::Error),
 }
 
+#[derive(Clone)]
 pub struct PromelaMachine<M>
 where
     M: Machine,
@@ -68,8 +70,9 @@ where
                 Ok((PromelaState { state: next, buchi }, fx))
             }
             BuchiState::Conditional { predicates, .. } => {
-                if let Some((_, next_state_name)) =
-                    predicates.iter().find(|(ltl, _)| ltl.eval(&state.state))
+                if let Some((_, next_state_name)) = predicates
+                    .iter()
+                    .find(|(ltl, _)| dbg!(ltl).eval(&state.state))
                 {
                     let (next, fx) = self
                         .machine
@@ -121,20 +124,24 @@ where
     }
 
     pub fn initial(&self, state: M::State) -> PromelaState<M> {
-        let buchi = self
+        let inits = self
             .buchi
             .states
-            .get("accept_init")
-            .or_else(|| self.buchi.states.get("T0_init"))
-            .unwrap()
-            .clone();
-        PromelaState::new(state, buchi)
+            .keys()
+            .filter(|name| name.ends_with("_init"))
+            .collect_vec();
+
+        if inits.len() != 1 {
+            panic!("expected exactly one initial state, found {inits:?}");
+        }
+
+        let buchi_init = self.buchi.states.get(inits[0]).cloned().unwrap();
+
+        PromelaState::new(state, buchi_init)
     }
 }
 
-#[derive(
-    Debug, derive_bounded::Clone, derive_bounded::PartialEq, derive_bounded::Eq, derive_more::Deref,
-)]
+#[derive(derive_more::Debug, derive_bounded::Clone, derive_more::Deref)]
 #[bounded_to(StorePathState<M>)]
 pub struct PromelaState<M>
 where
@@ -144,7 +151,28 @@ where
 {
     #[deref]
     state: StorePathState<M>,
+    #[debug(skip)]
     buchi: Arc<BuchiState>,
+}
+
+// XXX: equality and hash ignore path! This is necessary for traversal to work well.
+impl<M> PartialEq for PromelaState<M>
+where
+    M: Machine,
+    M::State: Clone + Debug + Eq + Hash,
+    M::Action: Clone + Debug,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.state == other.state
+    }
+}
+
+impl<M> Eq for PromelaState<M>
+where
+    M: Machine,
+    M::State: Clone + Debug + Eq + Hash,
+    M::Action: Clone + Debug,
+{
 }
 
 impl<M> Hash for PromelaState<M>
@@ -186,10 +214,10 @@ mod tests {
 
     const MODULO: usize = 16;
 
-    #[derive(Debug, Hash, PartialEq, Eq)]
+    #[derive(Clone, Debug, Hash, PartialEq, Eq)]
     struct TestMachine1;
 
-    #[derive(Debug, Hash, PartialEq, Eq)]
+    #[derive(Clone, Debug, Hash, PartialEq, Eq)]
     struct TestMachine2;
 
     impl Machine for TestMachine1 {
@@ -207,11 +235,19 @@ mod tests {
 
     impl Machine for TestMachine2 {
         type State = u8;
-        type Action = ();
+        type Action = bool;
 
-        fn transition(&self, state: Self::State, (): Self::Action) -> TransitionResult<Self> {
+        fn transition(&self, state: Self::State, bump: Self::Action) -> TransitionResult<Self> {
             let group = state / 4;
-            let next = (group + 1) % 4 * 4 + state % 4;
+            let next = if group == 0 {
+                if bump {
+                    state + 1
+                } else {
+                    state * 4
+                }
+            } else {
+                (group * 4) + ((state + 1) % 4)
+            };
             Ok((next, ()))
         }
 
@@ -225,7 +261,14 @@ mod tests {
             match p {
                 "even" => self % 2 == 0,
                 "max" => *self == (MODULO - 1) as u8,
-                _ => unreachable!(),
+                "is2" => *self == 2,
+                "is3" => *self == 3,
+                "is4" => *self == 4,
+                "is7" => *self == 7,
+                "is8" => *self == 8,
+                "is11" => *self == 11,
+                "is15" => *self == 15,
+                p => unreachable!("can't eval unknown prop '{p}' with state {self}"),
             }
         }
     }
@@ -236,33 +279,52 @@ mod tests {
 
     #[test]
     fn promela_test() {
-        let machine = PromelaMachine::new(TestMachine1, "G F even");
+        // let ltl = "G F (is7 || is11 || is15)";
+
+        let ltl = "( F (is2 && X is8) -> G F is11 )";
+        // let ltl = "G( is3 -> G F is15 )";
+        // let ltl = "G( is4 -> G F is7  )";
+
+        let machine = PromelaMachine::new(TestMachine2, ltl);
         let initial = machine.initial(1);
 
-        let (report, graph, terminals) = traverse(
-            machine,
-            initial,
-            TraversalConfig {
-                record_terminals: true,
-                trace_every: 1,
-                graphing: Some(TraversalGraphingConfig::new(
-                    |s: &PromelaState<_>| Node(s.state.state, s.buchi.is_accepting()),
-                    |_| 0,
-                )),
-                ..Default::default()
-            }
-            .with_fatal_error(|e| matches!(e, BuchiError::LtlError { .. })),
-            Some,
-        )
-        .unwrap();
+        // write_dot_state_diagram_mapped(
+        //     "promela-diagram.dot",
+        //     machine.clone(),
+        //     initial.clone(),
+        //     &DiagramConfig {
+        //         max_depth: None,
+        //         ..Default::default()
+        //     },
+        //     |s| Some(format!("{s:?}")),
+        //     Some,
+        // );
+
+        let config = TraversalConfig {
+            record_terminals: false,
+            trace_every: 1,
+            graphing: Some(TraversalGraphingConfig::new(
+                |s: &PromelaState<TestMachine2>| s.clone(), //format!("{s:#?}"),
+                // |s: &PromelaState<_>| Node(s.state.state, s.buchi.is_accepting()),
+                |e| *e,
+            )),
+            ..Default::default()
+        }
+        .with_fatal_error(|e| !matches!(e, BuchiError::MachineError(_)));
+
+        let (report, graph, _) = traverse(machine, initial, config, Some).unwrap();
 
         let graph = graph.unwrap();
 
-        crate::diagram::write_dot(
-            "promela-verify.dot",
-            &graph,
-            &[petgraph::dot::Config::EdgeNoLabel],
-        );
+        {
+            let graph = graph.map(|_, n| Node(n.state.state, n.buchi.is_accepting()), |_, e| e);
+            crate::diagram::write_dot(
+                "promela-verify.dot",
+                &graph,
+                // &[petgraph::dot::Config::EdgeNoLabel],
+                &[],
+            );
+        }
 
         dbg!(&report);
 
@@ -274,17 +336,10 @@ mod tests {
                 .count();
             outgoing == 0
         });
-        for index in leaves {
-            let scc = condensed.node_weight(index).unwrap();
-            let accepting = scc.iter().any(|Node(n, a)| *a);
-            if !accepting {
-                panic!("non-accepting SCC found");
-            }
-        }
 
         {
             let condensed = condensed.map(
-                |_, n| n.iter().map(|n| format!("{n}")).collect_vec().join("\n"),
+                |_, n| n.iter().map(|n| format!("{n:?}")).collect_vec().join("\n"),
                 |_, e| e,
             );
 
@@ -292,8 +347,22 @@ mod tests {
                 "promela-verify-condensed.dot",
                 &condensed,
                 &[petgraph::dot::Config::EdgeNoLabel],
+                // &[],
             );
         }
+
+        for index in leaves {
+            let scc = condensed.node_weight(index).unwrap();
+            let accepting = scc.iter().any(|n| n.buchi.is_accepting());
+            if !accepting {
+                let mut paths = scc.iter().map(|n| n.state.path.clone()).collect_vec();
+                paths.sort();
+                dbg!(&paths);
+                panic!("non-accepting SCC found");
+            }
+        }
+
+        //////////////////////////////////////////////////////////////////
 
         // let scc = petgraph::algo::kosaraju_scc(&graph);
 
@@ -307,5 +376,44 @@ mod tests {
         //         println!("SCC {i} accepting");
         //     }
         // }
+    }
+
+    #[test]
+    #[ignore = "diagram"]
+    fn promela_diagram() {
+        let (_, graph, _) = traverse(
+            TestMachine2,
+            1,
+            TraversalConfig {
+                // record_terminals: true,
+                // trace_every: 1,
+                graphing: Some(TraversalGraphingConfig::new(|s| *s, |e| *e)),
+                ..Default::default()
+            },
+            // .with_fatal_error(|e| !matches!(e, BuchiError::MachineError(_))),
+            Some,
+        )
+        .unwrap();
+
+        let graph = graph.unwrap();
+
+        crate::diagram::write_dot(
+            "promela-traversal.dot",
+            &graph,
+            // &[petgraph::dot::Config::EdgeNoLabel],
+            &[],
+        );
+
+        write_dot_state_diagram_mapped(
+            "promela-diagram.dot",
+            TestMachine2,
+            1,
+            &DiagramConfig {
+                max_depth: None,
+                ..Default::default()
+            },
+            Some,
+            Some,
+        );
     }
 }

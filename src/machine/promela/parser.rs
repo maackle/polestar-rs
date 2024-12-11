@@ -5,6 +5,7 @@ use nom::{
     error::ErrorKind, multi::*, sequence::*, AsChar, IResult, InputTakeAtPosition,
 };
 
+#[derive(Clone)]
 pub struct PromelaBuchi {
     pub states: HashMap<StateName, Arc<BuchiState>>,
 }
