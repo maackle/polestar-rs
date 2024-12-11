@@ -15,6 +15,8 @@ pub mod projection;
 #[cfg(feature = "diagrams")]
 pub mod diagram;
 pub mod ext;
+pub mod ltl;
+pub mod logic;
 
 pub use actor::Actor;
 pub use event_handler::{EventHandler, EventSink};
