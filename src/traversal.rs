@@ -18,22 +18,25 @@ use crate::{
     Machine,
 };
 
-#[derive(derive_bounded::Clone)]
-#[bounded_to(M::State, N, E)]
-pub struct TraversalConfig<M: Machine, N = (), E = ()> {
+#[derive(derive_bounded::Clone, bon::Builder)]
+#[bounded_to(M::State)]
+pub struct TraversalConfig<M: Machine> {
     pub max_actions: Option<usize>,
     pub max_depth: Option<usize>,
     pub max_iters: Option<usize>,
-    pub trace_every: usize,
+    pub trace_every: Option<usize>,
+    #[builder(default)]
     pub ignore_loopbacks: bool,
+    #[builder(default)]
     pub record_terminals: bool,
+    #[builder(default)]
     pub trace_error: bool,
-    pub graphing: Option<TraversalGraphingConfig<M, N, E>>,
+    pub graphing: Option<TraversalGraphingConfig>,
     pub visitor: Option<Arc<dyn Fn(&M::State, VisitType) -> Result<(), M::Error> + Send + Sync>>,
     pub is_fatal_error: Option<Arc<dyn Fn(&M::Error) -> bool + Send + Sync>>,
 }
 
-impl<M: Machine, N, E> TraversalConfig<M, N, E> {
+impl<M: Machine> TraversalConfig<M> {
     pub fn with_fatal_error(
         mut self,
         is_fatal_error: impl Fn(&M::Error) -> bool + Send + Sync + 'static,
@@ -43,33 +46,30 @@ impl<M: Machine, N, E> TraversalConfig<M, N, E> {
     }
 }
 
-#[derive(derive_bounded::Clone)]
-#[bounded_to(M::State)]
-pub struct TraversalGraphingConfig<M: Machine, N, E> {
-    pub map_node: Arc<dyn Fn(&M::State) -> N + Send + Sync + 'static>,
-    pub map_edge: Arc<dyn Fn(&M::Action) -> E + Send + Sync + 'static>,
+#[derive(derive_bounded::Clone, bon::Builder)]
+pub struct TraversalGraphingConfig {
+    pub ignore_loopbacks: bool,
 }
 
-// impl<M: Machine> Default for TraversalGraphingConfig<M, (), ()> {
-//     fn default() -> Self {
-//         Self {
-//             map_node: Arc::new(|_| ()),
-//             map_edge: Arc::new(|_| ()),
-//         }
-//     }
-// }
-
-impl<M: Machine, N, E> TraversalGraphingConfig<M, N, E> {
-    pub fn new(
-        map_node: impl Fn(&M::State) -> N + Send + Sync + 'static,
-        map_edge: impl Fn(&M::Action) -> E + Send + Sync + 'static,
-    ) -> Self {
+impl Default for TraversalGraphingConfig {
+    fn default() -> Self {
         Self {
-            map_node: Arc::new(map_node),
-            map_edge: Arc::new(map_edge),
+            ignore_loopbacks: false,
         }
     }
 }
+
+// impl<M: Machine, N, E> TraversalGraphingConfig<M, N, E> {
+//     pub fn new(
+//         map_node: impl Fn(&M::State) -> N + Send + Sync + 'static,
+//         map_edge: impl Fn(&M::Action) -> E + Send + Sync + 'static,
+//     ) -> Self {
+//         Self {
+//             map_node: Arc::new(map_node),
+//             map_edge: Arc::new(map_edge),
+//         }
+//     }
+// }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum VisitType {
@@ -78,13 +78,13 @@ pub enum VisitType {
     LoopTerminal,
 }
 
-impl<M: Machine, N, E> Default for TraversalConfig<M, N, E> {
+impl<M: Machine> Default for TraversalConfig<M> {
     fn default() -> Self {
         Self {
             max_actions: None,
             max_depth: None,
             max_iters: None,
-            trace_every: 1000,
+            trace_every: None,
             ignore_loopbacks: false,
             record_terminals: false,
             trace_error: false,
@@ -165,15 +165,15 @@ where
     Ok(report)
 }
 
-pub fn traverse<M, S, N, E>(
+pub fn traverse<M, S>(
     machine: M,
     initial: M::State,
-    config: TraversalConfig<M, N, E>,
+    config: TraversalConfig<M>,
     map_state: impl Fn(M::State) -> Option<S> + Send + Sync + 'static,
 ) -> Result<
     (
         TraversalReport,
-        Option<DiGraph<N, E>>,
+        Option<DiGraph<M::State, M::Action>>,
         Option<(TerminalSet<M::State>, TerminalSet<M::State>)>,
     ),
     M::Error,
@@ -184,15 +184,13 @@ where
     M::Action: Exhaustive + Clone + Eq + Hash + Debug + Send + Sync + 'static,
     M::Error: Debug + Send + Sync + 'static,
     S: Clone + Eq + Hash + Debug + Send + Sync + 'static,
-    N: Clone + Send + Sync + 'static,
-    E: Eq + Hash + Clone + Send + Sync + 'static,
 {
     let machine = Arc::new(machine);
 
     let terminals: Arc<Mutex<TerminalSet<M::State>>> = Arc::new(Mutex::new(HashSet::new()));
     let loop_terminals: Arc<Mutex<TerminalSet<M::State>>> = Arc::new(Mutex::new(HashSet::new()));
     let visited_states: Arc<Mutex<HashMap<S, NodeIndex>>> = Arc::new(Mutex::new(HashMap::new()));
-    let visited_edges: Arc<Mutex<HashSet<(NodeIndex, NodeIndex, E)>>> =
+    let visited_edges: Arc<Mutex<HashSet<(NodeIndex, NodeIndex, M::Action)>>> =
         Arc::new(Mutex::new(HashSet::new()));
 
     let graph = Arc::new(Mutex::new(DiGraph::new()));
@@ -201,7 +199,7 @@ where
 
     let (err_tx, err_rx) = crossbeam::channel::bounded(1);
 
-    seen.push((initial, Option::<(NodeIndex, E)>::None, 0));
+    seen.push((initial, Option::<(NodeIndex, M::Action)>::None, 0));
     // to_visit.lock().push_back((initial, 0));
 
     let stop = Arc::new(AtomicBool::new(false));
@@ -244,7 +242,7 @@ where
                     break;
                 }
                 let iter = total_steps.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                if iter % config.trace_every == 0 {
+                if config.trace_every.map(|m| iter % m == 0).unwrap_or(false) {
                     tracing::info!(
                         "iter={iter}, seen={}, visited={}, depth={}",
                         num_seen.load(std::sync::atomic::Ordering::SeqCst),
@@ -262,7 +260,12 @@ where
                         std::collections::hash_map::Entry::Occupied(entry) => (true, *entry.get()),
                         std::collections::hash_map::Entry::Vacant(entry) => {
                             if let Some(g) = config.graphing.as_ref() {
-                                let node_ix = graph.lock().add_node((g.map_node)(&state));
+                                // let node = if let Some(map_node) = g.map_node {
+                                //     (map_node)(&state)
+                                // } else {
+                                //     state
+                                // };
+                                let node_ix = graph.lock().add_node(state.clone());
                                 entry.insert(node_ix);
                                 (false, node_ix)
                             } else {
@@ -279,9 +282,11 @@ where
                 if let Some(g) = config.graphing.as_ref() {
                     let mut graph = graph.lock();
                     if let Some((prev_node_ix, edge)) = prev_node {
-                        if visited_edges
-                            .lock()
-                            .insert((prev_node_ix, node_ix, edge.clone()))
+                        let ignore = g.ignore_loopbacks && prev_node_ix == node_ix;
+                        if !ignore
+                            && visited_edges
+                                .lock()
+                                .insert((prev_node_ix, node_ix, edge.clone()))
                         {
                             let _ = graph.add_edge(prev_node_ix, node_ix, edge);
                         }
@@ -319,7 +324,8 @@ where
                 // Queue up visits to all nodes reachable from this node..
                 for action in all_actions.iter().cloned() {
                     let prev_node = if let Some(g) = config.graphing.as_ref() {
-                        Some((node_ix, (g.map_edge)(&action)))
+                        // Some((node_ix, (g.map_edge)(&action)))
+                        Some((node_ix, action.clone()))
                     } else {
                         None
                     };

@@ -138,6 +138,26 @@ impl<const N: usize> std::fmt::Display for UpTo<N> {
     }
 }
 
+impl<const N: usize> std::ops::Add<usize> for UpTo<N> {
+    type Output = Self;
+    fn add(self, rhs: usize) -> Self::Output {
+        Self((self.0 + rhs) % N)
+    }
+}
+
+impl<const N: usize> std::ops::Sub<usize> for UpTo<N> {
+    type Output = UpTo<N>;
+    fn sub(self, rhs: usize) -> Self::Output {
+        let rhs = rhs % N;
+        let v = if self.0 < rhs {
+            self.0 + N - rhs
+        } else {
+            self.0 - rhs
+        };
+        UpTo(v)
+    }
+}
+
 #[derive(Debug)]
 pub struct IdMap<V, I: Id> {
     map: HashMap<V, I>,
@@ -178,6 +198,21 @@ where
 mod tests {
 
     use super::*;
+
+    #[test]
+    fn test_arithmetic() {
+        let a = UpTo::<3>::new(1);
+        let b = UpTo::<3>::new(2);
+        assert_eq!(a + 1, UpTo(2));
+        assert_eq!(b - 1, UpTo(1));
+        assert_eq!(a + 3, UpTo(1));
+        assert_eq!(b - 3, UpTo(2));
+        assert_eq!(a + 4, UpTo(2));
+        assert_eq!(b - 4, UpTo(1));
+
+        assert_eq!(a + (3 * 100 + 1), UpTo(2));
+        assert_eq!(b - (3 * 100 + 1), UpTo(1));
+    }
 
     #[test]
     fn test_id_map() {

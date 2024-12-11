@@ -327,12 +327,8 @@ mod tests {
 
         let config = TraversalConfig {
             record_terminals: false,
-            trace_every: 1,
-            graphing: Some(TraversalGraphingConfig::new(
-                |s: &PromelaState<TestMachine2>| s.clone(), //format!("{s:#?}"),
-                // |s: &PromelaState<_>| Node(s.state.state, s.buchi.is_accepting()),
-                |e| *e,
-            )),
+            trace_every: Some(1000),
+            graphing: Some(Default::default()),
             visitor: Some(Arc::new(|s: &PromelaState<TestMachine2>, _| {
                 println!(
                     "<:> {}: buchi {:?} path {:?}",
@@ -427,7 +423,7 @@ mod tests {
             TraversalConfig {
                 // record_terminals: true,
                 // trace_every: 1,
-                graphing: Some(TraversalGraphingConfig::new(|s| *s, |e| *e)),
+                graphing: Some(TraversalGraphingConfig::default()),
                 ..Default::default()
             },
             // .with_fatal_error(|e| !matches!(e, BuchiError::MachineError(_))),

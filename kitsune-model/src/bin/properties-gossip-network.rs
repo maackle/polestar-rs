@@ -105,7 +105,7 @@ fn main() {
         initial,
         TraversalConfig {
             max_depth: None,
-            trace_every: 25_000,
+            trace_every: Some(25_000),
             ..Default::default()
         },
         |s| {
