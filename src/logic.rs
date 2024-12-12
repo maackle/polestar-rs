@@ -1,3 +1,5 @@
+use std::{collections::HashMap, fmt::Display, marker::PhantomData};
+
 mod promela_parser;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -80,21 +82,57 @@ impl std::fmt::Display for LogicPredicate {
     }
 }
 
-pub trait Propositions {
-    fn eval(&self, prop: &str) -> bool;
+pub trait Propositions<P: std::fmt::Display> {
+    fn eval(&self, prop: &P) -> bool;
 }
 
-impl Propositions for std::collections::HashMap<String, bool> {
-    fn eval(&self, prop: &str) -> bool {
-        self.get(prop).copied().unwrap_or(false)
-    }
+pub trait PairPropositions<P> {
+    fn eval(pair: (&Self, &Self), prop: &P) -> bool;
 }
 
 pub struct PropositionsAllTrue;
 
-impl Propositions for PropositionsAllTrue {
-    fn eval(&self, _: &str) -> bool {
+impl<B: std::borrow::Borrow<str> + std::str::FromStr + std::fmt::Display> Propositions<B>
+    for PropositionsAllTrue
+{
+    fn eval(&self, _: &B) -> bool {
         true
+    }
+}
+
+pub struct PropositionClosures<S, P> {
+    closures: HashMap<String, Box<dyn for<'a> Fn(&'a S, &'a P) -> bool + 'static>>,
+}
+
+impl<S, P> PropositionClosures<S, P>
+where
+    P: Display,
+    S: Propositions<P>,
+{
+    pub fn new<'a>(ps: impl IntoIterator<Item = P> + 'a) -> Self {
+        let mut closures = HashMap::new();
+
+        for p in ps {
+            let f = Box::new(|state: &'a S, p: &'a P| state.eval(p));
+            closures.insert(p.to_string(), f);
+        }
+        Self { closures }
+    }
+}
+
+pub struct PropositionBindings<'s, P: Display, S> {
+    closures: PropositionClosures<P, S>,
+    state: &'s S,
+}
+
+impl<'s, P: Display, S> Propositions<String> for PropositionBindings<'s, P, S> {
+    fn eval(&self, prop: &String) -> bool {
+        let f = self
+            .closures
+            .closures
+            .get(prop)
+            .unwrap_or_else(|| panic!("no closure for prop: {}", prop));
+        (f)(self.state, prop)
     }
 }
 

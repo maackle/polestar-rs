@@ -346,6 +346,7 @@ mod tests {
     use polestar::{
         diagram::exhaustive::write_dot_state_diagram_mapped,
         id::{IdUnit, UpTo},
+        logic::Propositions,
         machine::checked::Predicate,
         model_checker::ModelChecker,
         traversal::TraversalConfig,
@@ -358,51 +359,61 @@ mod tests {
             .with_max_level(tracing::Level::INFO)
             .init();
 
-        use Predicate as P;
-
         type A = UpTo<2>;
         type T = UpTo<1>;
 
-        let op_awaiting = |o: OpId<A, T>, b: A| {
-            P::atom(format!("{o} awaits {b}"), move |s: &OpFamilyState<A, T>| {
-                s.get(&o)
-                    .map(|p| matches!(p, OpFamilyPhase::Awaiting(_, d) if *d == b))
-                    .unwrap_or(false)
-            })
-        };
+        enum Prop {
+            OpAwaiting(OpId<A, T>, A),
+            ActionAwaiting(A, A),
+            OpIntegrated(OpId<A, T>),
+            ActionIntegrated(A),
+        }
 
-        let dep_any_awaiting = |a: A, b: A| {
-            P::atom(format!("{a} awaits {b}"), move |s: &OpFamilyState<A, T>| {
-                s.all_awaiting(a).any(|d| d == b)
-            })
-        };
+        impl std::fmt::Display for Prop {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match self {
+                    Prop::AwaitingOp(o, d) => write!(f, "{o}_awaits_{d}"),
+                    Prop::AwaitingAction(o, a) => write!(f, "{o}_awaits_{a}"),
+                    Prop::OpIntegrated(o) => write!(f, "integrated_{o}"),
+                    Prop::ActionIntegrated(a) => write!(f, "integrated_{a}"),
+                }
+            }
+        }
 
-        let op_integrated = |o: OpId<A, T>| {
-            P::atom(format!("{o} integrated"), move |s: &OpFamilyState<A, T>| {
-                s.get(&o)
-                    .map(|p| matches!(p, OpFamilyPhase::Op(OpPhase::Integrated(Outcome::Accepted))))
-                    .unwrap_or(false)
-            })
-        };
+        impl Propositions<Prop> for OpFamilyState<A, T> {
+            fn eval(&self, prop: &Prop) -> bool {
+                match prop {
+                    Prop::OpAwaiting(o, d) => self
+                        .get(&o)
+                        .map(|p| matches!(p, OpFamilyPhase::Awaiting(_, d) if *d == b))
+                        .unwrap_or(false),
 
-        let action_integrated = |a| {
-            T::iter_exhaustive(None)
-                .map(|t| {
-                    let o = OpId(a, t);
-                    P::atom(format!("{o} integrated"), move |s: &OpFamilyState<A, T>| {
-                        s.get(&o)
-                            .map(|p| {
-                                matches!(
-                                    p,
-                                    OpFamilyPhase::Op(OpPhase::Integrated(Outcome::Accepted))
-                                )
-                            })
-                            .unwrap_or(false)
-                    })
-                })
-                .reduce(P::or)
-                .unwrap()
-        };
+                    Prop::ActionAwaiting(o, a) => self.all_awaiting(a).any(|d| d == b),
+
+                    Prop::OpIntegrated(o) => self
+                        .get(&o)
+                        .map(|p| {
+                            matches!(p, OpFamilyPhase::Op(OpPhase::Integrated(Outcome::Accepted)))
+                        })
+                        .unwrap_or(false),
+
+                    Prop::ActionIntegrated(a) => T::iter_exhaustive(None)
+                        .map(|t| {
+                            let o = OpId(a, t);
+                            self.get(&o)
+                                .map(|p| {
+                                    matches!(
+                                        p,
+                                        OpFamilyPhase::Op(OpPhase::Integrated(Outcome::Accepted))
+                                    )
+                                })
+                                .unwrap_or(false)
+                        })
+                        .reduce(|a, b| a || b)
+                        .unwrap(),
+                }
+            }
+        }
 
         let machine: OpFamilyMachine<A, T> = OpFamilyMachine::new();
 
