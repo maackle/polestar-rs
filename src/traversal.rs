@@ -16,6 +16,7 @@ use crate::{util::first, Machine};
 
 #[derive(derive_bounded::Clone, bon::Builder)]
 #[bounded_to(M::State)]
+#[allow(clippy::type_complexity)]
 pub struct TraversalConfig<M: Machine> {
     pub max_actions: Option<usize>,
     pub max_depth: Option<usize>,
@@ -38,17 +39,9 @@ pub struct TraversalConfig<M: Machine> {
     pub is_fatal_error: Option<Arc<dyn Fn(&M::Error) -> bool + Send + Sync>>,
 }
 
-#[derive(derive_bounded::Clone, bon::Builder)]
+#[derive(Default, derive_bounded::Clone, bon::Builder)]
 pub struct TraversalGraphingConfig {
     pub ignore_loopbacks: bool,
-}
-
-impl Default for TraversalGraphingConfig {
-    fn default() -> Self {
-        Self {
-            ignore_loopbacks: false,
-        }
-    }
 }
 
 // impl<M: Machine, N, E> TraversalGraphingConfig<M, N, E> {

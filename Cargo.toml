@@ -42,7 +42,7 @@ testing = ["prettydiff"]
 
 
 [workspace]
-members = ["holochain-model", "kitsune-model"]
+members = ["holochain-model", "kitsune-model", "polestar-macros", "polestar-propmap"]
 
 [patch.crates-io]
 # holo_hash = { path = "/home/michael/Holo/chain/crates/holo_hash" }
