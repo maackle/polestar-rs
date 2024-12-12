@@ -1,6 +1,6 @@
 pub mod checked;
 // mod mcltl_buchi;
-mod promela;
+mod model_checker;
 pub mod store_path;
 
 // mod refcell;

@@ -1,18 +1,80 @@
 use std::{
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{BTreeSet, HashMap},
     fmt::Debug,
+    marker::PhantomData,
     process::Command,
     sync::Arc,
 };
 
-use crate::logic::LogicPredicate;
+use anyhow::anyhow;
 
-#[derive(Clone)]
-pub struct PromelaBuchi {
+use crate::{
+    logic::{LogicPredicate, Propositions},
+    Machine, TransitionResult,
+};
+
+#[derive(Debug)]
+pub struct BuchiAutomaton<P> {
     pub states: HashMap<StateName, Arc<BuchiState>>,
+    phantom: PhantomData<P>,
 }
 
-impl PromelaBuchi {
+impl<P> Machine for BuchiAutomaton<P>
+where
+    P: Propositions,
+{
+    type State = BuchiPaths;
+    type Action = P;
+    type Error = BuchiError;
+    type Fx = ();
+
+    fn transition(&self, state: Self::State, action: Self::Action) -> TransitionResult<Self> {
+        let next = state
+            .0
+            .into_iter()
+            .flat_map(|buchi_name| {
+                let buchi_state = self
+                    .states
+                    .get(&buchi_name)
+                    .expect("no buchi state named '{buchi_name}'. This is a polestar bug.");
+                // .ok_or_else(|| {
+                //     BuchiError::Internal(anyhow!(
+                //         "no buchi state named '{buchi_name}'. This is a polestar bug."
+                //     ))
+                // })?;
+                match &**buchi_state {
+                    BuchiState::AcceptAll => todo!(), // vec![Ok((buchi_name, buchi_state))],
+                    BuchiState::Conditional { predicates, .. } => {
+                        (predicates.len());
+                        predicates
+                            .iter()
+                            .filter_map(|(ltl, name)| ((ltl).eval(&action)).then_some(name))
+                            .cloned()
+                            .collect::<BTreeSet<_>>()
+                    }
+                }
+            })
+            .collect::<BTreeSet<_>>();
+
+        if next.is_empty() {
+            return Err(BuchiError::LtlError(anyhow!("LTL not satisfied")));
+        }
+
+        Ok((next.into(), ()))
+    }
+
+    fn is_terminal(&self, _: &Self::State) -> bool {
+        false
+    }
+}
+
+#[derive(Debug)]
+pub enum BuchiError {
+    Internal(anyhow::Error),
+    LtlError(anyhow::Error),
+}
+
+impl<P> BuchiAutomaton<P> {
     pub fn from_ltl(ltl_str: &str) -> Self {
         let promela = Command::new("ltl3ba")
             .args(["-f", &format!("{ltl_str}")])
@@ -66,7 +128,10 @@ impl PromelaBuchi {
         let (state_name, state) = current.unwrap();
         states.insert(state_name, Arc::new(state));
 
-        Self { states }
+        Self {
+            states,
+            phantom: PhantomData,
+        }
     }
 }
 
@@ -81,7 +146,7 @@ impl BuchiPaths {
     }
 }
 
-#[derive(PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub enum BuchiState {
     Conditional {
         accepting: bool,
@@ -200,7 +265,7 @@ accept_S10:
 }
 
         "#;
-        let machine = PromelaBuchi::from_promela(promela);
-        // dbg!(&machine);
+        let machine = BuchiAutomaton::<()>::from_promela(promela);
+        dbg!(&machine);
     }
 }

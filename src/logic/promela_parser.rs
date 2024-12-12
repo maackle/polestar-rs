@@ -1,6 +1,4 @@
-//! Just enough parsing to parse the output of ltl2ba
-
-use std::sync::Arc;
+//! Just enough parsing to parse the output of ltl2ba/ltl3ba
 
 use nom::{
     branch::alt, bytes::complete::tag, character::complete::*, combinator::map_res,
