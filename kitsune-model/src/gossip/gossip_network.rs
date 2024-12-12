@@ -120,8 +120,6 @@ mod tests {
     use polestar::{
         diagram::exhaustive::*,
         id::{IdUnit, UpTo},
-        machine::checked::Predicate as P,
-        traversal::traverse_checked,
     };
 
     #[test]

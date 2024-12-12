@@ -51,8 +51,9 @@ impl Machine for TestMachine2 {
     }
 }
 
-impl Propositions<String> for u8 {
-    fn eval((s, _): (&Self, &Self), p: &String) -> bool {
+impl Propositions<String> for Pair<u8> {
+    fn eval(&self, p: &String) -> bool {
+        let s = &self.0;
         match p.as_str() {
             "even" => s % 2 == 0,
             "max" => *s == (MODULO - 1) as u8,
@@ -67,7 +68,7 @@ impl Propositions<String> for u8 {
             "is9" => *s == 9,
             "is11" => *s == 11,
             "is15" => *s == 15,
-            p => unreachable!("can't eval unknown prop '{p}' with state {self}"),
+            p => unreachable!("can't eval unknown prop '{p}' with state {s}"),
         }
     }
 }
@@ -200,6 +201,42 @@ fn model_checker_test() {
     //         println!("SCC {i} accepting");
     //     }
     // }
+}
+
+#[test]
+#[cfg(todo)]
+fn test_checker() {
+    tracing_subscriber::fmt::init();
+
+    let even = P::atom("is-even".to_string(), |s: &u8| s % 2 == 0);
+    let small = P::atom("single-digit".to_string(), |s: &u8| *s < 10);
+    let big = P::atom("20-and-up".to_string(), |s: &u8| *s >= 20);
+    let reallybig = P::atom("100-and-up".to_string(), |s: &u8| *s >= 100);
+    let not_teens = small.clone().or(big.clone());
+
+    let redundant = P::or(reallybig.clone(), reallybig.clone());
+
+    let checker = Mach.checked().with_predicates([
+        P::always(even.clone().implies(P::next(P::not(even.clone())))),
+        P::always(P::not(even.clone()).implies(P::next(even.clone()))),
+        P::always(not_teens),
+        P::eventually(reallybig),
+    ]);
+
+    checker.check_fold(0, [1, 2, 3, 108, 21]).unwrap();
+
+    let err = checker.check_fold(0, [1, 2, 3, 23, 21]).unwrap_err();
+    dbg!(&err);
+    assert_eq!(err.unwrap_predicate().path, vector![1, 2, 3, 23, 21]);
+
+    let err = checker.check_fold(1, [2, 12, 33]).unwrap_err();
+    dbg!(&err);
+    assert_eq!(err.unwrap_predicate().path, vector![2, 12]);
+
+    Mach.checked()
+        .with_predicates([P::always(redundant)])
+        .check_fold(0, [100])
+        .unwrap();
 }
 
 #[test]

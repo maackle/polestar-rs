@@ -1,4 +1,3 @@
-pub mod checked;
 pub mod store_path;
 
 // mod refcell;
@@ -41,14 +40,6 @@ where
         Self: Machine<Fx = ()>,
     {
         self.transition(state, action).map(first)
-    }
-
-    // fn mutable(&self, state: Self::State, action: Self::Action, f: impl FnOnce(&mut Self::State, Self::Action)) -> TransitionResult<Self> {
-
-    // }
-
-    fn checked(self) -> checked::CheckerMachine<Self> {
-        checked::CheckerMachine::new(self)
     }
 
     fn apply_each_action(

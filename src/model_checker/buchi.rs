@@ -9,24 +9,28 @@ use std::{
 use anyhow::anyhow;
 
 use crate::{
-    logic::{LogicPredicate, Pair, PropMap, Propositions},
+    logic::{LogicPredicate, Pair, PropMapping, Propositions},
     Machine, TransitionResult,
 };
 
-#[derive(Debug)]
-pub struct BuchiAutomaton<'s, S, P> {
+#[derive(derive_more::Debug)]
+pub struct BuchiAutomaton<S, P, M: PropMapping<P>> {
     pub states: HashMap<StateName, Arc<BuchiState>>,
-    propmap: PropMap<P>,
-    phantom: PhantomData<&'s S>,
+
+    #[debug(skip)]
+    propmap: M,
+    #[debug(skip)]
+    phantom: PhantomData<S>,
 }
 
-impl<'s, S, P> Machine for BuchiAutomaton<'s, S, P>
+impl<S, P, M> Machine for BuchiAutomaton<S, P, M>
 where
-    Pair<'s, S>: Propositions<P> + 's,
+    Pair<S>: Propositions<P>,
     P: Display + Clone,
+    M: PropMapping<P>,
 {
     type State = BuchiPaths;
-    type Action = Pair<'s, S>;
+    type Action = Pair<S>;
     type Error = BuchiError;
     type Fx = ();
 
@@ -77,8 +81,8 @@ pub enum BuchiError {
     LtlError(anyhow::Error),
 }
 
-impl<'s, S, P> BuchiAutomaton<'s, S, P> {
-    pub fn from_ltl(propmap: PropMap<P>, ltl_str: &str) -> Self {
+impl<S, P, M: PropMapping<P>> BuchiAutomaton<S, P, M> {
+    pub fn from_ltl(propmap: M, ltl_str: &str) -> Self {
         let promela = Command::new("ltl3ba")
             .args(["-f", &format!("{ltl_str}")])
             .output()
@@ -86,7 +90,7 @@ impl<'s, S, P> BuchiAutomaton<'s, S, P> {
         Self::from_promela(propmap, String::from_utf8_lossy(&promela.stdout).as_ref())
     }
 
-    pub fn from_promela(propmap: PropMap<P>, promela: &str) -> Self {
+    pub fn from_promela(propmap: M, promela: &str) -> Self {
         println!("{}", promela);
         let lines = promela.lines().collect::<Vec<_>>();
 
@@ -268,7 +272,7 @@ accept_S10:
 	fi;
 }
         "#;
-        let propmap = PropMap::new(["open", "call", "at-floor"]);
+        let propmap = PropRegistry::new(["open", "call", "at-floor"]).unwrap();
         let machine = BuchiAutomaton::<(), String>::from_promela(propmap, promela);
         dbg!(&machine);
     }

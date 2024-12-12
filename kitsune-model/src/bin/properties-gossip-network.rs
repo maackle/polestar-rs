@@ -3,10 +3,11 @@ use exhaustive::*;
 use itertools::Itertools;
 use kitsune_model::gossip::gossip_network::*;
 use kitsune_model::gossip::gossip_node::*;
+use polestar::logic::Pair;
+use polestar::logic::PropRegistry;
 use polestar::logic::Propositions;
-use polestar::machine::checked::Predicate as P;
+use polestar::model_checker::ModelChecker;
 use polestar::prelude::*;
-use polestar::traversal::TraversalConfig;
 use tracing::Level;
 
 fn main() {
@@ -50,117 +51,90 @@ fn main() {
         Ready(N, N),
     }
 
-    let ready = |n: N, p: N| {
-        assert_ne!(n, p);
-        P::atom(format!("ready({n},{p})"), move |s: &GossipState<N>| {
-            peer_focus(s, n, p).phase == PeerPhase::Ready
-        })
-    };
-
-    let premature = |n: N, p: N| {
-        assert_ne!(n, p);
-        P::atom2(format!("early({n},{p})"), move |a, b| {
-            let a = peer_focus(a, n, p);
-            let b = peer_focus(b, n, p);
-            match (a.phase, b.phase) {
-                (PeerPhase::Closed(GossipOutcome::Failure(_)), PeerPhase::Active) => true,
-                (PeerPhase::Closed(GossipOutcome::Success(_)), PeerPhase::Active) => true,
-                (
-                    PeerPhase::Active,
-                    PeerPhase::Closed(GossipOutcome::Failure(FailureReason::Timeout)),
-                ) => a.timer > 0,
-                _ => false,
-            }
-        })
-    };
-
-    let time_decreases = |n: N, p: N| {
-        assert_ne!(n, p);
-        P::atom2(format!("time_decreases({n},{p})"), move |a, b| {
-            let a = peer_focus(a, n, p);
-            let b = peer_focus(b, n, p);
-            a.phase != b.phase || b.timer <= a.timer
-        })
-    };
-
-    impl Propositions<Prop> for GossipState<N> {
+    impl Propositions<Prop> for Pair<GossipState<N>> {
         fn eval(&self, prop: &Prop) -> bool {
-            match prop {
-                Prop::Premature(n, p) => premature(n, p),
-                Prop::TimeDecreases(n, p) => time_decreases(n, p),
-                Prop::Ready(n, p) => ready(n, p),
+            let (s0, s1) = self;
+            match *prop {
+                Prop::Ready(n, p) => {
+                    assert_ne!(n, p);
+                    peer_focus(s0, n, p).phase == PeerPhase::Ready
+                }
+                Prop::TimeDecreases(n, p) => {
+                    assert_ne!(n, p);
+                    let a = peer_focus(s0, n, p);
+                    let b = peer_focus(s1, n, p);
+                    a.phase != b.phase || b.timer <= a.timer
+                }
+                Prop::Premature(n, p) => {
+                    assert_ne!(n, p);
+                    let a = peer_focus(s0, n, p);
+                    let b = peer_focus(s1, n, p);
+                    match (a.phase, b.phase) {
+                        (PeerPhase::Closed(GossipOutcome::Failure(_)), PeerPhase::Active) => true,
+                        (PeerPhase::Closed(GossipOutcome::Success(_)), PeerPhase::Active) => true,
+                        (
+                            PeerPhase::Active,
+                            PeerPhase::Closed(GossipOutcome::Failure(FailureReason::Timeout)),
+                        ) => a.timer > 0,
+                        _ => false,
+                    }
+                }
             }
         }
     }
 
-    let safety = pairs
+    let mut propmap = PropRegistry::empty();
+
+    let predicates = pairs
         .iter()
         .copied()
         .filter_map(|[n, p]| {
             (n != p).then(|| {
+                let ready = propmap.add(Prop::Ready(n, p)).unwrap();
+                let premature = propmap.add(Prop::Premature(n, p)).unwrap();
+                let time_decreases = propmap.add(Prop::TimeDecreases(n, p)).unwrap();
                 [
-                    P::always(P::not(premature(n, p))),
-                    P::always(time_decreases(n, p)),
+                    format!("G !{premature}"),
+                    format!("G {time_decreases}"),
+                    format!("G F {ready}"),
                 ]
             })
         })
-        .flatten();
-
-    let liveness = pairs
-        .iter()
-        .copied()
-        .filter_map(|[n, p]| (n != p).then(|| P::always(P::eventually(ready(n, p)))));
-
-    let mut predicates = vec![];
-    predicates.extend(safety);
-    predicates.extend(liveness);
+        .flatten()
+        .collect_vec();
 
     let display_predicates = predicates.iter().map(|p| format!("{p:?}")).join("\n");
-    let checker = machine.checked().with_predicates(predicates);
-    let initial = checker.initial(initial);
-    let result = traverse_checked(
-        checker,
-        initial,
-        TraversalConfig {
-            max_depth: None,
-            trace_every: Some(25_000),
-            ..Default::default()
-        },
-        |s| {
-            let view = s
-                .nodes
-                .into_iter()
-                .map(|(n, ns)| {
-                    let ns: Vec<_> = ns
-                        .peers
-                        .into_iter()
-                        .map(|(p, peer)| {
-                            (
-                                p,
-                                peer.timer,
-                                match peer.phase {
-                                    PeerPhase::Ready => 1,
-                                    PeerPhase::Active => 2,
-                                    PeerPhase::Closed(outcome) => 3 + outcome.ticks(),
-                                },
-                            )
-                        })
-                        .collect();
-                    (n, ns)
-                })
-                .collect_vec();
-            Some(view)
-        },
-    );
+    let ltl = predicates.into_iter().join(" && ");
 
-    match result {
-        Ok(report) => println!("Complete. Report:\n{report:?}"),
-        Err(err) => {
-            eprintln!("Actions: {:#?}", err.path);
-            eprintln!("Error: {}", err.error);
-            panic!("properties failed");
-        }
-    }
+    let checker = ModelChecker::new(machine, propmap, &ltl);
+
+    let result = checker.check_mapped(initial, |s| {
+        let view = s
+            .nodes
+            .into_iter()
+            .map(|(n, ns)| {
+                let ns: Vec<_> = ns
+                    .peers
+                    .into_iter()
+                    .map(|(p, peer)| {
+                        (
+                            p,
+                            peer.timer,
+                            match peer.phase {
+                                PeerPhase::Ready => 1,
+                                PeerPhase::Active => 2,
+                                PeerPhase::Closed(outcome) => 3 + outcome.ticks(),
+                            },
+                        )
+                    })
+                    .collect();
+                (n, ns)
+            })
+            .collect_vec();
+        Some(view)
+    });
+
+    result.expect("model check failed");
 
     println!("properties satisfied:\n\n{}\n", display_predicates);
 }

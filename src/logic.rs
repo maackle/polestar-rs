@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Display, sync::Arc};
+use std::{collections::HashMap, fmt::Display, marker::PhantomData, sync::Arc};
 
 mod promela_parser;
 
@@ -86,21 +86,7 @@ pub trait Propositions<P> {
     fn eval(&self, prop: &P) -> bool;
 }
 
-pub type Pair<'a, T> = &'a (&'a T, &'a T);
-
-// pub trait Propositions<P: std::fmt::Display> {
-//     fn eval(&self, prop: &P) -> bool;
-// }
-
-// impl<T, P> Propositions<P> for T
-// where
-//     T: Propositions<P>,
-//     P: std::fmt::Display,
-// {
-//     fn eval(pair: (&Self, &Self), prop: &P) -> bool {
-//         pair.0.eval(prop)
-//     }
-// }
+pub type Pair<T> = (T, T);
 
 pub struct PropositionsAllTrue;
 
@@ -112,71 +98,89 @@ impl<B: std::borrow::Borrow<str> + std::str::FromStr + std::fmt::Display> Propos
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct PropMap<P>(Arc<HashMap<String, P>>);
+pub trait PropMapping<P> {
+    fn map(&self, name: &str) -> Option<P>;
 
-impl<P> PropMap<P>
+    fn bind<S>(&self, states: Pair<S>) -> PropositionBindings<S, Self, P>
+    where
+        Self: Sized,
+        Pair<S>: Propositions<P>,
+    {
+        PropositionBindings {
+            props: self,
+            states,
+            phantom: PhantomData,
+        }
+    }
+}
+
+impl PropMapping<String> for () {
+    fn map(&self, name: &str) -> Option<String> {
+        Some(name.to_string())
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PropRegistry<P>(HashMap<String, P>);
+
+impl<P: Clone> PropMapping<P> for PropRegistry<P> {
+    fn map(&self, name: &str) -> Option<P> {
+        self.0.get(name).cloned()
+    }
+}
+
+impl<P> PropRegistry<P>
 where
     P: Display + Clone,
 {
-    pub fn new<'a, T: Into<P>>(ps: impl IntoIterator<Item = T>) -> Self {
-        let mut props = HashMap::new();
+    pub fn empty() -> Self {
+        Self(HashMap::new())
+    }
+
+    pub fn new<'a, T: Into<P>>(ps: impl IntoIterator<Item = T>) -> Result<Self, String> {
+        let mut props = Self::empty();
 
         for p in ps {
-            let p: P = p.into();
-            let name = p
-                .to_string()
-                .replace(|ch: char| !(ch.is_alphanumeric() || ch == '_'), "_");
-            props.insert(name, p);
+            props.add(p.into())?;
         }
-        Self(Arc::new(props))
+
+        Ok(props)
     }
 
-    pub fn bind<'s, S>(&self, states: Pair<'s, S>) -> PropositionBindings<'s, S, P>
-    where
-        Pair<'s, S>: Propositions<P>,
-    {
-        PropositionBindings {
-            props: self.clone(),
-            states,
+    pub fn add(&mut self, p: P) -> Result<String, String> {
+        let disp = p.to_string();
+        let name = disp.replace(|ch: char| !(ch.is_alphanumeric() || ch == '_'), "_");
+        if self.0.insert(name.clone(), p).is_some() {
+            return Err(format!(
+                "Attempted to add to propmap with name collision: {disp} -> {name}"
+            ));
+        } else {
+            Ok(name)
         }
     }
 }
 
-// pub struct ModelPropositions<'s, P: Display, S: Propositions<P>> {
-//     props: PropMap<P>,
-//     states: (&'s S, &'s S),
-// }
-
-// impl<'s, P: Display, S: Propositions<P>> Propositions<String> for ModelPropositions<'s, P, S> {
-//     fn eval(&self, prop: &String) -> bool {
-//         let prop = states
-//             .0
-//             .props
-//             .0
-//             .get(prop)
-//             .unwrap_or_else(|| panic!("no closure for prop: {}", prop));
-//         S::eval(states, prop)
-//     }
-// }
-
-pub struct PropositionBindings<'s, S, P> {
-    props: PropMap<P>,
-    states: Pair<'s, S>,
-}
-
-impl<'s, S, P> Propositions<String> for PropositionBindings<'s, S, P>
+pub struct PropositionBindings<'p, S, M, P>
 where
+    M: PropMapping<P>,
+{
+    props: &'p M,
+    states: Pair<S>,
+    phantom: PhantomData<P>,
+}
+
+impl<'p, S, M, P> Propositions<String> for PropositionBindings<'p, S, M, P>
+where
+    Pair<S>: Propositions<P>,
+    M: PropMapping<P>,
     P: Display,
-    Pair<'s, S>: Propositions<P>,
 {
     fn eval(&self, prop: &String) -> bool {
-        let prop = self
+        let name = self
             .props
-            .0
-            .get(prop)
+            .map(prop)
             .unwrap_or_else(|| panic!("no closure for prop: {}", prop));
-        self.states.eval(prop)
+        self.states.eval(&name)
     }
 }
 

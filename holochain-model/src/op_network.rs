@@ -112,7 +112,7 @@ impl<N: Id, O: Id, T: Id> Machine for OpNetworkMachine<N, O, T> {
                     op,
                     from,
                     valid,
-                    target,
+                    target: _,
                 } => {
                     // BUG: technically we should wait for validation before
                     // receiving, but we don't currently check for that.
@@ -304,10 +304,7 @@ impl<N: Id, O: Id, T: Id> Display for OpNetworkEdgePretty<N, O, T> {
 #[cfg(test)]
 mod tests {
     use itertools::Itertools;
-    use polestar::{
-        diagram::exhaustive::write_dot_state_diagram_mapped, id::UpTo,
-        machine::checked::Predicate as P,
-    };
+    use polestar::{diagram::exhaustive::write_dot_state_diagram_mapped, id::UpTo};
 
     use super::*;
 

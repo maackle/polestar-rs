@@ -9,18 +9,18 @@ use std::{fmt::Debug, hash::Hash};
 
 use buchi::*;
 
-use crate::logic::{Pair, PropMap, Propositions};
+use crate::logic::{Pair, PropRegistry, Propositions};
 use crate::machine::{
     store_path::{StorePathMachine, StorePathState},
     Machine, TransitionResult,
 };
 
-pub struct ModelChecker<'s, M, P>
+pub struct ModelChecker<M, P>
 where
     M: Machine,
     P: Display + Clone,
 {
-    buchi: BuchiAutomaton<'s, M::State, P>,
+    buchi: BuchiAutomaton<M::State, P>,
     machine: StorePathMachine<M>,
 }
 
@@ -33,32 +33,35 @@ where
  █████░███ █████░░████████░░██████  ████ █████ █████ ████ █████░░██████
 ░░░░░ ░░░ ░░░░░  ░░░░░░░░  ░░░░░░  ░░░░ ░░░░░ ░░░░░ ░░░░ ░░░░░  ░░░░░░   */
 
-impl<'s, M, P> Machine for ModelChecker<'s, M, P>
+impl<M, P> Machine for ModelChecker<M, P>
 where
     M: Machine,
-    M::State: Clone + Debug + Eq + Hash + 's,
-    Pair<'s, M::State>: Propositions<P> + 's,
+    M::State: Clone + Debug + Eq + Hash,
+    Pair<M::State>: Propositions<P>,
     M::Action: Clone + Debug,
     P: Display + Clone,
 {
-    type State = ModelCheckerState<M>;
+    type State = ModelCheckerState<M::State, M::Action>;
     type Action = M::Action;
     type Error = ModelCheckerTransitionError<M>;
     type Fx = M::Fx;
 
     fn transition(&self, state: Self::State, action: Self::Action) -> TransitionResult<Self> {
-        let ModelCheckerState { state, buchi } = state;
+        let ModelCheckerState {
+            pathstate: state,
+            buchi,
+        } = state;
 
         let prev = state.state.clone();
 
         let (next, fx) = self
             .machine
-            .transition(state, action)
+            .transition(state.clone(), action)
             .map_err(ModelCheckerTransitionError::MachineError)?;
 
         let buchi_next = self
             .buchi
-            .transition_(buchi, &(&prev, &next))
+            .transition_(buchi, (prev, next.state.clone()))
             .map_err(|error| {
                 ModelCheckerTransitionError::BuchiError(ModelCheckerBuchiError {
                     error,
@@ -67,14 +70,14 @@ where
             })?;
 
         let next = ModelCheckerState {
-            state: next,
+            pathstate: next,
             buchi: buchi_next.into(),
         };
         Ok((next, fx))
     }
 
     fn is_terminal(&self, state: &Self::State) -> bool {
-        self.machine.is_terminal(&state.state)
+        self.machine.is_terminal(&state.pathstate)
     }
 }
 
@@ -85,7 +88,7 @@ where
     M::Action: Clone + Debug,
     P: Display + Clone,
 {
-    pub fn new(machine: M, propmap: PropMap<P>, ltl: &str) -> Self {
+    pub fn new(machine: M, propmap: PropRegistry<P>, ltl: &str) -> Self {
         let buchi = BuchiAutomaton::from_ltl(propmap, ltl);
         Self {
             buchi,
@@ -93,7 +96,7 @@ where
         }
     }
 
-    pub fn initial(&self, state: M::State) -> ModelCheckerState<M> {
+    pub fn initial(&self, state: M::State) -> ModelCheckerState<M::State, M::Action> {
         let inits = self
             .buchi
             .states
@@ -141,15 +144,14 @@ where
     derive_bounded::Eq,
     derive_more::Deref,
 )]
-#[bounded_to(StorePathState<M>)]
-pub struct ModelCheckerState<M>
+#[bounded_to(S, A)]
+pub struct ModelCheckerState<S, A>
 where
-    M: Machine,
-    M::State: Clone + Debug + Eq + Hash,
-    M::Action: Clone + Debug,
+    S: Clone + Debug + Eq + Hash,
+    A: Clone + Debug,
 {
     #[deref]
-    state: StorePathState<M>,
+    pathstate: StorePathState<S, A>,
     #[debug(skip)]
     buchi: BuchiPaths,
 }
@@ -157,27 +159,25 @@ where
 // NB: regrettably we can't easily derive Hash because ModelChecker is not Hash,
 //     even though that doesn't matter.
 // TODO: make PR to derive_bounded to support Hash?
-impl<M> Hash for ModelCheckerState<M>
+impl<S, A> Hash for ModelCheckerState<S, A>
 where
-    M: Machine,
-    M::State: Clone + Debug + Eq + Hash,
-    M::Action: Clone + Debug,
+    S: Clone + Debug + Eq + Hash,
+    A: Clone + Debug,
 {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.state.state.hash(state);
+        self.pathstate.state.hash(state);
         self.buchi.hash(state);
     }
 }
 
-impl<M> ModelCheckerState<M>
+impl<S, A> ModelCheckerState<S, A>
 where
-    M: Machine,
-    M::State: Clone + Debug + Eq + Hash,
-    M::Action: Clone + Debug,
+    S: Clone + Debug + Eq + Hash,
+    A: Clone + Debug,
 {
-    pub fn new(state: M::State, buchi_states: impl IntoIterator<Item = StateName>) -> Self {
+    pub fn new(state: S, buchi_states: impl IntoIterator<Item = StateName>) -> Self {
         Self {
-            state: StorePathState::new(state),
+            pathstate: StorePathState::new(state),
             buchi: BuchiPaths(buchi_states.into_iter().collect()),
         }
     }

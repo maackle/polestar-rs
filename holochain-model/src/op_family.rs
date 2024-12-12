@@ -346,8 +346,7 @@ mod tests {
     use polestar::{
         diagram::exhaustive::write_dot_state_diagram_mapped,
         id::{IdUnit, UpTo},
-        logic::{PropMap, Propositions},
-        machine::checked::Predicate,
+        logic::{Pair, PropRegistry, Propositions},
         model_checker::ModelChecker,
         traversal::TraversalConfig,
     };
@@ -381,17 +380,18 @@ mod tests {
             }
         }
 
-        impl Propositions<Prop> for OpFamilyState<A, T> {
+        impl Propositions<Prop> for Pair<OpFamilyState<A, T>> {
             fn eval(&self, prop: &Prop) -> bool {
+                let (state, _) = self;
                 match prop {
-                    Prop::OpAwaiting(o, b) => self
+                    Prop::OpAwaiting(o, b) => state
                         .get(&o)
                         .map(|p| matches!(p, OpFamilyPhase::Awaiting(_, d) if d == b))
                         .unwrap_or(false),
 
-                    Prop::ActionAwaiting(a, b) => self.all_awaiting(*a).any(|d| d == *b),
+                    Prop::ActionAwaiting(a, b) => state.all_awaiting(*a).any(|d| d == *b),
 
-                    Prop::OpIntegrated(o) => self
+                    Prop::OpIntegrated(o) => state
                         .get(&o)
                         .map(|p| {
                             matches!(p, OpFamilyPhase::Op(OpPhase::Integrated(Outcome::Accepted)))
@@ -401,7 +401,8 @@ mod tests {
                     Prop::ActionIntegrated(a) => T::iter_exhaustive(None)
                         .map(|t| {
                             let o = OpId(*a, t);
-                            self.get(&o)
+                            state
+                                .get(&o)
                                 .map(|p| {
                                     matches!(
                                         p,
@@ -416,7 +417,7 @@ mod tests {
             }
         }
 
-        let propmap = PropMap::new(<OpId<A, T>>::iter_exhaustive(None).flat_map(|o| {
+        let propmap = PropRegistry::new(<OpId<A, T>>::iter_exhaustive(None).flat_map(|o| {
             A::iter_exhaustive(None).flat_map(move |b| {
                 if o.0 == b {
                     vec![]
@@ -429,7 +430,8 @@ mod tests {
                     ]
                 }
             })
-        }));
+        }))
+        .unwrap();
 
         let machine: OpFamilyMachine<A, T> = OpFamilyMachine::new();
 
