@@ -51,22 +51,22 @@ impl Machine for TestMachine2 {
     }
 }
 
-impl Propositions for u8 {
-    fn eval(&self, p: &String) -> bool {
+impl Propositions<String> for u8 {
+    fn eval((s, _): (&Self, &Self), p: &String) -> bool {
         match p.as_str() {
-            "even" => self % 2 == 0,
-            "max" => *self == (MODULO - 1) as u8,
-            "is1" => *self == 1,
-            "is2" => *self == 2,
-            "is3" => *self == 3,
-            "is4" => *self == 4,
-            "is5" => *self == 5,
-            "is6" => *self == 6,
-            "is7" => *self == 7,
-            "is8" => *self == 8,
-            "is9" => *self == 9,
-            "is11" => *self == 11,
-            "is15" => *self == 15,
+            "even" => s % 2 == 0,
+            "max" => *s == (MODULO - 1) as u8,
+            "is1" => *s == 1,
+            "is2" => *s == 2,
+            "is3" => *s == 3,
+            "is4" => *s == 4,
+            "is5" => *s == 5,
+            "is6" => *s == 6,
+            "is7" => *s == 7,
+            "is8" => *s == 8,
+            "is9" => *s == 9,
+            "is11" => *s == 11,
+            "is15" => *s == 15,
             p => unreachable!("can't eval unknown prop '{p}' with state {self}"),
         }
     }

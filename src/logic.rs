@@ -82,13 +82,25 @@ impl std::fmt::Display for LogicPredicate {
     }
 }
 
-pub trait Propositions<P: std::fmt::Display> {
+pub trait Propositions<P> {
     fn eval(&self, prop: &P) -> bool;
 }
 
-pub trait PairPropositions<P> {
-    fn eval(pair: (&Self, &Self), prop: &P) -> bool;
-}
+pub type Pair<'a, T> = &'a (&'a T, &'a T);
+
+// pub trait Propositions<P: std::fmt::Display> {
+//     fn eval(&self, prop: &P) -> bool;
+// }
+
+// impl<T, P> Propositions<P> for T
+// where
+//     T: Propositions<P>,
+//     P: std::fmt::Display,
+// {
+//     fn eval(pair: (&Self, &Self), prop: &P) -> bool {
+//         pair.0.eval(prop)
+//     }
+// }
 
 pub struct PropositionsAllTrue;
 
@@ -107,10 +119,11 @@ impl<P> PropMap<P>
 where
     P: Display + Clone,
 {
-    pub fn new<'a>(ps: impl IntoIterator<Item = P>) -> Self {
+    pub fn new<'a, T: Into<P>>(ps: impl IntoIterator<Item = T>) -> Self {
         let mut props = HashMap::new();
 
         for p in ps {
+            let p: P = p.into();
             let name = p
                 .to_string()
                 .replace(|ch: char| !(ch.is_alphanumeric() || ch == '_'), "_");
@@ -119,27 +132,51 @@ where
         Self(Arc::new(props))
     }
 
-    pub fn bind<'s, S: Propositions<P>>(&'s self, state: &'s S) -> PropositionBindings<'s, P, S> {
+    pub fn bind<'s, S>(&self, states: Pair<'s, S>) -> PropositionBindings<'s, S, P>
+    where
+        Pair<'s, S>: Propositions<P>,
+    {
         PropositionBindings {
             props: self.clone(),
-            state,
+            states,
         }
     }
 }
 
-pub struct PropositionBindings<'s, P: Display, S: Propositions<P>> {
+// pub struct ModelPropositions<'s, P: Display, S: Propositions<P>> {
+//     props: PropMap<P>,
+//     states: (&'s S, &'s S),
+// }
+
+// impl<'s, P: Display, S: Propositions<P>> Propositions<String> for ModelPropositions<'s, P, S> {
+//     fn eval(&self, prop: &String) -> bool {
+//         let prop = states
+//             .0
+//             .props
+//             .0
+//             .get(prop)
+//             .unwrap_or_else(|| panic!("no closure for prop: {}", prop));
+//         S::eval(states, prop)
+//     }
+// }
+
+pub struct PropositionBindings<'s, S, P> {
     props: PropMap<P>,
-    state: &'s S,
+    states: Pair<'s, S>,
 }
 
-impl<'s, P: Display, S: Propositions<P>> Propositions<String> for PropositionBindings<'s, P, S> {
+impl<'s, S, P> Propositions<String> for PropositionBindings<'s, S, P>
+where
+    P: Display,
+    Pair<'s, S>: Propositions<P>,
+{
     fn eval(&self, prop: &String) -> bool {
         let prop = self
             .props
             .0
             .get(prop)
             .unwrap_or_else(|| panic!("no closure for prop: {}", prop));
-        self.state.eval(prop)
+        self.states.eval(prop)
     }
 }
 

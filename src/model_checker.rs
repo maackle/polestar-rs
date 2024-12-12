@@ -9,18 +9,18 @@ use std::{fmt::Debug, hash::Hash};
 
 use buchi::*;
 
-use crate::logic::{PropMap, Propositions};
+use crate::logic::{Pair, PropMap, Propositions};
 use crate::machine::{
     store_path::{StorePathMachine, StorePathState},
     Machine, TransitionResult,
 };
 
-pub struct ModelChecker<M, P>
+pub struct ModelChecker<'s, M, P>
 where
     M: Machine,
     P: Display + Clone,
 {
-    buchi: BuchiAutomaton<M::State, P>,
+    buchi: BuchiAutomaton<'s, M::State, P>,
     machine: StorePathMachine<M>,
 }
 
@@ -33,10 +33,11 @@ where
  █████░███ █████░░████████░░██████  ████ █████ █████ ████ █████░░██████
 ░░░░░ ░░░ ░░░░░  ░░░░░░░░  ░░░░░░  ░░░░ ░░░░░ ░░░░░ ░░░░ ░░░░░  ░░░░░░   */
 
-impl<M, P> Machine for ModelChecker<M, P>
+impl<'s, M, P> Machine for ModelChecker<'s, M, P>
 where
     M: Machine,
-    M::State: Propositions<P> + Clone + Debug + Eq + Hash,
+    M::State: Clone + Debug + Eq + Hash + 's,
+    Pair<'s, M::State>: Propositions<P> + 's,
     M::Action: Clone + Debug,
     P: Display + Clone,
 {
@@ -48,20 +49,22 @@ where
     fn transition(&self, state: Self::State, action: Self::Action) -> TransitionResult<Self> {
         let ModelCheckerState { state, buchi } = state;
 
+        let prev = state.state.clone();
+
+        let (next, fx) = self
+            .machine
+            .transition(state, action)
+            .map_err(ModelCheckerTransitionError::MachineError)?;
+
         let buchi_next = self
             .buchi
-            .transition_(buchi, state.state.clone())
+            .transition_(buchi, &(&prev, &next))
             .map_err(|error| {
                 ModelCheckerTransitionError::BuchiError(ModelCheckerBuchiError {
                     error,
                     path: state.path.clone(),
                 })
             })?;
-
-        let (next, fx) = self
-            .machine
-            .transition(state, action)
-            .map_err(ModelCheckerTransitionError::MachineError)?;
 
         let next = ModelCheckerState {
             state: next,

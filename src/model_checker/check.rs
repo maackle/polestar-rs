@@ -5,10 +5,11 @@ use crate::traversal::{traverse, TraversalConfig, TraversalGraphingConfig, Trave
 
 use super::*;
 
-impl<M, P> ModelChecker<M, P>
+impl<'s, M, P> ModelChecker<'s, M, P>
 where
     M: Machine + Send + Sync + 'static,
-    M::State: Clone + Debug + Eq + Hash + Propositions<P> + Send + Sync + 'static,
+    M::State: Clone + Debug + Eq + Hash + Send + Sync + 'static,
+    Pair<'s, M::State>: Propositions<P>,
     M::Action: Clone + Debug + Eq + Hash + Exhaustive + Send + Sync + 'static,
     M::Error: Send + Sync + 'static,
     P: Display + Clone + Send + Sync + 'static,

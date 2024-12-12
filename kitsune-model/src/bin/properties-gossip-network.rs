@@ -3,6 +3,7 @@ use exhaustive::*;
 use itertools::Itertools;
 use kitsune_model::gossip::gossip_network::*;
 use kitsune_model::gossip::gossip_node::*;
+use polestar::logic::Propositions;
 use polestar::machine::checked::Predicate as P;
 use polestar::prelude::*;
 use polestar::traversal::TraversalConfig;
@@ -41,6 +42,14 @@ fn main() {
         s.nodes.get(&n).unwrap().peers.get(&p).unwrap()
     }
 
+    #[derive(Debug, Clone, Copy, derive_more::Display)]
+    #[display("Prop({:?})", _0)]
+    enum Prop {
+        Premature(N, N),
+        TimeDecreases(N, N),
+        Ready(N, N),
+    }
+
     let ready = |n: N, p: N| {
         assert_ne!(n, p);
         P::atom(format!("ready({n},{p})"), move |s: &GossipState<N>| {
@@ -73,6 +82,16 @@ fn main() {
             a.phase != b.phase || b.timer <= a.timer
         })
     };
+
+    impl Propositions<Prop> for GossipState<N> {
+        fn eval(&self, prop: &Prop) -> bool {
+            match prop {
+                Prop::Premature(n, p) => premature(n, p),
+                Prop::TimeDecreases(n, p) => time_decreases(n, p),
+                Prop::Ready(n, p) => ready(n, p),
+            }
+        }
+    }
 
     let safety = pairs
         .iter()

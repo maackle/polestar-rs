@@ -9,29 +9,29 @@ use std::{
 use anyhow::anyhow;
 
 use crate::{
-    logic::{LogicPredicate, PropMap, Propositions},
+    logic::{LogicPredicate, Pair, PropMap, Propositions},
     Machine, TransitionResult,
 };
 
 #[derive(Debug)]
-pub struct BuchiAutomaton<S, P> {
+pub struct BuchiAutomaton<'s, S, P> {
     pub states: HashMap<StateName, Arc<BuchiState>>,
     propmap: PropMap<P>,
-    phantom: PhantomData<S>,
+    phantom: PhantomData<&'s S>,
 }
 
-impl<S, P> Machine for BuchiAutomaton<S, P>
+impl<'s, S, P> Machine for BuchiAutomaton<'s, S, P>
 where
-    S: Propositions<P>,
+    Pair<'s, S>: Propositions<P> + 's,
     P: Display + Clone,
 {
     type State = BuchiPaths;
-    type Action = S;
+    type Action = Pair<'s, S>;
     type Error = BuchiError;
     type Fx = ();
 
     fn transition(&self, state: Self::State, action: Self::Action) -> TransitionResult<Self> {
-        let props = self.propmap.bind(&action);
+        let props = self.propmap.bind(action);
         let next = state
             .0
             .into_iter()
@@ -77,7 +77,7 @@ pub enum BuchiError {
     LtlError(anyhow::Error),
 }
 
-impl<S, P> BuchiAutomaton<S, P> {
+impl<'s, S, P> BuchiAutomaton<'s, S, P> {
     pub fn from_ltl(propmap: PropMap<P>, ltl_str: &str) -> Self {
         let promela = Command::new("ltl3ba")
             .args(["-f", &format!("{ltl_str}")])
@@ -267,9 +267,9 @@ accept_S10:
 	:: (!open) -> goto accept_S10
 	fi;
 }
-
         "#;
-        let machine = BuchiAutomaton::<()>::from_promela(promela);
+        let propmap = PropMap::new(["open", "call", "at-floor"]);
+        let machine = BuchiAutomaton::<(), String>::from_promela(propmap, promela);
         dbg!(&machine);
     }
 }
