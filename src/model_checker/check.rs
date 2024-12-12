@@ -5,12 +5,13 @@ use crate::traversal::{traverse, TraversalConfig, TraversalGraphingConfig, Trave
 
 use super::*;
 
-impl<M> ModelChecker<M>
+impl<M, P> ModelChecker<M, P>
 where
     M: Machine + Send + Sync + 'static,
-    M::State: Clone + Debug + Eq + Hash + Propositions + Send + Sync + 'static,
+    M::State: Clone + Debug + Eq + Hash + Propositions<P> + Send + Sync + 'static,
     M::Action: Clone + Debug + Eq + Hash + Exhaustive + Send + Sync + 'static,
-    M::Error: Clone + Debug + Eq + Hash + Send + Sync + 'static,
+    M::Error: Send + Sync + 'static,
+    P: Display + Clone + Send + Sync + 'static,
 {
     pub fn check(self, initial: M::State) -> Result<TraversalReport, ModelCheckerError<M>> {
         let config = TraversalConfig::builder()

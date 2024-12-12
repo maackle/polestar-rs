@@ -346,7 +346,7 @@ mod tests {
     use polestar::{
         diagram::exhaustive::write_dot_state_diagram_mapped,
         id::{IdUnit, UpTo},
-        logic::Propositions,
+        logic::{PropMap, Propositions},
         machine::checked::Predicate,
         model_checker::ModelChecker,
         traversal::TraversalConfig,
@@ -362,6 +362,7 @@ mod tests {
         type A = UpTo<2>;
         type T = UpTo<1>;
 
+        #[derive(Clone)]
         enum Prop {
             OpAwaiting(OpId<A, T>, A),
             ActionAwaiting(A, A),
@@ -372,8 +373,8 @@ mod tests {
         impl std::fmt::Display for Prop {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match self {
-                    Prop::AwaitingOp(o, d) => write!(f, "{o}_awaits_{d}"),
-                    Prop::AwaitingAction(o, a) => write!(f, "{o}_awaits_{a}"),
+                    Prop::OpAwaiting(o, d) => write!(f, "{o}_awaits_{d}"),
+                    Prop::ActionAwaiting(o, a) => write!(f, "{o}_awaits_{a}"),
                     Prop::OpIntegrated(o) => write!(f, "integrated_{o}"),
                     Prop::ActionIntegrated(a) => write!(f, "integrated_{a}"),
                 }
@@ -383,12 +384,12 @@ mod tests {
         impl Propositions<Prop> for OpFamilyState<A, T> {
             fn eval(&self, prop: &Prop) -> bool {
                 match prop {
-                    Prop::OpAwaiting(o, d) => self
+                    Prop::OpAwaiting(o, b) => self
                         .get(&o)
-                        .map(|p| matches!(p, OpFamilyPhase::Awaiting(_, d) if *d == b))
+                        .map(|p| matches!(p, OpFamilyPhase::Awaiting(_, d) if d == b))
                         .unwrap_or(false),
 
-                    Prop::ActionAwaiting(o, a) => self.all_awaiting(a).any(|d| d == b),
+                    Prop::ActionAwaiting(a, b) => self.all_awaiting(*a).any(|d| d == *b),
 
                     Prop::OpIntegrated(o) => self
                         .get(&o)
@@ -399,7 +400,7 @@ mod tests {
 
                     Prop::ActionIntegrated(a) => T::iter_exhaustive(None)
                         .map(|t| {
-                            let o = OpId(a, t);
+                            let o = OpId(*a, t);
                             self.get(&o)
                                 .map(|p| {
                                     matches!(
@@ -415,44 +416,42 @@ mod tests {
             }
         }
 
+        let propmap = PropMap::new(<OpId<A, T>>::iter_exhaustive(None).flat_map(|o| {
+            A::iter_exhaustive(None).flat_map(move |b| {
+                if o.0 == b {
+                    vec![]
+                } else {
+                    vec![
+                        Prop::OpAwaiting(o, b),
+                        Prop::ActionAwaiting(b, o.0),
+                        Prop::OpIntegrated(o),
+                        Prop::ActionIntegrated(b),
+                    ]
+                }
+            })
+        }));
+
         let machine: OpFamilyMachine<A, T> = OpFamilyMachine::new();
 
-        let predicates = <OpId<A, T>>::iter_exhaustive(None)
+        let ltl = <OpId<A, T>>::iter_exhaustive(None)
             .flat_map(|o| {
                 A::iter_exhaustive(None).flat_map(move |b| {
-                    if o.0 == b {
-                        vec![]
-                    } else {
-                        // let all_b = T::iter_exhaustive(None).map(|t| OpId(b, t)).reduce(P::)
-                        vec![
-                            P::always(op_awaiting(o, b).implies(P::not(dep_any_awaiting(b, o.0)))),
-                            P::always(op_awaiting(o, b).implies(P::always(
-                                op_integrated(o).implies(action_integrated(b)),
-                            ))),
-                        ]
-                    }
+                    let ow = Prop::OpAwaiting(o, b);
+                    let aw = Prop::ActionAwaiting(b, o.0);
+                    let oi = Prop::OpIntegrated(o);
+                    let ai = Prop::ActionIntegrated(b);
+                    vec![
+                        format!("G {ow} -> !{aw}"),
+                        format!("G {ow} -> (G {oi} -> {ai} )"),
+                    ]
                 })
             })
-            .collect_vec();
+            .join("&&");
 
-        dbg!(&predicates);
+        let initial = machine.initial();
+        let checker = ModelChecker::new(machine.clone(), propmap, &ltl);
 
-        let checker = ModelChecker::new(machine.clone());
-        let checker = machine.clone().checked().with_predicates(predicates);
-        let initial = checker.initial(machine.initial());
-
-        if let Err(err) = traverse_checked(
-            checker,
-            initial,
-            TraversalConfig {
-                ..Default::default()
-            },
-            Some,
-        ) {
-            eprintln!("{:#?}", err.path);
-            eprintln!("{}", err.error);
-            panic!("properties failed");
-        }
+        checker.check(initial).unwrap();
     }
 
     #[test]

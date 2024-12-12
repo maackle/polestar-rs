@@ -5,7 +5,6 @@ use kitsune_model::gossip::gossip_network::*;
 use kitsune_model::gossip::gossip_node::*;
 use polestar::machine::checked::Predicate as P;
 use polestar::prelude::*;
-use polestar::traversal::traverse_checked;
 use polestar::traversal::TraversalConfig;
 use tracing::Level;
 

@@ -52,8 +52,8 @@ impl Machine for TestMachine2 {
 }
 
 impl Propositions for u8 {
-    fn eval(&self, p: &str) -> bool {
-        match p {
+    fn eval(&self, p: &String) -> bool {
+        match p.as_str() {
             "even" => self % 2 == 0,
             "max" => *self == (MODULO - 1) as u8,
             "is1" => *self == 1,

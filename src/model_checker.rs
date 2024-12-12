@@ -4,21 +4,23 @@ mod check;
 #[cfg(test)]
 mod tests;
 
+use std::fmt::Display;
 use std::{fmt::Debug, hash::Hash};
 
 use buchi::*;
 
-use crate::logic::Propositions;
+use crate::logic::{PropMap, Propositions};
 use crate::machine::{
     store_path::{StorePathMachine, StorePathState},
     Machine, TransitionResult,
 };
 
-pub struct ModelChecker<M>
+pub struct ModelChecker<M, P>
 where
     M: Machine,
+    P: Display + Clone,
 {
-    buchi: BuchiAutomaton<M::State>,
+    buchi: BuchiAutomaton<M::State, P>,
     machine: StorePathMachine<M>,
 }
 
@@ -31,11 +33,12 @@ where
  █████░███ █████░░████████░░██████  ████ █████ █████ ████ █████░░██████
 ░░░░░ ░░░ ░░░░░  ░░░░░░░░  ░░░░░░  ░░░░ ░░░░░ ░░░░░ ░░░░ ░░░░░  ░░░░░░   */
 
-impl<M> Machine for ModelChecker<M>
+impl<M, P> Machine for ModelChecker<M, P>
 where
     M: Machine,
-    M::State: Propositions + Clone + Debug + Eq + Hash,
+    M::State: Propositions<P> + Clone + Debug + Eq + Hash,
     M::Action: Clone + Debug,
+    P: Display + Clone,
 {
     type State = ModelCheckerState<M>;
     type Action = M::Action;
@@ -72,14 +75,15 @@ where
     }
 }
 
-impl<M> ModelChecker<M>
+impl<M, P> ModelChecker<M, P>
 where
     M: Machine,
     M::State: Clone + Debug + Eq + Hash,
     M::Action: Clone + Debug,
+    P: Display + Clone,
 {
-    pub fn new(machine: M, ltl: &str) -> Self {
-        let buchi = BuchiAutomaton::from_ltl(ltl);
+    pub fn new(machine: M, propmap: PropMap<P>, ltl: &str) -> Self {
+        let buchi = BuchiAutomaton::from_ltl(propmap, ltl);
         Self {
             buchi,
             machine: StorePathMachine::from(machine),

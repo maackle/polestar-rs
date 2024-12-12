@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Display, marker::PhantomData};
+use std::{collections::HashMap, fmt::Display, sync::Arc};
 
 mod promela_parser;
 
@@ -18,7 +18,7 @@ pub enum LogicPredicate {
 type BoxPredicate = Box<LogicPredicate>;
 
 impl LogicPredicate {
-    pub fn eval(&self, props: &impl Propositions) -> bool {
+    pub fn eval(&self, props: &impl Propositions<String>) -> bool {
         match self {
             LogicPredicate::True => true,
             LogicPredicate::False => false,
@@ -100,39 +100,46 @@ impl<B: std::borrow::Borrow<str> + std::str::FromStr + std::fmt::Display> Propos
     }
 }
 
-pub struct PropositionClosures<S, P> {
-    closures: HashMap<String, Box<dyn for<'a> Fn(&'a S, &'a P) -> bool + 'static>>,
-}
+#[derive(Clone, Debug)]
+pub struct PropMap<P>(Arc<HashMap<String, P>>);
 
-impl<S, P> PropositionClosures<S, P>
+impl<P> PropMap<P>
 where
-    P: Display,
-    S: Propositions<P>,
+    P: Display + Clone,
 {
-    pub fn new<'a>(ps: impl IntoIterator<Item = P> + 'a) -> Self {
-        let mut closures = HashMap::new();
+    pub fn new<'a>(ps: impl IntoIterator<Item = P>) -> Self {
+        let mut props = HashMap::new();
 
         for p in ps {
-            let f = Box::new(|state: &'a S, p: &'a P| state.eval(p));
-            closures.insert(p.to_string(), f);
+            let name = p
+                .to_string()
+                .replace(|ch: char| !(ch.is_alphanumeric() || ch == '_'), "_");
+            props.insert(name, p);
         }
-        Self { closures }
+        Self(Arc::new(props))
+    }
+
+    pub fn bind<'s, S: Propositions<P>>(&'s self, state: &'s S) -> PropositionBindings<'s, P, S> {
+        PropositionBindings {
+            props: self.clone(),
+            state,
+        }
     }
 }
 
-pub struct PropositionBindings<'s, P: Display, S> {
-    closures: PropositionClosures<P, S>,
+pub struct PropositionBindings<'s, P: Display, S: Propositions<P>> {
+    props: PropMap<P>,
     state: &'s S,
 }
 
-impl<'s, P: Display, S> Propositions<String> for PropositionBindings<'s, P, S> {
+impl<'s, P: Display, S: Propositions<P>> Propositions<String> for PropositionBindings<'s, P, S> {
     fn eval(&self, prop: &String) -> bool {
-        let f = self
-            .closures
-            .closures
+        let prop = self
+            .props
+            .0
             .get(prop)
             .unwrap_or_else(|| panic!("no closure for prop: {}", prop));
-        (f)(self.state, prop)
+        self.state.eval(prop)
     }
 }
 

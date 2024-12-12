@@ -4,8 +4,6 @@ use kitsune_model::gossip::gossip_node::*;
 use polestar::{
     diagram::exhaustive::*,
     id::{IdUnit, UpTo},
-    machine::checked::Predicate as P,
-    traversal::traverse_checked,
 };
 
 fn main() {

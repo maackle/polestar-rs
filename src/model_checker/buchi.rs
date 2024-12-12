@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeSet, HashMap},
-    fmt::Debug,
+    fmt::{Debug, Display},
     marker::PhantomData,
     process::Command,
     sync::Arc,
@@ -9,26 +9,29 @@ use std::{
 use anyhow::anyhow;
 
 use crate::{
-    logic::{LogicPredicate, Propositions},
+    logic::{LogicPredicate, PropMap, Propositions},
     Machine, TransitionResult,
 };
 
 #[derive(Debug)]
-pub struct BuchiAutomaton<P> {
+pub struct BuchiAutomaton<S, P> {
     pub states: HashMap<StateName, Arc<BuchiState>>,
-    phantom: PhantomData<P>,
+    propmap: PropMap<P>,
+    phantom: PhantomData<S>,
 }
 
-impl<P> Machine for BuchiAutomaton<P>
+impl<S, P> Machine for BuchiAutomaton<S, P>
 where
-    P: Propositions,
+    S: Propositions<P>,
+    P: Display + Clone,
 {
     type State = BuchiPaths;
-    type Action = P;
+    type Action = S;
     type Error = BuchiError;
     type Fx = ();
 
     fn transition(&self, state: Self::State, action: Self::Action) -> TransitionResult<Self> {
+        let props = self.propmap.bind(&action);
         let next = state
             .0
             .into_iter()
@@ -48,7 +51,7 @@ where
                         (predicates.len());
                         predicates
                             .iter()
-                            .filter_map(|(ltl, name)| ((ltl).eval(&action)).then_some(name))
+                            .filter_map(|(ltl, name)| ((ltl).eval(&props)).then_some(name))
                             .cloned()
                             .collect::<BTreeSet<_>>()
                     }
@@ -74,16 +77,16 @@ pub enum BuchiError {
     LtlError(anyhow::Error),
 }
 
-impl<P> BuchiAutomaton<P> {
-    pub fn from_ltl(ltl_str: &str) -> Self {
+impl<S, P> BuchiAutomaton<S, P> {
+    pub fn from_ltl(propmap: PropMap<P>, ltl_str: &str) -> Self {
         let promela = Command::new("ltl3ba")
             .args(["-f", &format!("{ltl_str}")])
             .output()
             .unwrap();
-        Self::from_promela(String::from_utf8_lossy(&promela.stdout).as_ref())
+        Self::from_promela(propmap, String::from_utf8_lossy(&promela.stdout).as_ref())
     }
 
-    pub fn from_promela(promela: &str) -> Self {
+    pub fn from_promela(propmap: PropMap<P>, promela: &str) -> Self {
         println!("{}", promela);
         let lines = promela.lines().collect::<Vec<_>>();
 
@@ -130,6 +133,7 @@ impl<P> BuchiAutomaton<P> {
 
         Self {
             states,
+            propmap,
             phantom: PhantomData,
         }
     }

@@ -1,13 +1,5 @@
-use std::collections::BTreeMap;
-use std::fmt::Display;
-
-use itertools::Itertools;
-use kitsune_model::gossip::gossip_network::*;
 use kitsune_model::gossip::gossip_node::*;
-use polestar::{
-    diagram::exhaustive::*, machine::checked::Predicate as P, prelude::*,
-    traversal::traverse_checked,
-};
+use polestar::{diagram::exhaustive::*, prelude::*};
 use tracing::Level;
 
 fn main() {
