@@ -12,11 +12,7 @@ use std::{
     },
 };
 
-use crate::{
-    machine::checked::{CheckerError, CheckerMachine, CheckerState, PredicateError},
-    util::first,
-    Machine,
-};
+use crate::{util::first, Machine};
 
 #[derive(derive_bounded::Clone, bon::Builder)]
 #[bounded_to(M::State)]
@@ -88,18 +84,6 @@ impl<M: Machine> Default for TraversalConfig<M> {
             is_fatal_error: None,
             graphing: None,
         }
-    }
-}
-
-impl<M: Machine> TraversalConfig<CheckerMachine<M>>
-where
-    M: Machine + Debug,
-    M::State: Clone + Debug,
-    M::Action: Clone + Debug,
-{
-    pub fn stop_on_checker_error(mut self) -> Self {
-        self.is_fatal_error = Some(Arc::new(|err| matches!(err, CheckerError::Predicate(_))));
-        self
     }
 }
 

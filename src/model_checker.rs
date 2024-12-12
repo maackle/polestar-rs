@@ -9,8 +9,7 @@ use std::{fmt::Debug, hash::Hash};
 use buchi::*;
 
 use crate::logic::Propositions;
-
-use super::{
+use crate::machine::{
     store_path::{StorePathMachine, StorePathState},
     Machine, TransitionResult,
 };

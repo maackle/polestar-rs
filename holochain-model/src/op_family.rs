@@ -347,7 +347,8 @@ mod tests {
         diagram::exhaustive::write_dot_state_diagram_mapped,
         id::{IdUnit, UpTo},
         machine::checked::Predicate,
-        traversal::{traverse_checked, TraversalConfig},
+        model_checker::ModelChecker,
+        traversal::TraversalConfig,
     };
 
     #[test]
@@ -375,12 +376,6 @@ mod tests {
                 s.all_awaiting(a).any(|d| d == b)
             })
         };
-
-        // let awaiting = |a: A, b: A| {
-        //     P::atom(format!("{a} awaits {b}"), move |s: &OpFamilyState<A, T>| {
-        //         s.find_awaiting(a).any(|dep| dep == b)
-        //     })
-        // };
 
         let op_integrated = |o: OpId<A, T>| {
             P::atom(format!("{o} integrated"), move |s: &OpFamilyState<A, T>| {
@@ -431,6 +426,7 @@ mod tests {
 
         dbg!(&predicates);
 
+        let checker = ModelChecker::new(machine.clone());
         let checker = machine.clone().checked().with_predicates(predicates);
         let initial = checker.initial(machine.initial());
 
