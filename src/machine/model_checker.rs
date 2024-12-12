@@ -1,5 +1,6 @@
 pub mod buchi;
 
+mod check;
 #[cfg(test)]
 mod tests;
 
@@ -39,7 +40,7 @@ where
 {
     type State = ModelCheckerState<M>;
     type Action = M::Action;
-    type Error = ModelCheckerError<M>;
+    type Error = ModelCheckerTransitionError<M>;
     type Fx = M::Fx;
 
     fn transition(&self, state: Self::State, action: Self::Action) -> TransitionResult<Self> {
@@ -48,15 +49,17 @@ where
         let buchi_next = self
             .buchi
             .transition_(buchi, state.state.clone())
-            .map_err(|error| ModelCheckerError::BuchiError {
-                error,
-                path: state.path.clone(),
+            .map_err(|error| {
+                ModelCheckerTransitionError::BuchiError(ModelCheckerBuchiError {
+                    error,
+                    path: state.path.clone(),
+                })
             })?;
 
         let (next, fx) = self
             .machine
             .transition(state, action)
-            .map_err(ModelCheckerError::MachineError)?;
+            .map_err(ModelCheckerTransitionError::MachineError)?;
 
         let next = ModelCheckerState {
             state: next,
@@ -98,15 +101,22 @@ where
 
 #[derive(derive_bounded::Debug)]
 #[bounded_to(M::Action, M::Error)]
-pub enum ModelCheckerError<M: Machine>
+pub enum ModelCheckerTransitionError<M: Machine>
 where
     M::Action: Clone,
 {
-    BuchiError {
-        error: BuchiError,
-        path: im::Vector<M::Action>,
-    },
+    BuchiError(ModelCheckerBuchiError<M>),
     MachineError(M::Error),
+}
+
+#[derive(derive_bounded::Debug)]
+#[bounded_to(M::Action)]
+pub struct ModelCheckerBuchiError<M: Machine>
+where
+    M::Action: Clone,
+{
+    error: BuchiError,
+    path: im::Vector<M::Action>,
 }
 
 /*        █████               █████

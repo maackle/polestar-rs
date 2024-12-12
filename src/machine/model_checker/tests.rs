@@ -118,7 +118,7 @@ fn model_checker_test() {
         .record_terminals(false)
         .trace_every(1000)
         .graphing(TraversalGraphingConfig::default())
-        .is_fatal_error(|e| !matches!(e, ModelCheckerError::MachineError(_)))
+        .is_fatal_error(|e| !matches!(e, ModelCheckerTransitionError::MachineError(_)))
         .visitor(|s: &ModelCheckerState<TestMachine2>, _| {
             // println!(
             //     "<:> {}: buchi {:?} path {:?}",

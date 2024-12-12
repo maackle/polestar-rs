@@ -3,9 +3,9 @@ use parking_lot::Mutex;
 use petgraph::graph::{DiGraph, NodeIndex};
 
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{HashMap, HashSet},
     fmt::Debug,
-    hash::{Hash, Hasher},
+    hash::Hash,
     sync::{
         atomic::{AtomicBool, AtomicUsize},
         Arc,
@@ -110,55 +110,6 @@ pub struct TraversalReport {
     pub num_errors: usize,
     pub total_steps: usize,
     pub time_taken: std::time::Duration,
-}
-
-// impl Default for TraversalReport {
-//     fn default() -> Self {
-//         Self {
-//             num_states: 0,
-//             num_terminations: 0,
-//             num_errors: 0,
-//             total_steps: 0,
-//         }
-//     }
-// }
-
-pub fn traverse_checked<M, S>(
-    machine: CheckerMachine<M>,
-    initial: CheckerState<M>,
-    config: TraversalConfig<CheckerMachine<M>>,
-    map_state: impl Fn(M::State) -> Option<S> + Send + Sync + 'static,
-) -> Result<TraversalReport, PredicateError<M>>
-where
-    M: Machine + Debug + Send + Sync + 'static,
-    M::State: Clone + Eq + Hash + Debug + Send + Sync + 'static,
-    M::Action: Exhaustive + Clone + Eq + Hash + Debug + Send + Sync + 'static,
-    M::Error: Debug + Send + Sync + 'static,
-    S: Clone + Eq + Hash + Debug + Send + Sync + 'static,
-{
-    let mut config = config.stop_on_checker_error();
-
-    config.visitor = Some(Arc::new(|s, visit_type| {
-        dbg!(&visit_type, &s, &s.state.path);
-        if matches!(visit_type, VisitType::Terminal | VisitType::LoopTerminal) {
-            s.clone().finalize().map_err(|error| {
-                CheckerError::Predicate(PredicateError {
-                    error,
-                    path: s.state.path.clone(),
-                })
-            })
-        } else {
-            Ok(())
-        }
-    }));
-
-    let (report, _, _) = traverse(machine, initial, config, move |s| map_state(s.state.state))
-        .map_err(|e| match e {
-            CheckerError::Predicate(e) => e,
-            CheckerError::Machine(_) => unreachable!(),
-        })?;
-
-    Ok(report)
 }
 
 pub fn traverse<M, S>(
