@@ -9,7 +9,7 @@ use std::{fmt::Debug, hash::Hash};
 
 use buchi::*;
 
-use crate::logic::{Pair, PropRegistry, Propositions};
+use crate::logic::{Pair, PropMapping, PropRegistry, Propositions};
 use crate::machine::{
     store_path::{StorePathMachine, StorePathState},
     Machine, TransitionResult,
@@ -18,7 +18,7 @@ use crate::machine::{
 pub struct ModelChecker<M, P>
 where
     M: Machine,
-    P: Display + Clone,
+    P: PropMapping,
 {
     buchi: BuchiAutomaton<M::State, P>,
     machine: StorePathMachine<M>,
@@ -37,9 +37,9 @@ impl<M, P> Machine for ModelChecker<M, P>
 where
     M: Machine,
     M::State: Clone + Debug + Eq + Hash,
-    Pair<M::State>: Propositions<P>,
     M::Action: Clone + Debug,
-    P: Display + Clone,
+    P: PropMapping,
+    Pair<M::State>: Propositions<P::Prop>,
 {
     type State = ModelCheckerState<M::State, M::Action>;
     type Action = M::Action;
@@ -86,9 +86,9 @@ where
     M: Machine,
     M::State: Clone + Debug + Eq + Hash,
     M::Action: Clone + Debug,
-    P: Display + Clone,
+    P: PropMapping,
 {
-    pub fn new(machine: M, propmap: PropRegistry<P>, ltl: &str) -> Self {
+    pub fn new(machine: M, propmap: P, ltl: &str) -> Self {
         let buchi = BuchiAutomaton::from_ltl(propmap, ltl);
         Self {
             buchi,

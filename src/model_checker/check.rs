@@ -9,10 +9,10 @@ impl<M, P> ModelChecker<M, P>
 where
     M: Machine + Send + Sync + 'static,
     M::State: Clone + Debug + Eq + Hash + Send + Sync + 'static,
-    Pair<M::State>: Propositions<P>,
     M::Action: Clone + Debug + Eq + Hash + Exhaustive + Send + Sync + 'static,
     M::Error: Send + Sync + 'static,
-    P: Display + Clone + Send + Sync + 'static,
+    P: PropMapping + Send + Sync + 'static,
+    Pair<M::State>: Propositions<P::Prop>,
 {
     pub fn check(self, initial: M::State) -> Result<TraversalReport, ModelCheckerError<M>> {
         self.check_mapped(initial, Some)

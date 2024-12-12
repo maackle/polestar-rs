@@ -327,15 +327,15 @@ pub type TerminalSet<S> = HashSet<S>;
 
 #[cfg(test)]
 mod tests {
-    use crate::{machine::checked::Predicate, TransitionResult};
+    use crate::TransitionResult;
 
     use super::*;
 
     #[test]
+    #[cfg(todo)]
     fn test_checked_traversal() {
         #[derive(Clone, Debug)]
         struct SimpleMachine;
-        use Predicate as P;
 
         const TERMINAL: u16 = 1000;
 

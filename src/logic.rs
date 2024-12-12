@@ -98,23 +98,26 @@ impl<B: std::borrow::Borrow<str> + std::str::FromStr + std::fmt::Display> Propos
     }
 }
 
-pub trait PropMapping<P> {
-    fn map(&self, name: &str) -> Option<P>;
+pub trait PropMapping {
+    type Prop;
+    
+    fn map(&self, name: &str) -> Option<Self::Prop>;
 
-    fn bind<S>(&self, states: Pair<S>) -> PropositionBindings<S, Self, P>
+    fn bind<S>(&self, states: Pair<S>) -> PropositionBindings<S, Self>
     where
         Self: Sized,
-        Pair<S>: Propositions<P>,
+        Pair<S>: Propositions<Self::Prop>,
     {
         PropositionBindings {
             props: self,
             states,
-            phantom: PhantomData,
         }
     }
 }
 
-impl PropMapping<String> for () {
+impl PropMapping for () {
+    type Prop = String;
+
     fn map(&self, name: &str) -> Option<String> {
         Some(name.to_string())
     }
@@ -123,8 +126,10 @@ impl PropMapping<String> for () {
 #[derive(Clone, Debug)]
 pub struct PropRegistry<P>(HashMap<String, P>);
 
-impl<P: Clone> PropMapping<P> for PropRegistry<P> {
-    fn map(&self, name: &str) -> Option<P> {
+impl<P: Clone> PropMapping for PropRegistry<P> {
+    type Prop = P;
+
+    fn map(&self, name: &str) -> Option<Self::Prop> {
         self.0.get(name).cloned()
     }
 }
@@ -160,20 +165,18 @@ where
     }
 }
 
-pub struct PropositionBindings<'p, S, M, P>
+pub struct PropositionBindings<'p, S, P>
 where
-    M: PropMapping<P>,
+    P: PropMapping,
 {
-    props: &'p M,
+    props: &'p P,
     states: Pair<S>,
-    phantom: PhantomData<P>,
 }
 
-impl<'p, S, M, P> Propositions<String> for PropositionBindings<'p, S, M, P>
+impl<'p, S, P> Propositions<String> for PropositionBindings<'p, S, P>
 where
-    Pair<S>: Propositions<P>,
-    M: PropMapping<P>,
-    P: Display,
+    P: PropMapping,
+    Pair<S>: Propositions<P::Prop>,
 {
     fn eval(&self, prop: &String) -> bool {
         let name = self

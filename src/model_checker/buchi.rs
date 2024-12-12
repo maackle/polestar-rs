@@ -14,20 +14,19 @@ use crate::{
 };
 
 #[derive(derive_more::Debug)]
-pub struct BuchiAutomaton<S, P, M: PropMapping<P>> {
+pub struct BuchiAutomaton<S, PM: PropMapping> {
     pub states: HashMap<StateName, Arc<BuchiState>>,
 
     #[debug(skip)]
-    propmap: M,
+    propmap: PM,
     #[debug(skip)]
     phantom: PhantomData<S>,
 }
 
-impl<S, P, M> Machine for BuchiAutomaton<S, P, M>
+impl<S, PM> Machine for BuchiAutomaton<S, PM>
 where
-    Pair<S>: Propositions<P>,
-    P: Display + Clone,
-    M: PropMapping<P>,
+    PM: PropMapping,
+    Pair<S>: Propositions<PM::Prop>,
 {
     type State = BuchiPaths;
     type Action = Pair<S>;
@@ -81,8 +80,8 @@ pub enum BuchiError {
     LtlError(anyhow::Error),
 }
 
-impl<S, P, M: PropMapping<P>> BuchiAutomaton<S, P, M> {
-    pub fn from_ltl(propmap: M, ltl_str: &str) -> Self {
+impl<S, PM: PropMapping> BuchiAutomaton<S, PM> {
+    pub fn from_ltl(propmap: PM, ltl_str: &str) -> Self {
         let promela = Command::new("ltl3ba")
             .args(["-f", &format!("{ltl_str}")])
             .output()
@@ -90,7 +89,7 @@ impl<S, P, M: PropMapping<P>> BuchiAutomaton<S, P, M> {
         Self::from_promela(propmap, String::from_utf8_lossy(&promela.stdout).as_ref())
     }
 
-    pub fn from_promela(propmap: M, promela: &str) -> Self {
+    pub fn from_promela(propmap: PM, promela: &str) -> Self {
         println!("{}", promela);
         let lines = promela.lines().collect::<Vec<_>>();
 
@@ -198,6 +197,8 @@ impl Debug for BuchiState {
 
 #[cfg(test)]
 mod tests {
+    use crate::logic::PropRegistry;
+
     use super::*;
 
     #[test]
@@ -272,8 +273,8 @@ accept_S10:
 	fi;
 }
         "#;
-        let propmap = PropRegistry::new(["open", "call", "at-floor"]).unwrap();
-        let machine = BuchiAutomaton::<(), String>::from_promela(propmap, promela);
+        let propmap = PropRegistry::<String>::new(["open", "call", "at-floor"]).unwrap();
+        let machine = BuchiAutomaton::<(), PropRegistry<String>>::from_promela(propmap, promela);
         dbg!(&machine);
     }
 }

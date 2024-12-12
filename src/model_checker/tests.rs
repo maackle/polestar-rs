@@ -100,7 +100,7 @@ fn model_checker_test() {
     let ltl = "G ( (is2 && X is6) -> G F is5)";
     let ltl = "G ( is1 -> (G F is5 || G F is3 || G F is8) )";
 
-    let machine = ModelChecker::new(TestMachine2, ltl);
+    let machine = ModelChecker::new(TestMachine2, (), ltl);
     let initial = machine.initial(1);
 
     // write_dot_state_diagram_mapped(
@@ -120,7 +120,7 @@ fn model_checker_test() {
         .trace_every(1000)
         .graphing(TraversalGraphingConfig::default())
         .is_fatal_error(|e| !matches!(e, ModelCheckerTransitionError::MachineError(_)))
-        .visitor(|s: &ModelCheckerState<TestMachine2>, _| {
+        .visitor(|s: &ModelCheckerState<u8, bool>, _| {
             // println!(
             //     "<:> {}: buchi {:?} path {:?}",
             //     &s.state.state, &s.buchi, s.state.path
@@ -134,7 +134,10 @@ fn model_checker_test() {
     let graph = graph.unwrap();
 
     {
-        let graph = graph.map(|_, n| Node(n.state.state, n.buchi.is_accepting()), |_, e| e);
+        let graph = graph.map(
+            |_, n: &ModelCheckerState<u8, bool>| Node(n.state, n.buchi.is_accepting()),
+            |_, e| e,
+        );
         crate::diagram::write_dot(
             "promela-verify.dot",
             &graph,
@@ -159,7 +162,7 @@ fn model_checker_test() {
             |_, n| {
                 n.iter()
                     .map(|s| {
-                        let tup = (s.state.state, &s.buchi);
+                        let tup = (s.pathstate.state, &s.buchi);
                         format!("{tup:?}")
                     })
                     .collect_vec()
@@ -180,7 +183,7 @@ fn model_checker_test() {
         let scc = condensed.node_weight(index).unwrap();
         let accepting = scc.iter().any(|n| n.buchi.is_accepting());
         if !accepting {
-            let mut paths = scc.iter().map(|n| n.state.path.clone()).collect_vec();
+            let mut paths = scc.iter().map(|n| n.pathstate.path.clone()).collect_vec();
             paths.sort();
             dbg!(&paths);
             panic!("non-accepting SCC found");
