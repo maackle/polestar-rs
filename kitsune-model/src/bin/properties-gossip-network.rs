@@ -17,7 +17,7 @@ fn main() {
         .with_max_level(Level::DEBUG)
         .init();
 
-    type N = UpTo<2>;
+    type N = UpTo<3>;
 
     let machine = GossipMachine::<N>::new();
 
@@ -114,89 +114,90 @@ fn main() {
 
     let checker = ModelChecker::new(machine, propmap, &ltl).unwrap();
 
-    {
-        let config = polestar::traversal::TraversalConfig::builder()
-            .max_depth(1)
-            .graphing(Default::default())
-            .build();
-        let (_, graph, _) = polestar::traversal::traverse(
-            checker.clone(),
-            checker.initial(initial.clone()),
-            config,
-            Some,
-        )
-        .unwrap();
+    // {
+    //     let config = polestar::traversal::TraversalConfig::builder()
+    //         .max_depth(1)
+    //         .graphing(Default::default())
+    //         .build();
+    //     let (_, graph, _) = polestar::traversal::traverse(
+    //         checker.clone(),
+    //         checker.initial(initial.clone()),
+    //         config,
+    //         Some,
+    //     )
+    //     .unwrap();
 
-        let mapstate = |state: &GossipState<N>| {
-            let lines = state
-                .nodes
-                .iter()
-                .map(|(n, s)| {
-                    let s = NodeStateSimple::new(true, &s);
-                    format!("{s}")
-                        .split('\n')
-                        .filter_map(|l| (!l.is_empty()).then_some(format!("{n}↤{l}")))
-                        .join("\n")
-                })
-                .collect_vec()
-                .join("\n");
-            format!("{lines}\n")
-        };
+    //     let mapstate = |state: &GossipState<N>| {
+    //         let lines = state
+    //             .nodes
+    //             .iter()
+    //             .map(|(n, s)| {
+    //                 let s = NodeStateSimple::new(true, &s);
+    //                 format!("{s}")
+    //                     .split('\n')
+    //                     .filter_map(|l| (!l.is_empty()).then_some(format!("{n}↤{l}")))
+    //                     .join("\n")
+    //             })
+    //             .collect_vec()
+    //             .join("\n");
+    //         format!("{lines}\n")
+    //     };
 
-        let graph = graph.unwrap().map(
-            |_, n| format!("{}\n{}", n.buchi.is_accepting(), mapstate(&n.state)),
-            |_, GossipAction(node, action)| {
-                format!("{node}: {}", NodeAction::<N, IdUnit>::from(action.clone()))
-            },
-        );
+    //     let graph = graph.unwrap().map(
+    //         |_, n| format!("{}\n{}", n.buchi.is_accepting(), mapstate(&n.state)),
+    //         |_, GossipAction(node, action)| {
+    //             format!("{node}: {}", NodeAction::<N, IdUnit>::from(action.clone()))
+    //         },
+    //     );
 
-        polestar::diagram::write_dot("out.dot", &graph, &[]);
-    }
+    //     polestar::diagram::write_dot("out.dot", &graph, &[]);
+    // }
 
-    let result = checker.check(initial);
-    // let result = checker.check_mapped(initial, |s| {
-    //     let view = s
-    //         .nodes
-    //         .into_iter()
-    //         .map(|(n, ns)| {
-    //             let ns: Vec<_> = ns
-    //                 .peers
-    //                 .into_iter()
-    //                 .map(|(p, peer)| {
-    //                     (
-    //                         p,
-    //                         peer.timer,
-    //                         match peer.phase {
-    //                             PeerPhase::Ready => 1,
-    //                             PeerPhase::Active => 2,
-    //                             PeerPhase::Closed(outcome) => 3 + outcome.ticks(),
-    //                         },
-    //                     )
-    //                 })
-    //                 .collect();
-    //             (n, ns)
-    //         })
-    //         .collect_vec();
-    //     Some(view)
-    // });
-
-    if let Err(e) = &result {
-        match e {
-            ModelCheckerError::Safety {
-                path,
-                states: (cur, next),
-            } => {
-                let machine = GossipMachine::<N>::new();
-                let initial = machine.initial();
-                machine
-                    .apply_each_action(initial, path.clone(), |action, state| {
-                        dbg!(state);
+    // let result = checker.check(initial);
+    let result = checker.check_mapped(initial, |s| {
+        let view = s
+            .nodes
+            .into_iter()
+            .map(|(n, ns)| {
+                let ns: Vec<_> = ns
+                    .peers
+                    .into_iter()
+                    .map(|(p, peer)| {
+                        (
+                            p,
+                            peer.timer,
+                            match peer.phase {
+                                PeerPhase::Ready => 1,
+                                PeerPhase::Active => 2,
+                                PeerPhase::Closed(outcome) => 3 + outcome.ticks(),
+                            },
+                        )
                     })
-                    .unwrap();
-            }
-            ModelCheckerError::Liveness { paths } => {}
-        }
-    }
+                    .collect();
+                (n, ns)
+            })
+            .collect_vec();
+        Some(view)
+    });
+
+    // if let Err(e) = &result {
+    //     match e {
+    //         ModelCheckerError::Safety {
+    //             path,
+    //             states: (cur, next),
+    //         } => {
+    //             let machine = GossipMachine::<N>::new();
+    //             let initial = machine.initial();
+    //             machine
+    //                 .apply_each_action(initial, path.clone(), |action, state| {
+    //                     dbg!(state);
+    //                 })
+    //                 .unwrap();
+    //         }
+    //         ModelCheckerError::Liveness { paths } => {}
+    //     }
+    // }
+
     polestar::model_checker::model_checker_report(result);
 
     println!("properties satisfied:\n\n{}\n", display_predicates);
