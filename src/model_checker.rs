@@ -68,7 +68,7 @@ where
             .map_err(|error| {
                 ModelCheckerTransitionError::BuchiError(ModelCheckerBuchiError {
                     error,
-                    path: state.path.clone(),
+                    path: next.path.clone(),
                     states: (prev, next.state.clone()),
                 })
             })?;
