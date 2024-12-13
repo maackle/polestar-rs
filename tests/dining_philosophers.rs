@@ -205,15 +205,15 @@ fn test_dining_philosophers() {
     let dining_philosophers = State::default();
 
     let traversal_config = TraversalConfig::builder()
-        .graphing(
-            TraversalGraphingConfig::builder()
-                .ignore_loopbacks(true)
-                .build(),
-        )
+        .graphing(TraversalGraphingConfig {
+            ignore_loopbacks: true,
+            ..Default::default()
+        })
         .build();
 
     let (report, graph, _) =
-        traverse::<Model, State>(Model, dining_philosophers, traversal_config, Some).unwrap();
+        traverse::<Model, State>(Model.into(), dining_philosophers, traversal_config, Some)
+            .unwrap();
 
     {
         let graph = graph.unwrap().map(

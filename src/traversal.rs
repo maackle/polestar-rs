@@ -90,7 +90,7 @@ pub struct TraversalReport {
 }
 
 pub fn traverse<M, S>(
-    machine: M,
+    machine: Arc<M>,
     initial: M::State,
     config: TraversalConfig<M>,
     map_state: impl Fn(M::State) -> Option<S> + Send + Sync + 'static,
@@ -109,8 +109,6 @@ where
     M::Error: Debug + Send + Sync + 'static,
     S: Clone + Eq + Hash + Debug + Send + Sync + 'static,
 {
-    let machine = Arc::new(machine);
-
     let terminals: Arc<Mutex<TerminalSet<M::State>>> = Arc::new(Mutex::new(HashSet::new()));
     let loop_terminals: Arc<Mutex<TerminalSet<M::State>>> = Arc::new(Mutex::new(HashSet::new()));
     let visited_states: Arc<Mutex<HashMap<S, NodeIndex>>> = Arc::new(Mutex::new(HashMap::new()));

@@ -7,6 +7,7 @@ use polestar::logic::Pair;
 use polestar::logic::PropRegistry;
 use polestar::logic::Propositions;
 use polestar::model_checker::ModelChecker;
+use polestar::model_checker::ModelCheckerError;
 use polestar::prelude::*;
 use polestar::traversal::TraversalGraphingConfig;
 use tracing::Level;
@@ -97,9 +98,9 @@ fn main() {
                 let premature = propmap.add(Prop::Premature(n, p)).unwrap();
                 let time_decreases = propmap.add(Prop::TimeDecreases(n, p)).unwrap();
                 [
-                    format!("G !{premature}"),
+                    // format!("G !{premature}"),
                     format!("G {time_decreases}"),
-                    format!("G F {ready}"),
+                    // format!("G F {ready}"),
                 ]
             })
         })
@@ -113,38 +114,87 @@ fn main() {
 
     {
         let config = polestar::traversal::TraversalConfig::builder()
+            .max_depth(1)
             .graphing(Default::default())
             .build();
-        polestar::traversal::traverse(checker.clone(), checker.initial(initial), config, Some)
-            .unwrap();
+        let (_, graph, _) = polestar::traversal::traverse(
+            checker.clone(),
+            checker.initial(initial.clone()),
+            config,
+            Some,
+        )
+        .unwrap();
+
+        let mapstate = |state: &GossipState<N>| {
+            let lines = state
+                .nodes
+                .iter()
+                .map(|(n, s)| {
+                    let s = NodeStateSimple::new(true, &s);
+                    format!("{s}")
+                        .split('\n')
+                        .filter_map(|l| (!l.is_empty()).then_some(format!("{n}↤{l}")))
+                        .join("\n")
+                })
+                .collect_vec()
+                .join("\n");
+            format!("{lines}\n")
+        };
+
+        let graph = graph.unwrap().map(
+            |_, n| format!("{}\n{}", n.buchi.is_accepting(), mapstate(&n.state)),
+            |_, GossipAction(node, action)| {
+                format!("{node}: {}", NodeAction::<N, IdUnit>::from(action.clone()))
+            },
+        );
+
+        polestar::diagram::write_dot("out.dot", &graph, &[]);
     }
 
-    let result = checker.check_mapped(initial, |s| {
-        let view = s
-            .nodes
-            .into_iter()
-            .map(|(n, ns)| {
-                let ns: Vec<_> = ns
-                    .peers
-                    .into_iter()
-                    .map(|(p, peer)| {
-                        (
-                            p,
-                            peer.timer,
-                            match peer.phase {
-                                PeerPhase::Ready => 1,
-                                PeerPhase::Active => 2,
-                                PeerPhase::Closed(outcome) => 3 + outcome.ticks(),
-                            },
-                        )
-                    })
-                    .collect();
-                (n, ns)
-            })
-            .collect_vec();
-        Some(view)
-    });
+    let result = checker.check(initial);
+    // let result = checker.check_mapped(initial, |s| {
+    //     let view = s
+    //         .nodes
+    //         .into_iter()
+    //         .map(|(n, ns)| {
+    //             let ns: Vec<_> = ns
+    //                 .peers
+    //                 .into_iter()
+    //                 .map(|(p, peer)| {
+    //                     (
+    //                         p,
+    //                         peer.timer,
+    //                         match peer.phase {
+    //                             PeerPhase::Ready => 1,
+    //                             PeerPhase::Active => 2,
+    //                             PeerPhase::Closed(outcome) => 3 + outcome.ticks(),
+    //                         },
+    //                     )
+    //                 })
+    //                 .collect();
+    //             (n, ns)
+    //         })
+    //         .collect_vec();
+    //     Some(view)
+    // });
 
+    if let Err(e) = &result {
+        match e {
+            ModelCheckerError::Safety {
+                path,
+                states: (cur, next),
+            } => {
+                let machine = GossipMachine::<N>::new();
+                let initial = machine.initial();
+                machine
+                    .apply_each_action(initial, path.clone(), |action, state| {
+                        dbg!(state);
+                    })
+                    .unwrap();
+            }
+            ModelCheckerError::Liveness { paths } => {}
+        }
+    }
     polestar::model_checker::model_checker_report(result);
 
     println!("properties satisfied:\n\n{}\n", display_predicates);

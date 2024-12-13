@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use exhaustive::Exhaustive;
 use itertools::Itertools;
 
@@ -14,12 +16,15 @@ where
     P: PropMapping + Send + Sync + 'static,
     Pair<M::State>: Propositions<P::Prop>,
 {
-    pub fn check(self, initial: M::State) -> Result<TraversalReport, ModelCheckerError<M>> {
+    pub fn check(
+        self: Arc<Self>,
+        initial: M::State,
+    ) -> Result<TraversalReport, ModelCheckerError<M>> {
         self.check_mapped(initial, Some)
     }
 
     pub fn check_mapped<S>(
-        self,
+        self: Arc<Self>,
         initial: M::State,
         map_state: impl Fn(M::State) -> Option<S> + Send + Sync + 'static,
     ) -> Result<TraversalReport, ModelCheckerError<M>>
@@ -36,15 +41,8 @@ where
         let initial = self.initial(initial);
 
         // Replace just the innermost state type, keeping the rest the same
-        let map_state = move |mcs: ModelCheckerState<M::State, M::Action>| {
-            let path = mcs.pathstate.path;
-            let state = map_state(mcs.pathstate.state)?;
-            let pathstate = StorePathState::<S, M::Action> { state, path };
-            Some(ModelCheckerState {
-                pathstate,
-                buchi: mcs.buchi,
-            })
-        };
+        let map_state =
+            move |mcs: ModelCheckerState<M::State, M::Action>| mcs.map_state(&map_state);
 
         match traverse(self, initial, config, map_state) {
             Ok((report, graph, _)) => {

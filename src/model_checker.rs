@@ -5,6 +5,7 @@ pub use check::*;
 #[cfg(test)]
 mod tests;
 
+use std::sync::Arc;
 use std::{fmt::Debug, hash::Hash};
 
 use buchi::*;
@@ -91,12 +92,12 @@ where
     M::Action: Clone + Debug,
     P: PropMapping,
 {
-    pub fn new(machine: M, propmap: P, ltl: &str) -> anyhow::Result<Self> {
+    pub fn new(machine: M, propmap: P, ltl: &str) -> anyhow::Result<Arc<Self>> {
         let buchi = BuchiAutomaton::from_ltl(propmap, ltl)?;
-        Ok(Self {
+        Ok(Arc::new(Self {
             buchi,
             machine: StorePathMachine::from(machine),
-        })
+        }))
     }
 
     pub fn initial(&self, state: M::State) -> ModelCheckerState<M::State, M::Action> {
@@ -155,9 +156,9 @@ where
     A: Clone + Debug,
 {
     #[deref]
-    pathstate: StorePathState<S, A>,
+    pub pathstate: StorePathState<S, A>,
     #[debug(skip)]
-    buchi: BuchiPaths,
+    pub buchi: BuchiPaths,
 }
 
 // NB: regrettably we can't easily derive Hash because ModelChecker is not Hash,
@@ -184,5 +185,18 @@ where
             pathstate: StorePathState::new(state),
             buchi: BuchiPaths(buchi_states.into_iter().collect()),
         }
+    }
+
+    pub fn map_state<SS>(self, f: impl FnOnce(S) -> Option<SS>) -> Option<ModelCheckerState<SS, A>>
+    where
+        SS: Clone + Debug + Eq + Hash,
+    {
+        let path = self.pathstate.path;
+        let state = f(self.pathstate.state)?;
+        let pathstate = StorePathState::<SS, A> { state, path };
+        Some(ModelCheckerState {
+            pathstate,
+            buchi: self.buchi,
+        })
     }
 }

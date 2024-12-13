@@ -15,6 +15,8 @@ struct TestMachine1;
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 struct TestMachine2;
 
+const LOOP: u8 = 4;
+
 impl Machine for TestMachine1 {
     type State = u8;
     type Action = ();
@@ -33,15 +35,16 @@ impl Machine for TestMachine2 {
     type Action = bool;
 
     fn transition(&self, state: Self::State, bump: Self::Action) -> TransitionResult<Self> {
-        let group = state / 4;
-        let next = if state < 3 {
-            if bump {
+        let n = LOOP;
+        let next = if state < n {
+            if bump && state != n - 1 {
                 state + 1
             } else {
-                state * 4
+                state * n
             }
         } else {
-            (group * 4) + ((state + 1) % 3)
+            let group = state / n;
+            (group * n) + ((state + 1) % n)
         };
         Ok((next, ()))
     }
@@ -53,10 +56,13 @@ impl Machine for TestMachine2 {
 
 impl Propositions<String> for Pair<u8> {
     fn eval(&self, p: &String) -> bool {
-        let s = &self.0;
+        let (s, ss) = &self;
         match p.as_str() {
             "even" => s % 2 == 0,
             "max" => *s == (MODULO - 1) as u8,
+            "building" => *s < 4,
+            "loopmin" => *s % LOOP == 0,
+            "increasing" => *s < *ss,
             "is1" => *s == 1,
             "is2" => *s == 2,
             "is3" => *s == 3,
@@ -99,6 +105,8 @@ fn model_checker_test() {
     // true positives:
     let ltl = "G ( (is2 && X is6) -> G F is5)";
     let ltl = "G ( is1 -> (G F is5 || G F is3 || G F is8) )";
+
+    let ltl = "G ( increasing || X loopmin )";
 
     let machine = ModelChecker::new(TestMachine2, (), ltl).unwrap();
     let initial = machine.initial(1);
@@ -246,7 +254,7 @@ fn test_checker() {
 #[ignore = "diagram"]
 fn model_checker_diagram() {
     let (_, graph, _) = traverse(
-        TestMachine2,
+        TestMachine2.into(),
         1,
         TraversalConfig {
             // record_terminals: true,
@@ -262,7 +270,7 @@ fn model_checker_diagram() {
     let graph = graph.unwrap();
 
     crate::diagram::write_dot(
-        "promela-traversal.dot",
+        "out.dot",
         &graph,
         // &[petgraph::dot::Config::EdgeNoLabel],
         &[],

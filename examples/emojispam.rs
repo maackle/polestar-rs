@@ -10,6 +10,8 @@
 //! with the minimal effort?
 //! "Effort" is defined in terms of a cost function [`SpamState::cost`], where each Action has a cost.
 
+use std::sync::Arc;
+
 use anyhow::bail;
 use exhaustive::Exhaustive;
 use polestar::{
@@ -115,7 +117,7 @@ fn main() {
         .build();
 
     let (report, _graph, terminals) =
-        polestar::traversal::traverse(machine, initial, config, Some).unwrap();
+        polestar::traversal::traverse(Arc::new(machine), initial, config, Some).unwrap();
 
     dbg!(&report);
     let (terminals, _loop_terminals) = terminals.unwrap();

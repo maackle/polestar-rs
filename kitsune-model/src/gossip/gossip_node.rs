@@ -236,7 +236,7 @@ impl<N: Id> Machine for NodeMachine<N> {
                     if peer.timer == 0 {
                         *peer = peer.timeout();
                     } else {
-                        peer.timer = peer.timer.saturating_sub(1);
+                        peer.timer -= 1;
                     }
                 });
             }
@@ -320,11 +320,11 @@ impl<N: Id> NodeMachine<N> {
 pub struct NodeStateSimple<N: Id>(BTreeMap<N, String>);
 
 impl<N: Id> NodeStateSimple<N> {
-    pub fn new(timed: bool, state: NodeState<N>) -> Self {
+    pub fn new(timed: bool, state: &NodeState<N>) -> Self {
         Self(
             state
                 .peers
-                .into_iter()
+                .iter()
                 .map(|(n, peer)| {
                     let phase = match peer.phase {
                         PeerPhase::Ready => "Ready",
@@ -336,9 +336,9 @@ impl<N: Id> NodeStateSimple<N> {
                     };
 
                     if timed {
-                        (n, format!("{phase} t={}", peer.timer))
+                        (*n, format!("{phase} t={}", peer.timer))
                     } else {
-                        (n, phase.to_string())
+                        (*n, phase.to_string())
                     }
                 })
                 .collect(),
