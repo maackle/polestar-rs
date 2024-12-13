@@ -1,15 +1,15 @@
 pub mod buchi;
 
 mod check;
+pub use check::*;
 #[cfg(test)]
 mod tests;
 
-use std::fmt::Display;
 use std::{fmt::Debug, hash::Hash};
 
 use buchi::*;
 
-use crate::logic::{Pair, PropMapping, PropRegistry, Propositions};
+use crate::logic::{Pair, PropMapping, Propositions};
 use crate::machine::{
     store_path::{StorePathMachine, StorePathState},
     Machine, TransitionResult,
@@ -39,6 +39,8 @@ where
     M::State: Clone + Debug + Eq + Hash,
     M::Action: Clone + Debug,
     P: PropMapping,
+    // TODO: if a proc macro is ever written, make it clearer that you must implement Propositions for pairs, not just the state.
+    //       (or somehow make this easier)
     Pair<M::State>: Propositions<P::Prop>,
 {
     type State = ModelCheckerState<M::State, M::Action>;
@@ -61,11 +63,12 @@ where
 
         let buchi_next = self
             .buchi
-            .transition_(buchi, (prev, next.state.clone()))
+            .transition_(buchi, (prev.clone(), next.state.clone()))
             .map_err(|error| {
                 ModelCheckerTransitionError::BuchiError(ModelCheckerBuchiError {
                     error,
                     path: state.path.clone(),
+                    states: (prev, next.state.clone()),
                 })
             })?;
 
@@ -88,12 +91,12 @@ where
     M::Action: Clone + Debug,
     P: PropMapping,
 {
-    pub fn new(machine: M, propmap: P, ltl: &str) -> Self {
-        let buchi = BuchiAutomaton::from_ltl(propmap, ltl);
-        Self {
+    pub fn new(machine: M, propmap: P, ltl: &str) -> anyhow::Result<Self> {
+        let buchi = BuchiAutomaton::from_ltl(propmap, ltl)?;
+        Ok(Self {
             buchi,
             machine: StorePathMachine::from(machine),
-        }
+        })
     }
 
     pub fn initial(&self, state: M::State) -> ModelCheckerState<M::State, M::Action> {
@@ -109,7 +112,7 @@ where
 }
 
 #[derive(derive_bounded::Debug)]
-#[bounded_to(M::Action, M::Error)]
+#[bounded_to(M::State, M::Action, M::Error)]
 pub enum ModelCheckerTransitionError<M: Machine>
 where
     M::Action: Clone,
@@ -119,13 +122,14 @@ where
 }
 
 #[derive(derive_bounded::Debug)]
-#[bounded_to(M::Action)]
+#[bounded_to(M::Action, M::State)]
 pub struct ModelCheckerBuchiError<M: Machine>
 where
     M::Action: Clone,
 {
     error: BuchiError,
     path: im::Vector<M::Action>,
+    states: (M::State, M::State),
 }
 
 /*        █████               █████

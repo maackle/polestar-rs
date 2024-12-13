@@ -8,6 +8,7 @@ use polestar::logic::PropRegistry;
 use polestar::logic::Propositions;
 use polestar::model_checker::ModelChecker;
 use polestar::prelude::*;
+use polestar::traversal::TraversalGraphingConfig;
 use tracing::Level;
 
 fn main() {
@@ -43,11 +44,13 @@ fn main() {
         s.nodes.get(&n).unwrap().peers.get(&p).unwrap()
     }
 
-    #[derive(Debug, Clone, Copy, derive_more::Display)]
-    #[display("Prop({:?})", _0)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, derive_more::Display)]
     enum Prop {
+        #[display("Premature({}, {})", _0, _1)]
         Premature(N, N),
+        #[display("TimeDecreases({}, {})", _0, _1)]
         TimeDecreases(N, N),
+        #[display("Ready({}, {})", _0, _1)]
         Ready(N, N),
     }
 
@@ -106,7 +109,15 @@ fn main() {
     let display_predicates = predicates.iter().map(|p| format!("{p:?}")).join("\n");
     let ltl = predicates.into_iter().join(" && ");
 
-    let checker = ModelChecker::new(machine, propmap, &ltl);
+    let checker = ModelChecker::new(machine, propmap, &ltl).unwrap();
+
+    {
+        let config = polestar::traversal::TraversalConfig::builder()
+            .graphing(Default::default())
+            .build();
+        polestar::traversal::traverse(checker.clone(), checker.initial(initial), config, Some)
+            .unwrap();
+    }
 
     let result = checker.check_mapped(initial, |s| {
         let view = s
@@ -134,7 +145,7 @@ fn main() {
         Some(view)
     });
 
-    result.expect("model check failed");
+    polestar::model_checker::model_checker_report(result);
 
     println!("properties satisfied:\n\n{}\n", display_predicates);
 }

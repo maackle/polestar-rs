@@ -70,9 +70,10 @@ where
                 Ok(report)
             }
             Err(e) => match e {
-                ModelCheckerTransitionError::BuchiError(e) => {
-                    Err(ModelCheckerError::Safety { path: e.path })
-                }
+                ModelCheckerTransitionError::BuchiError(e) => Err(ModelCheckerError::Safety {
+                    path: e.path,
+                    states: e.states,
+                }),
                 ModelCheckerTransitionError::MachineError(e) => {
                     unreachable!("{e:?}");
                 }
@@ -81,11 +82,50 @@ where
     }
 }
 
-#[derive(Debug)]
+pub fn model_checker_report<M: Machine>(result: Result<TraversalReport, ModelCheckerError<M>>)
+where
+    M::State: Debug,
+    M::Action: Debug + Clone,
+{
+    match result {
+        Ok(report) => println!("{report:#?}"),
+        Err(e) => {
+            match e {
+                ModelCheckerError::Safety {
+                    path,
+                    states: (cur, next),
+                } => {
+                    println!("Model checker safety check failed.");
+                    println!();
+                    println!("path: {path:#?}");
+                    println!();
+                    println!("last two states:");
+                    println!();
+                    println!("failing state: {cur:#?}");
+                    println!("next state: {next:#?}");
+                }
+                ModelCheckerError::Liveness { paths } => {
+                    println!("Model checker liveness check failed.");
+                    println!();
+                    println!("paths: {paths:#?}");
+                }
+            }
+            panic!("model checker error");
+        }
+    }
+}
+
+#[derive(derive_bounded::Debug)]
+#[bounded_to(M::State, M::Action)]
 pub enum ModelCheckerError<M: Machine>
 where
     M::Action: Clone,
 {
-    Safety { path: im::Vector<M::Action> },
-    Liveness { paths: Vec<im::Vector<M::Action>> },
+    Safety {
+        path: im::Vector<M::Action>,
+        states: (M::State, M::State),
+    },
+    Liveness {
+        paths: Vec<im::Vector<M::Action>>,
+    },
 }

@@ -100,7 +100,7 @@ impl<B: std::borrow::Borrow<str> + std::str::FromStr + std::fmt::Display> Propos
 
 pub trait PropMapping {
     type Prop;
-    
+
     fn map(&self, name: &str) -> Option<Self::Prop>;
 
     fn bind<S>(&self, states: Pair<S>) -> PropositionBindings<S, Self>
@@ -136,7 +136,7 @@ impl<P: Clone> PropMapping for PropRegistry<P> {
 
 impl<P> PropRegistry<P>
 where
-    P: Display + Clone,
+    P: Display + Clone + PartialEq,
 {
     pub fn empty() -> Self {
         Self(HashMap::new())
@@ -154,14 +154,23 @@ where
 
     pub fn add(&mut self, p: P) -> Result<String, String> {
         let disp = p.to_string();
-        let name = disp.replace(|ch: char| !(ch.is_alphanumeric() || ch == '_'), "_");
-        if self.0.insert(name.clone(), p).is_some() {
-            return Err(format!(
-                "Attempted to add to propmap with name collision: {disp} -> {name}"
-            ));
+        let name = disp
+            .to_lowercase()
+            .replace(|ch: char| !(ch.is_alphanumeric() || ch == '_'), "_");
+        let name = if name.starts_with(|ch: char| ch.is_numeric()) {
+            format!("p_{name}")
         } else {
-            Ok(name)
+            name
+        };
+
+        if let Some(old) = self.0.insert(name.clone(), p.clone()) {
+            if old != p {
+                return Err(format!(
+                    "Attempted to add to propmap with name collision: {disp} -> {name}"
+                ));
+            }
         }
+        Ok(name)
     }
 }
 

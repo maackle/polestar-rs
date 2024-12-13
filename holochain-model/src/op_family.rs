@@ -347,12 +347,11 @@ mod tests {
         diagram::exhaustive::write_dot_state_diagram_mapped,
         id::{IdUnit, UpTo},
         logic::{Pair, PropRegistry, Propositions},
-        model_checker::ModelChecker,
+        model_checker::{model_checker_report, ModelChecker},
         traversal::TraversalConfig,
     };
 
     #[test]
-    #[ignore = "nonterminating"]
     fn op_family_properties() {
         tracing_subscriber::fmt::fmt()
             .with_max_level(tracing::Level::INFO)
@@ -361,7 +360,7 @@ mod tests {
         type A = UpTo<2>;
         type T = UpTo<1>;
 
-        #[derive(Clone)]
+        #[derive(Clone, PartialEq, Eq)]
         enum Prop {
             OpAwaiting(OpId<A, T>, A),
             ActionAwaiting(A, A),
@@ -417,43 +416,35 @@ mod tests {
             }
         }
 
-        let propmap = PropRegistry::new(<OpId<A, T>>::iter_exhaustive(None).flat_map(|o| {
-            A::iter_exhaustive(None).flat_map(move |b| {
-                if o.0 == b {
-                    vec![]
-                } else {
-                    vec![
-                        Prop::OpAwaiting(o, b),
-                        Prop::ActionAwaiting(b, o.0),
-                        Prop::OpIntegrated(o),
-                        Prop::ActionIntegrated(b),
-                    ]
-                }
+        let pairs = <OpId<A, T>>::iter_exhaustive(None)
+            .flat_map(|o| {
+                A::iter_exhaustive(None).filter_map(move |b| (o.0 != b).then_some((o, b)))
             })
-        }))
-        .unwrap();
+            .collect_vec();
+
+        let mut propmap = PropRegistry::empty();
 
         let machine: OpFamilyMachine<A, T> = OpFamilyMachine::new();
 
-        let ltl = <OpId<A, T>>::iter_exhaustive(None)
-            .flat_map(|o| {
-                A::iter_exhaustive(None).flat_map(move |b| {
-                    let ow = Prop::OpAwaiting(o, b);
-                    let aw = Prop::ActionAwaiting(b, o.0);
-                    let oi = Prop::OpIntegrated(o);
-                    let ai = Prop::ActionIntegrated(b);
-                    vec![
-                        format!("G {ow} -> !{aw}"),
-                        format!("G {ow} -> (G {oi} -> {ai} )"),
-                    ]
-                })
+        let ltl = pairs
+            .into_iter()
+            .flat_map(|(o, b)| {
+                let ow = propmap.add(Prop::OpAwaiting(o, b)).unwrap();
+                let aw = propmap.add(Prop::ActionAwaiting(b, o.0)).unwrap();
+                let oi = propmap.add(Prop::OpIntegrated(o)).unwrap();
+                let ai = propmap.add(Prop::ActionIntegrated(b)).unwrap();
+                vec![
+                    format!("G ({ow} -> !{aw} )"),
+                    format!("G ({ow} -> (G {oi} -> {ai} ) )"),
+                ]
             })
-            .join("&&");
+            .map(|s| format!("({s})"))
+            .join(" && ");
 
         let initial = machine.initial();
-        let checker = ModelChecker::new(machine.clone(), propmap, &ltl);
+        let checker = ModelChecker::new(machine.clone(), propmap, &ltl).unwrap();
 
-        checker.check(initial).unwrap();
+        model_checker_report(checker.check(initial));
     }
 
     #[test]

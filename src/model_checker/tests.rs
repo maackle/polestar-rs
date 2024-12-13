@@ -100,7 +100,7 @@ fn model_checker_test() {
     let ltl = "G ( (is2 && X is6) -> G F is5)";
     let ltl = "G ( is1 -> (G F is5 || G F is3 || G F is8) )";
 
-    let machine = ModelChecker::new(TestMachine2, (), ltl);
+    let machine = ModelChecker::new(TestMachine2, (), ltl).unwrap();
     let initial = machine.initial(1);
 
     // write_dot_state_diagram_mapped(

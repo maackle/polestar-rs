@@ -39,7 +39,7 @@ pub struct TraversalConfig<M: Machine> {
     pub is_fatal_error: Option<Arc<dyn Fn(&M::Error) -> bool + Send + Sync>>,
 }
 
-#[derive(Default, derive_bounded::Clone, bon::Builder)]
+#[derive(Default, derive_bounded::Clone)]
 pub struct TraversalGraphingConfig {
     pub ignore_loopbacks: bool,
 }

@@ -81,16 +81,22 @@ pub enum BuchiError {
 }
 
 impl<S, PM: PropMapping> BuchiAutomaton<S, PM> {
-    pub fn from_ltl(propmap: PM, ltl_str: &str) -> Self {
-        let promela = Command::new("ltl3ba")
+    pub fn from_ltl(propmap: PM, ltl_str: &str) -> Result<Self, anyhow::Error> {
+        let output = Command::new("ltl3ba")
             .args(["-f", &format!("{ltl_str}")])
             .output()
             .unwrap();
-        Self::from_promela(propmap, String::from_utf8_lossy(&promela.stdout).as_ref())
+
+        let promela = String::from_utf8_lossy(&output.stdout);
+
+        if promela.contains("expected predicate, saw") {
+            return Err(anyhow!("ltl3ba couldn't parse LTL input. Error: {promela}"));
+        }
+
+        Ok(Self::from_promela(propmap, &promela))
     }
 
     pub fn from_promela(propmap: PM, promela: &str) -> Self {
-        println!("{}", promela);
         let lines = promela.lines().collect::<Vec<_>>();
 
         let pat_state = regex::Regex::new("^(\\w+):").unwrap();
