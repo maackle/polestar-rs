@@ -67,7 +67,9 @@ fn main() {
                     assert_ne!(n, p);
                     let a = peer_focus(s0, n, p);
                     let b = peer_focus(s1, n, p);
-                    a.phase != b.phase || b.timer <= a.timer
+                    // TODO: predicates should be able to know about the current Action as well.
+                    //       this is a hack in lieu of that.
+                    a.phase != b.phase || a.phase == PeerPhase::Active || b.timer <= a.timer
                 }
                 Prop::Premature(n, p) => {
                     assert_ne!(n, p);
@@ -98,9 +100,9 @@ fn main() {
                 let premature = propmap.add(Prop::Premature(n, p)).unwrap();
                 let time_decreases = propmap.add(Prop::TimeDecreases(n, p)).unwrap();
                 [
-                    // format!("G !{premature}"),
+                    format!("G !{premature}"),
                     format!("G {time_decreases}"),
-                    // format!("G F {ready}"),
+                    format!("G F {ready}"),
                 ]
             })
         })
