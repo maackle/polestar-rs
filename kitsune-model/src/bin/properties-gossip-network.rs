@@ -7,9 +7,7 @@ use polestar::logic::Pair;
 use polestar::logic::PropRegistry;
 use polestar::logic::Propositions;
 use polestar::model_checker::ModelChecker;
-use polestar::model_checker::ModelCheckerError;
 use polestar::prelude::*;
-use polestar::traversal::TraversalGraphingConfig;
 use tracing::Level;
 
 fn main() {

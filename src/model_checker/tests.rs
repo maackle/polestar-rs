@@ -95,21 +95,32 @@ struct Node(u8, bool);
 #[test]
 fn model_checker_test() {
     // true negatives:
-    let ltl = "G ( is4 -> X is5 ) ";
-    let ltl = "G ( is4 -> X is8 ) ";
-    let ltl = "G ( is4 -> F is2 )";
-    let ltl = "G ( (F is4 && !(F is2)) || (F is2 && !(F is4)) )";
-    let ltl = "G ( is3 -> G F is5 )";
-    let ltl = "G ( is2 -> F is4 )";
+    let negatives = [
+        "G ( is4 -> X is5 ) ",
+        "G ( is4 -> X is8 ) ",
+        "G ( is4 -> F is2 )",
+        "G ( (F is4 && !(F is2)) || (F is2 && !(F is4)) )",
+        "G ( is3 -> G F is5 )",
+        "G ( is2 -> F is4 )",
+    ];
 
     // true positives:
-    let ltl = "G ( (is2 && X is6) -> G F is5)";
-    let ltl = "G ( is1 -> (G F is5 || G F is3 || G F is8) )";
+    let positives = [
+        "G ( (is2 && X is6) -> G F is5)",
+        "G ( is1 -> (G F is5 || G F is3 || G F is8) )",
+        "G ( increasing || X loopmin )",
+    ];
 
-    let ltl = "G ( increasing || X loopmin )";
+    let ltl = format!(
+        "({}) && ({})",
+        positives.map(|p| format!("({p})")).join(" && "),
+        negatives.map(|p| format!("!({p})")).join(" && "),
+    );
 
-    let machine = ModelChecker::new(TestMachine2, (), ltl).unwrap();
-    let initial = machine.initial(1);
+    let checker = ModelChecker::new(TestMachine2, (), &ltl).unwrap();
+    let initial = checker.initial(1);
+
+    model_checker_report(checker.check(1));
 
     // write_dot_state_diagram_mapped(
     //     "promela-diagram.dot",
@@ -123,93 +134,78 @@ fn model_checker_test() {
     //     Some,
     // );
 
-    let config = TraversalConfig::builder()
-        .record_terminals(false)
-        .trace_every(1000)
-        .graphing(TraversalGraphingConfig::default())
-        .is_fatal_error(|e| !matches!(e, ModelCheckerTransitionError::MachineError(_)))
-        .visitor(|s: &ModelCheckerState<u8, bool>, _| {
-            // println!(
-            //     "<:> {}: buchi {:?} path {:?}",
-            //     &s.state.state, &s.buchi, s.state.path
-            // );
-            Ok(())
-        })
-        .build();
+    // let config = TraversalConfig::builder()
+    //     .record_terminals(false)
+    //     .trace_every(1000)
+    //     .graphing(TraversalGraphingConfig::default())
+    //     .is_fatal_error(|e| !matches!(e, ModelCheckerTransitionError::MachineError(_)))
+    //     .visitor(|s: &ModelCheckerState<u8, bool>, _| {
+    //         // println!(
+    //         //     "<:> {}: buchi {:?} path {:?}",
+    //         //     &s.state.state, &s.buchi, s.state.path
+    //         // );
+    //         Ok(())
+    //     })
+    //     .build();
 
-    let (report, graph, _) = traverse(machine, initial, config, Some).unwrap();
+    // let (report, graph, _) = traverse(checker, initial, config, Some).unwrap();
 
-    let graph = graph.unwrap();
+    // let graph = graph.unwrap();
 
-    {
-        let graph = graph.map(
-            |_, n: &ModelCheckerState<u8, bool>| Node(n.state, n.buchi.is_accepting()),
-            |_, e| e,
-        );
-        crate::diagram::write_dot(
-            "promela-verify.dot",
-            &graph,
-            // &[petgraph::dot::Config::EdgeNoLabel],
-            &[],
-        );
-    }
+    // {
+    //     let graph = graph.map(
+    //         |_, n: &ModelCheckerState<u8, bool>| Node(n.state, n.buchi.is_accepting()),
+    //         |_, e| e,
+    //     );
+    //     crate::diagram::write_dot(
+    //         "promela-verify.dot",
+    //         &graph,
+    //         // &[petgraph::dot::Config::EdgeNoLabel],
+    //         &[],
+    //     );
+    // }
 
-    dbg!(&report);
+    // dbg!(&report);
 
-    let condensed = petgraph::algo::condensation(graph, true);
+    // let condensed = petgraph::algo::condensation(graph, true);
 
-    let leaves = condensed.node_indices().filter(|n| {
-        let outgoing = condensed
-            .neighbors_directed(*n, petgraph::Direction::Outgoing)
-            .count();
-        outgoing == 0
-    });
+    // let leaves = condensed.node_indices().filter(|n| {
+    //     let outgoing = condensed
+    //         .neighbors_directed(*n, petgraph::Direction::Outgoing)
+    //         .count();
+    //     outgoing == 0
+    // });
 
-    {
-        let condensed = condensed.map(
-            |_, n| {
-                n.iter()
-                    .map(|s| {
-                        let tup = (s.pathstate.state, &s.buchi);
-                        format!("{tup:?}")
-                    })
-                    .collect_vec()
-                    .join("\n")
-            },
-            |_, e| e,
-        );
+    // {
+    //     let condensed = condensed.map(
+    //         |_, n| {
+    //             n.iter()
+    //                 .map(|s| {
+    //                     let tup = (s.pathstate.state, &s.buchi);
+    //                     format!("{tup:?}")
+    //                 })
+    //                 .collect_vec()
+    //                 .join("\n")
+    //         },
+    //         |_, e| e,
+    //     );
 
-        crate::diagram::write_dot(
-            "promela-verify-condensed.dot",
-            &condensed,
-            &[petgraph::dot::Config::EdgeNoLabel],
-            // &[],
-        );
-    }
+    //     crate::diagram::write_dot(
+    //         "promela-verify-condensed.dot",
+    //         &condensed,
+    //         &[petgraph::dot::Config::EdgeNoLabel],
+    //         // &[],
+    //     );
+    // }
 
-    for index in leaves {
-        let scc = condensed.node_weight(index).unwrap();
-        let accepting = scc.iter().any(|n| n.buchi.is_accepting());
-        if !accepting {
-            let mut paths = scc.iter().map(|n| n.pathstate.path.clone()).collect_vec();
-            paths.sort();
-            dbg!(&paths);
-            panic!("non-accepting SCC found");
-        }
-    }
-
-    //////////////////////////////////////////////////////////////////
-
-    // let scc = petgraph::algo::kosaraju_scc(&graph);
-
-    // dbg!(&scc);
-
-    // for (i, nodes) in scc.iter().enumerate() {
-    //     let accepting = nodes.iter().any(|n| graph.node_weight(*n).unwrap().1);
+    // for index in leaves {
+    //     let scc = condensed.node_weight(index).unwrap();
+    //     let accepting = scc.iter().any(|n| n.buchi.is_accepting());
     //     if !accepting {
+    //         let mut paths = scc.iter().map(|n| n.pathstate.path.clone()).collect_vec();
+    //         paths.sort();
+    //         dbg!(&paths);
     //         panic!("non-accepting SCC found");
-    //     } else {
-    //         println!("SCC {i} accepting");
     //     }
     // }
 }
