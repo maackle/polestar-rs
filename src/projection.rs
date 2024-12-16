@@ -3,9 +3,10 @@ use std::sync::mpsc;
 
 use crate::{prelude::*, util::first};
 
-/// A Projection takes a system which may or may not an FSM, and maps it onto
-/// an FSM. This is useful for reaping the benefits of FSMs in systems which
-/// are not or cannot be represented as FSMs.
+/// A Projection takes a system which may or may not be a state machine,
+/// and maps it onto a finite state machine model.
+/// This is useful for reaping the benefits of FSMs in systems which
+/// are not or cannot be represented as state machines.
 ///
 /// Invariants:
 ///

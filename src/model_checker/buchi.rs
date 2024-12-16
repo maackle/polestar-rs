@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeSet, HashMap},
-    fmt::{Debug, Display},
+    fmt::Debug,
     marker::PhantomData,
     process::Command,
     sync::Arc,

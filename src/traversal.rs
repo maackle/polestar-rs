@@ -181,12 +181,7 @@ where
                     match visited.entry(mapped) {
                         std::collections::hash_map::Entry::Occupied(entry) => (true, *entry.get()),
                         std::collections::hash_map::Entry::Vacant(entry) => {
-                            if let Some(g) = config.graphing.as_ref() {
-                                // let node = if let Some(map_node) = g.map_node {
-                                //     (map_node)(&state)
-                                // } else {
-                                //     state
-                                // };
+                            if config.graphing.is_some() {
                                 let node_ix = graph.lock().add_node(state.clone());
                                 entry.insert(node_ix);
                                 (false, node_ix)
@@ -245,8 +240,7 @@ where
 
                 // Queue up visits to all nodes reachable from this node..
                 for action in all_actions.iter().cloned() {
-                    let prev_node = if let Some(g) = config.graphing.as_ref() {
-                        // Some((node_ix, (g.map_edge)(&action)))
+                    let prev_node = if config.graphing.is_some() {
                         Some((node_ix, action.clone()))
                     } else {
                         None

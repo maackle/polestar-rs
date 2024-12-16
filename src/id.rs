@@ -1,6 +1,5 @@
 use std::{collections::HashMap, hash::Hash};
 
-use proptest::prelude::{BoxedStrategy, Strategy};
 use proptest_derive::Arbitrary;
 
 pub trait Id:
@@ -83,6 +82,7 @@ impl TryFrom<usize> for IdUnit {
     derive_more::Into,
     derive_more::Deref,
 )]
+#[cfg_attr(feature = "recording", derive(serde::Serialize, serde::Deserialize))]
 pub struct UpTo<const N: usize>(usize);
 
 impl<const N: usize> Id for UpTo<N> {

@@ -26,6 +26,8 @@ tracing-subscriber = "0.3"
 exhaustive = { version = "*", optional = true }
 petgraph = { version = "*", optional = true }
 prettydiff = { version = "*", optional = true }
+serde = { version = "*", features = ["derive"], optional = true }
+serde_json = { version = "*", optional = true }
 
 [dev-dependencies]
 # polestar = { path = ".", features = ["diagrams", "testing"] }
@@ -34,15 +36,21 @@ prettydiff = { version = "*", optional = true }
 rustversion = "*"
 
 [features]
-default = ["diagrams", "testing"]
+default = ["diagrams", "invariant-testing", "recording"]
+
+diagrams = ["exhaustive", "petgraph"]
+invariant-testing = ["prettydiff"]
+recording = ["serde", "serde_json"]
 
 nightly = []
-diagrams = ["exhaustive", "petgraph"]
-testing = ["prettydiff"]
-
 
 [workspace]
-members = ["holochain-model", "kitsune-model", "polestar-macros", "polestar-propmap"]
+members = [
+  "holochain-model",
+  "kitsune-model",
+  "polestar-macros",
+  "polestar-propmap",
+]
 
 [patch.crates-io]
 # holo_hash = { path = "/home/michael/Holo/chain/crates/holo_hash" }

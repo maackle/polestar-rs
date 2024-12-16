@@ -10,14 +10,14 @@ pub mod event_handler;
 pub mod traversal;
 pub mod util;
 
-#[cfg(feature = "testing")]
-pub mod projection;
+// pub mod projection;
 
 #[cfg(feature = "diagrams")]
 pub mod diagram;
 pub mod ext;
 pub mod logic;
 pub mod ltl;
+pub mod mapping;
 
 pub use actor::Actor;
 pub use event_handler::{EventHandler, EventSink};
@@ -29,7 +29,7 @@ pub mod prelude {
     pub use crate::generate::Generator;
     pub use crate::id::*;
     pub use crate::machine::{Machine, TransitionResult};
-    pub use crate::projection::{Projection, ProjectionTests};
+    // pub use crate::projection::{Projection, ProjectionTests};
 
     pub use std::convert::Infallible;
 }

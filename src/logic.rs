@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Display, marker::PhantomData, sync::Arc};
+use std::{collections::HashMap, fmt::Display};
 
 mod promela_parser;
 
