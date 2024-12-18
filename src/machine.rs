@@ -28,7 +28,9 @@ where
     /// Designates this state as a terminal state.
     ///
     /// This is an optional hint, useful for generating diagrams from FSMs.
-    fn is_terminal(&self, _: &Self::State) -> bool;
+    fn is_terminal(&self, _: &Self::State) -> bool {
+        false
+    }
 
     /// Perform a transition and ignore the effect, when the effect is `()`.
     fn transition_(

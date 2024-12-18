@@ -11,6 +11,7 @@ derive_bounded = "*"
 derive_more = { version = "1", features = ["full"] }
 im = { version = "*", features = ["rayon"] }
 itertools = "*"
+once_cell = "*"
 nom = "*"
 num-derive = "0.4"
 num-traits = "0.2"
