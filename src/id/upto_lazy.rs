@@ -21,6 +21,13 @@ static MAP: Lazy<Mutex<HashMap<u64, usize>>> = Lazy::new(|| Mutex::new(HashMap::
 #[cfg_attr(feature = "recording", derive(serde::Serialize, serde::Deserialize))]
 pub struct UpToLazy<const UID: u64>(usize);
 
+#[macro_export]
+macro_rules! upto_lazy {
+    ($($pub:ident)? type $t:ident) => {
+        $($pub)? type $t = $crate::id::UpToLazy<const_random::const_random!(u64)>;
+    };
+}
+
 impl<const UID: u64> Id for UpToLazy<UID> {
     fn choices() -> IdChoices {
         IdChoices::Small(Self::limit())
@@ -38,6 +45,7 @@ impl<const UID: u64> UpToLazy<UID> {
         let map = MAP.lock();
         *map.get(&UID)
             .unwrap_or_else(|| panic!("No limit set for {UID}"))
+            .max(&1)
     }
 
     pub fn new(n: usize) -> Self {
@@ -82,7 +90,11 @@ impl<const UID: u64> std::fmt::Debug for UpToLazy<UID> {
 
 impl<const UID: u64> std::fmt::Display for UpToLazy<UID> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
+        if Self::limit() == 1 {
+            write!(f, "∅")
+        } else {
+            write!(f, "{}", self.0)
+        }
     }
 }
 

@@ -1,7 +1,10 @@
+use colored::Colorize;
 use exhaustive::Exhaustive;
+use human_repr::HumanCount;
 use parking_lot::Mutex;
 use petgraph::graph::{DiGraph, NodeIndex};
 
+use std::sync::atomic::Ordering::SeqCst;
 use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
@@ -84,8 +87,9 @@ impl<M: Machine> Default for TraversalConfig<M> {
 pub struct TraversalReport {
     pub num_visited: usize,
     pub num_terminations: usize,
-    pub num_errors: usize,
+    pub num_edges_skipped: usize,
     pub total_steps: usize,
+    pub max_depth: usize,
     pub time_taken: std::time::Duration,
 }
 
@@ -128,7 +132,8 @@ where
     let total_steps = Arc::new(AtomicUsize::new(0));
     let num_seen = Arc::new(AtomicUsize::new(0));
     let num_terminations = Arc::new(AtomicUsize::new(0));
-    let num_errors = Arc::new(AtomicUsize::new(0));
+    let num_edges_skipped = Arc::new(AtomicUsize::new(0));
+    let max_depth = Arc::new(AtomicUsize::new(0));
 
     let all_actions: im::Vector<_> = M::Action::iter_exhaustive(config.max_actions).collect();
 
@@ -141,17 +146,22 @@ where
         let total_steps = total_steps.clone();
         let num_seen = num_seen.clone();
         let num_terminations = num_terminations.clone();
-        let num_errors = num_errors.clone();
+        let num_edges_skipped = num_edges_skipped.clone();
+        let max_depth = max_depth.clone();
         let visited = visited_states.clone();
         let terminals = terminals.clone();
         let loop_terminals = loop_terminals.clone();
+
+        let active_threads = AtomicUsize::new(0);
+        let prev_trace = Mutex::new(IterTrace::default());
+        let trace_every = config.trace_every.unwrap_or(usize::MAX);
 
         move |thread_index: usize| {
             if thread_index > 0 {
                 // Give the seen queue time to fill up
                 // XXX: this is a hack to avoid starvation, could be more robust
                 while seen.len() < 1000 {
-                    if stop.load(std::sync::atomic::Ordering::SeqCst) {
+                    if stop.load(SeqCst) {
                         // The first thread already completed all work
                         return Ok(());
                     }
@@ -159,19 +169,60 @@ where
                 }
             }
 
+            active_threads.fetch_add(1, SeqCst);
+
             while let Some((state, prev_node, depth)) = seen.pop() {
-                if stop.load(std::sync::atomic::Ordering::SeqCst) {
+                if stop.load(SeqCst) {
                     break;
                 }
-                let iter = total_steps.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                if config.trace_every.map(|m| iter % m == 0).unwrap_or(false) {
+                let iter = total_steps.fetch_add(1, SeqCst);
+
+                if iter > 0 && iter % trace_every == 0 {
+                    let trace = IterTrace {
+                        iter,
+                        queued: num_seen.load(SeqCst),
+                        visited: visited.lock().len(),
+                        depth,
+                    };
+                    let mut prev = prev_trace.lock();
+
+                    let queued_diff = trace.queued as isize - prev.queued as isize;
+                    let visited_diff = trace.visited as isize - prev.visited as isize;
+
+                    let queued_diff_str = if queued_diff == 0 {
+                        "0".to_string().white()
+                    } else if queued_diff > 0 {
+                        format!("+{}", queued_diff.human_count_bare()).green()
+                    } else {
+                        format!("{}", queued_diff.human_count_bare()).red()
+                    };
+
+                    let visited_diff_str = if visited_diff == 0 {
+                        "0".to_string().white()
+                    } else if visited_diff > 0 {
+                        format!("+{}", visited_diff.human_count_bare()).green()
+                    } else {
+                        format!("{}", visited_diff.human_count_bare()).red()
+                    };
+
+                    let depth_str = if trace.depth != prev.depth {
+                        format!("depth={depth} ***").underline().bold()
+                    } else {
+                        format!("depth={depth}    ").white()
+                    };
+
                     tracing::info!(
-                        "iter={iter}, seen={}, visited={}, depth={}",
-                        num_seen.load(std::sync::atomic::Ordering::SeqCst),
-                        visited.lock().len(),
-                        depth
+                        "iter={:<5} | visited={:<8} Δ={:<8} | queued={:<8} Δ={:<8} | {}",
+                        trace.iter.human_count_bare().to_string(),
+                        trace.visited.human_count_bare().to_string(),
+                        visited_diff_str,
+                        trace.queued.human_count_bare().to_string(),
+                        queued_diff_str,
+                        depth_str,
                     );
+                    *prev = trace;
                 }
+
                 if config.max_iters.map(|m| iter >= m).unwrap_or(false) {
                     panic!("max iters of {} reached", config.max_iters.unwrap());
                 }
@@ -181,6 +232,8 @@ where
                     match visited.entry(mapped) {
                         std::collections::hash_map::Entry::Occupied(entry) => (true, *entry.get()),
                         std::collections::hash_map::Entry::Vacant(entry) => {
+                            max_depth.fetch_max(depth, SeqCst);
+
                             if config.graphing.is_some() {
                                 let node_ix = graph.lock().add_node(state.clone());
                                 entry.insert(node_ix);
@@ -210,8 +263,8 @@ where
                     }
                 }
 
-                // Don't explore the same node twice, and respect the depth limit
-                if already_seen || depth > config.max_depth.unwrap_or(usize::MAX) {
+                // Don't explore the same node twice
+                if already_seen {
                     if let Some(ref on_terminal) = config.visitor {
                         on_terminal(&state, VisitType::LoopTerminal)?
                     }
@@ -224,7 +277,7 @@ where
 
                 // If this is a terminal state, no need to explore further.
                 if machine.is_terminal(&state) {
-                    num_terminations.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    num_terminations.fetch_add(1, SeqCst);
                     if let Some(ref on_terminal) = config.visitor {
                         on_terminal(&state, VisitType::Terminal)?
                     }
@@ -238,6 +291,11 @@ where
                     }
                 }
 
+                // Respect the depth limit
+                if depth >= config.max_depth.unwrap_or(usize::MAX) {
+                    continue;
+                }
+
                 // Queue up visits to all nodes reachable from this node..
                 for action in all_actions.iter().cloned() {
                     let prev_node = if config.graphing.is_some() {
@@ -247,27 +305,31 @@ where
                     };
                     match machine.transition(state.clone(), action.clone()).map(first) {
                         Ok(node) => {
-                            num_seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                            num_seen.fetch_add(1, SeqCst);
                             seen.push((node, prev_node, depth + 1));
                         }
                         Err(err) => {
-                            num_errors.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                            tracing::trace!("traversal error: {:?}", err);
+                            num_edges_skipped.fetch_add(1, SeqCst);
+
                             if let Some(ref is_fatal_error) = config.is_fatal_error {
                                 if is_fatal_error(&err) {
                                     return Err(err);
                                 }
+                            } else if config.trace_error {
+                                tracing::error!("edge skipped: {:?}", err);
                             }
                         }
                     }
                 }
             }
-            tracing::info!("traversal thread {} done", thread_index);
+
+            tracing::trace!("traversal thread {} done", thread_index);
+            let current_active_threads = active_threads.fetch_sub(1, SeqCst);
 
             // handle the case where the first thread rips through all work
             // before any other threads even get started
-            if thread_index == 0 {
-                stop.store(true, std::sync::atomic::Ordering::SeqCst);
+            if thread_index == 0 && current_active_threads == 1 {
+                stop.store(true, SeqCst);
             }
             Ok(())
         }
@@ -280,7 +342,7 @@ where
     } else {
         rayon::spawn_broadcast(move |broadcast_ctx: rayon::BroadcastContext<'_>| {
             if let Err(err) = task(broadcast_ctx.index()) {
-                stop.store(true, std::sync::atomic::Ordering::SeqCst);
+                stop.store(true, SeqCst);
                 err_tx.send(err).unwrap();
             }
         });
@@ -298,9 +360,10 @@ where
     let report = TraversalReport {
         time_taken: std::time::Instant::now().duration_since(start_time),
         num_visited: visited_states.lock().len(),
-        num_terminations: num_terminations.load(std::sync::atomic::Ordering::SeqCst),
-        num_errors: num_errors.load(std::sync::atomic::Ordering::SeqCst),
-        total_steps: total_steps.load(std::sync::atomic::Ordering::SeqCst),
+        num_terminations: num_terminations.load(SeqCst),
+        num_edges_skipped: num_edges_skipped.load(SeqCst),
+        total_steps: total_steps.load(SeqCst),
+        max_depth: max_depth.load(SeqCst),
     };
     let terminals = config.record_terminals.then(|| {
         (
@@ -316,6 +379,14 @@ where
 }
 
 pub type TerminalSet<S> = HashSet<S>;
+
+#[derive(Default)]
+pub struct IterTrace {
+    pub iter: usize,
+    pub queued: usize,
+    pub visited: usize,
+    pub depth: usize,
+}
 
 #[cfg(test)]
 mod tests {

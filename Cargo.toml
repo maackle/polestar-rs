@@ -6,9 +6,11 @@ edition = "2021"
 [dependencies]
 anyhow = "*"
 bon = "*"
+colored = "*"
 crossbeam = { version = "0.8.4", features = ["crossbeam-channel"] }
 derive_bounded = "*"
 derive_more = { version = "1", features = ["full"] }
+human-repr = "*"
 im = { version = "*", features = ["rayon"] }
 itertools = "*"
 once_cell = "*"

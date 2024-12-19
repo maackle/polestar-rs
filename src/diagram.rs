@@ -2,7 +2,9 @@ use petgraph::graph::DiGraph;
 
 use crate::prelude::*;
 
+#[deprecated = "use traversal with graphing enabled instead"]
 pub mod exhaustive;
+#[deprecated = "use traversal with graphing enabled instead"]
 pub mod montecarlo;
 
 pub fn write_dot<N, E>(filename: &str, graph: &DiGraph<N, E>, config: &[petgraph::dot::Config])
@@ -38,6 +40,8 @@ where
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
+
+    use crate::traversal::{traverse, TraversalConfig, TraversalGraphingConfig};
 
     use super::*;
     use ::exhaustive::Exhaustive;
@@ -141,8 +145,29 @@ mod tests {
             (nodes1, edges1)
         };
 
+        let (nodes_traversal, edges_traversal) = {
+            let (_, graph, _) = traverse(
+                CycleMachine.into(),
+                Cycle::D,
+                TraversalConfig::builder()
+                    .graphing(TraversalGraphingConfig::default())
+                    .build(),
+                Some,
+            )
+            .unwrap();
+            let graph = graph.unwrap();
+            let nodes: HashSet<_> = graph.node_weights().cloned().collect();
+            let edges: HashSet<_> = graph.edge_weights().cloned().collect();
+
+            println!("{}", to_dot(&graph, &[]));
+
+            (nodes, edges)
+        };
+
         assert_eq!(nodes_montecarlo, nodes_exhaustive);
         assert_eq!(edges_montecarlo, edges_exhaustive);
+        assert_eq!(nodes_exhaustive, nodes_traversal);
+        assert_eq!(edges_exhaustive, edges_traversal);
     }
 
     #[test]
@@ -164,4 +189,3 @@ mod tests {
         println!("{}", to_dot(&graph1, &[]));
     }
 }
-
