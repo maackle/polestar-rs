@@ -48,12 +48,7 @@ recording = ["serde", "serde_json"]
 nightly = []
 
 [workspace]
-members = [
-  "holochain-model",
-  "kitsune-model",
-  "polestar-macros",
-  "polestar-propmap",
-]
+members = ["holochain-model", "kitsune-model", "polestar-macros"]
 
 [patch.crates-io]
 # holo_hash = { path = "/home/michael/Holo/chain/crates/holo_hash" }
