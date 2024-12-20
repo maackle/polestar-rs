@@ -212,7 +212,7 @@ where
                     };
 
                     tracing::info!(
-                        "iter={:<5} | visited={:<8} Δ={:<8} | queued={:<8} Δ={:<8} | {}",
+                        "iter={:<5} │ visited={:<8} Δ={:<8} │ queued={:<8} Δ={:<8} │ {}",
                         trace.iter.human_count_bare().to_string(),
                         trace.visited.human_count_bare().to_string(),
                         visited_diff_str,
