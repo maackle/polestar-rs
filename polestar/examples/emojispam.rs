@@ -20,6 +20,53 @@ use polestar::{
     traversal::TraversalConfig,
 };
 
+fn main() {
+    // tracing_subscriber::fmt::fmt()
+    //     .with_max_level(tracing::Level::DEBUG)
+    //     .init();
+
+    let target = 1_000;
+
+    let machine = StorePathMachine::from(SpamMachine { target });
+    let initial = StorePathState::new(SpamState::default());
+    let config = TraversalConfig::builder()
+        .max_depth(50)
+        .record_terminals(true)
+        .build();
+
+    let (report, _graph, terminals) =
+        polestar::traversal::traverse(Arc::new(machine), initial, config, Some).unwrap();
+
+    dbg!(&report);
+    let (terminals, _loop_terminals) = terminals.unwrap();
+    let mut states: Vec<_> = terminals.into_iter().filter(|s| s.len >= target).collect();
+    states.sort_by_key(|s| s.cost);
+    let min_cost = states[0].cost;
+
+    let mut solutions: Vec<_> = states
+        .into_iter()
+        .take_while(|s| s.cost <= min_cost + 3)
+        .take(10)
+        .collect();
+    solutions.sort_by_key(|s| (s.cost, s.len));
+
+    for (i, state) in solutions.into_iter().enumerate() {
+        let path = state
+            .path
+            .iter()
+            .map(|a| a.to_string())
+            .collect::<Vec<_>>()
+            .join("");
+        println!(
+            "#{:<2} : len={:<6} cost={:<3} path={}",
+            i + 1,
+            state.len,
+            state.cost,
+            path
+        );
+    }
+}
+
 struct SpamMachine {
     target: usize,
 }
@@ -99,52 +146,5 @@ impl SpamState {
             SpamAction::Copy => 5,
             SpamAction::Paste => 3,
         }
-    }
-}
-
-fn main() {
-    // tracing_subscriber::fmt::fmt()
-    //     .with_max_level(tracing::Level::DEBUG)
-    //     .init();
-
-    let target = 1_000;
-
-    let machine = StorePathMachine::from(SpamMachine { target });
-    let initial = StorePathState::new(SpamState::default());
-    let config = TraversalConfig::builder()
-        .max_depth(50)
-        .record_terminals(true)
-        .build();
-
-    let (report, _graph, terminals) =
-        polestar::traversal::traverse(Arc::new(machine), initial, config, Some).unwrap();
-
-    dbg!(&report);
-    let (terminals, _loop_terminals) = terminals.unwrap();
-    let mut states: Vec<_> = terminals.into_iter().filter(|s| s.len >= target).collect();
-    states.sort_by_key(|s| s.cost);
-    let min_cost = states[0].cost;
-
-    let mut solutions: Vec<_> = states
-        .into_iter()
-        .take_while(|s| s.cost <= min_cost + 3)
-        .take(10)
-        .collect();
-    solutions.sort_by_key(|s| (s.cost, s.len));
-
-    for (i, state) in solutions.into_iter().enumerate() {
-        let path = state
-            .path
-            .iter()
-            .map(|a| a.to_string())
-            .collect::<Vec<_>>()
-            .join("");
-        println!(
-            "#{:<2} : len={:<6} cost={:<3} path={}",
-            i + 1,
-            state.len,
-            state.cost,
-            path
-        );
     }
 }

@@ -33,6 +33,8 @@ serde = { version = "*", features = ["derive"], optional = true }
 serde_json = { version = "*", optional = true }
 
 [dev-dependencies]
+tokio = { version = "*", features = ["full"] }
+rand = "*"
 # polestar = { path = ".", features = ["diagrams", "testing"] }
 
 [build-dependencies]

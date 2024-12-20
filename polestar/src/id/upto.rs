@@ -1,3 +1,7 @@
+use std::ops::Mul;
+
+use num_derive::{One, Zero};
+
 use super::*;
 
 /// A number in the range [0, N)
@@ -25,6 +29,10 @@ impl<const N: usize> Id for UpTo<N> {
 impl<const N: usize> UpTo<N> {
     pub fn new(n: usize) -> Self {
         Self::try_from(n).expect(&format!("Attempted to initialize UpTo<{N}> with {n}"))
+    }
+
+    pub fn limit() -> usize {
+        N
     }
 
     pub fn modulo(n: usize) -> Self {
@@ -76,6 +84,13 @@ impl<const N: usize> std::ops::Add<usize> for UpTo<N> {
     }
 }
 
+impl<const N: usize> std::ops::Add<UpTo<N>> for UpTo<N> {
+    type Output = Self;
+    fn add(self, rhs: Self) -> Self::Output {
+        Self((self.0 + rhs.0) % N)
+    }
+}
+
 impl<const N: usize> std::ops::Sub<usize> for UpTo<N> {
     type Output = UpTo<N>;
     fn sub(self, rhs: usize) -> Self::Output {
@@ -86,5 +101,35 @@ impl<const N: usize> std::ops::Sub<usize> for UpTo<N> {
             self.0 - rhs
         };
         UpTo(v)
+    }
+}
+
+impl<const N: usize> std::ops::Sub<UpTo<N>> for UpTo<N> {
+    type Output = Self;
+    fn sub(self, rhs: Self) -> Self::Output {
+        let rhs = rhs.0;
+        let v = if self.0 < rhs {
+            self.0 + N - rhs
+        } else {
+            self.0 - rhs
+        };
+        UpTo(v)
+    }
+}
+
+impl<const N: usize> num_traits::Zero for UpTo<N> {
+    fn zero() -> Self {
+        Self(0)
+    }
+
+    fn is_zero(&self) -> bool {
+        self.0 == 0
+    }
+}
+
+impl<const N: usize> Mul<UpTo<N>> for UpTo<N> {
+    type Output = Self;
+    fn mul(self, rhs: Self) -> Self::Output {
+        Self((self.0 * rhs.0) % N)
     }
 }

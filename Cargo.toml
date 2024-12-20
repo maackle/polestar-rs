@@ -2,7 +2,7 @@
 [workspace]
 members = [
   "holochain-model",
-  "holochain-toy",
+  # "holochain-toy",
   "kitsune-model",
   "polestar",
   "polestar-macros",
