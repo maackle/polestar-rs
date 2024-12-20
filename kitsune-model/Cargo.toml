@@ -8,13 +8,12 @@ edition = "2021"
 
 [dependencies]
 anyhow = "*"
-automap = "*"
 derive_more = { version = "1", features = ["full"] }
 exhaustive = "*"
 im = "*"
 itertools = "*"
 num-traits = "*"
-polestar = { version = "*", path = "/home/michael/proj/polestar-rs" }
+polestar = { version = "*", path = "../polestar" }
 proptest = "1"
 proptest-derive = "0"
 tracing = "*"
@@ -27,6 +26,4 @@ serde_json = "*"
 pretty_assertions = "*"
 
 [patch.crates-io]
-automap = { path = "/home/michael/proj/automap-rs" }
-proptest-derive = { git = "https://github.com/maackle/proptest.git", branch = "allow-non-local-definitions" }
 # exhaustive_macros = { git = "https://github.com/maackle/exhaustive.git" }

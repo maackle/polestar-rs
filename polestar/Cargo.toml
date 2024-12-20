@@ -1,0 +1,50 @@
+[package]
+name = "polestar"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "*"
+bon = "*"
+colored = "*"
+crossbeam = { version = "0.8.4", features = ["crossbeam-channel"] }
+derive_bounded = "*"
+derive_more = { version = "1", features = ["full"] }
+human-repr = "*"
+im = { version = "*", features = ["rayon"] }
+itertools = "*"
+once_cell = "*"
+nom = "*"
+num-derive = "0.4"
+num-traits = "0.2"
+parking_lot = "*"
+proptest = "1.2.0"
+proptest-derive = "0.5"
+rayon = "*"
+regex = "*"
+rustversion = "*"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+exhaustive = { version = "*", optional = true }
+petgraph = { version = "*", optional = true }
+prettydiff = { version = "*", optional = true }
+serde = { version = "*", features = ["derive"], optional = true }
+serde_json = { version = "*", optional = true }
+
+[dev-dependencies]
+# polestar = { path = ".", features = ["diagrams", "testing"] }
+
+[build-dependencies]
+rustversion = "*"
+
+[features]
+default = ["diagrams", "invariant-testing", "recording"]
+
+diagrams = ["exhaustive", "petgraph"]
+invariant-testing = ["prettydiff"]
+recording = ["serde", "serde_json"]
+
+nightly = []
+
+[patch.crates-io]
