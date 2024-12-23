@@ -6,7 +6,11 @@ use itertools::Itertools;
 use num_traits::Zero;
 use polestar::prelude::*;
 use rand::Rng;
-use tokio::{sync::Mutex, time::Instant};
+use tokio::{
+    sync::Mutex,
+    task::{futures, JoinSet},
+    time::Instant,
+};
 
 const NUM_VALUES: usize = 3;
 const NUM_AGENTS: usize = 3;
@@ -19,7 +23,7 @@ type Delay = polestar::util::Delay<Time>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum Action {
-    Tick,
+    // Tick,
     Author(Val),
     Request(Val, Agent),
     Timeout(Val),
@@ -59,7 +63,7 @@ impl Machine for Model {
 
 fn record_action(node: usize, action: Action) {
     match action {
-        Action::Tick => println!("Tick"),
+        // Action::Tick => println!("Tick"),
         Action::Author(val) => println!("Author v={val} by n{node}"),
         Action::Request(val, from) => println!("Request v={val} from n{from} by n{node}"),
         Action::Timeout(val) => println!("Timeout v={val} by n{node}"),
@@ -97,83 +101,85 @@ async fn main() {
         record_action(n, Action::Author(v));
     }
 
-    loop {
-        // Select target val, and sender and receiver
-        let r = rand::thread_rng().gen_range(0..NUM_VALUES);
-        let giver_ix = rand::thread_rng().gen_range(0..NUM_NODES);
-        let mut receiver_ix = giver_ix;
-        while receiver_ix == giver_ix {
-            receiver_ix = rand::thread_rng().gen_range(0..NUM_NODES);
-        }
-        let (giver, receiver) = (nodes[giver_ix].clone(), nodes[receiver_ix].clone());
-        let val = Val::new(r);
+    let mut joinset = JoinSet::new();
 
-        // Make the request if not holding that value
-        if !receiver.lock().await.values.contains(&val) {
-            {
-                let mut rcv = receiver.lock().await;
-                if let Some(existing) = rcv.requests.get(&val) {
-                    if existing.time.elapsed() >= TIMEOUT {
-                        rcv.requests.remove(&val);
-                        record_action(receiver_ix, Action::Timeout(val));
-                    } else {
-                        continue;
+    nodes
+        .clone()
+        .into_iter()
+        .enumerate()
+        .for_each(|(receiver_ix, receiver)| {
+            let nodes = nodes.clone();
+            joinset.spawn(async move {
+                loop {
+                    let receiver = receiver.clone();
+                    // Select target val and requestee
+                    let r = rand::thread_rng().gen_range(0..NUM_VALUES);
+                    let mut giver_ix = rand::thread_rng().gen_range(0..NUM_NODES);
+                    while receiver_ix == giver_ix {
+                        giver_ix = rand::thread_rng().gen_range(0..NUM_NODES);
                     }
+                    let giver = nodes[giver_ix].clone();
+                    let val = Val::new(r);
+
+                    // Make the request if not holding that value
+                    if !receiver.lock().await.values.contains(&val) {
+                        {
+                            let mut rcv = receiver.lock().await;
+                            if let Some(existing) = rcv.requests.get(&val) {
+                                if existing.time.elapsed() >= TIMEOUT {
+                                    rcv.requests.remove(&val);
+                                    record_action(receiver_ix, Action::Timeout(val));
+                                } else {
+                                    continue;
+                                }
+                            }
+                            rcv.requests.insert(
+                                val,
+                                RequestData {
+                                    from: giver_ix,
+                                    time: Instant::now(),
+                                },
+                            );
+                            record_action(receiver_ix, Action::Request(val, Agent::new(giver_ix)));
+                        }
+
+                        // request has 50% success rate
+                        if rand::thread_rng().gen_bool(0.5) {
+                            let delay = tokio::time::Duration::from_millis(
+                                rand::thread_rng().gen_range(10..500),
+                            );
+                            let receiver = receiver.clone();
+                            tokio::spawn(async move {
+                                tokio::time::sleep(delay).await;
+
+                                let reply = giver.lock().await.values.contains(&val).then_some(val);
+                                let mut receiver = receiver.lock().await;
+                                if let Some(r) = reply {
+                                    receiver.values.insert(r);
+                                }
+                                receiver.requests.remove(&val);
+                                record_action(receiver_ix, Action::Receive(reply));
+                            });
+                        }
+                    }
+
+                    // Establish termination condition
+                    let mut good = true;
+                    if receiver.lock().await.values.len() != NUM_VALUES {
+                        good = false;
+                    }
+                    if receiver.lock().await.requests.len() != 0 {
+                        good = false;
+                    }
+
+                    if good {
+                        break;
+                    }
+
+                    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
                 }
-                rcv.requests.insert(
-                    val,
-                    RequestData {
-                        from: giver_ix,
-                        time: Instant::now(),
-                    },
-                );
-                record_action(receiver_ix, Action::Request(val, Agent::new(giver_ix)));
-            }
+            });
+        });
 
-            // request has 50% success rate
-            if rand::thread_rng().gen_bool(0.5) {
-                let delay =
-                    tokio::time::Duration::from_millis(rand::thread_rng().gen_range(10..500));
-                tokio::spawn(async move {
-                    tokio::time::sleep(delay).await;
-
-                    let reply = giver.lock().await.values.contains(&val).then_some(val);
-                    let mut receiver = receiver.lock().await;
-                    if let Some(r) = reply {
-                        receiver.values.insert(r);
-                    }
-                    receiver.requests.remove(&val);
-                    record_action(receiver_ix, Action::Receive(reply));
-                });
-            }
-        }
-
-        // Establish termination condition
-        let mut good = true;
-        // println!();
-        for (i, n) in nodes.iter().enumerate() {
-            let node = n.lock().await;
-            // println!(
-            //     "{i}: VALUES {:?} REQUESTS [{:?}]",
-            //     node.values,
-            //     node.requests
-            //         .iter()
-            //         .map(|(k, v)| format!("val={k} data={v}"))
-            //         .collect_vec()
-            // );
-            if node.values.len() != NUM_VALUES {
-                good = false;
-            }
-            if node.requests.len() != 0 {
-                good = false;
-            }
-        }
-        // println!();
-
-        if good {
-            break;
-        }
-
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-    }
+    joinset.join_all().await;
 }
