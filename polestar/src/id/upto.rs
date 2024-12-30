@@ -1,7 +1,5 @@
 use std::ops::Mul;
 
-use num_derive::{One, Zero};
-
 use super::*;
 
 /// A number in the range [0, N)

@@ -2,33 +2,24 @@
 //! and each other node can request that value from a node who knows about it.
 //! Nodes will timeout their requests if they don't receive a response within a certain time.
 //!
-//! The model features a model of time, to put constraints on the behavior around timeouts, ensuring
-//! that timeouts eventually happen, and that they don't happen too soon.
+//! There is no limit on time. See [./monotonic_time.rs] for a version with a model of time.
 
-use std::{fmt::Display, sync::Arc};
+use std::sync::Arc;
 
 use anyhow::{anyhow, bail};
-use im::{HashMap, OrdMap, OrdSet, Vector};
-use itertools::Itertools;
-use num_traits::Zero;
+use im::{HashMap, OrdSet, Vector};
 use polestar::{
-    diagram::write_dot,
     mapping::{ActionOf, EventHandler, ModelMapping, StateOf},
     prelude::*,
-    traversal::{traverse, TraversalConfig, TraversalGraphingConfig},
 };
 use rand::Rng;
 use tokio::{sync::Mutex, task::JoinSet, time::Instant};
 
-const NUM_VALUES: usize = 2;
+const NUM_VALUES: usize = 3;
 const NUM_AGENTS: usize = 3;
-const TIMEOUT: usize = 1;
-const TIME_CHOICES: usize = TIMEOUT + 1;
 
 type Val = UpTo<NUM_VALUES>;
 type Agent = UpTo<NUM_AGENTS>;
-type Time = UpTo<TIME_CHOICES>;
-type Delay = polestar::util::Delay<Time>;
 
 /*                   █████     ███
                     ░░███     ░░░
@@ -39,18 +30,14 @@ type Delay = polestar::util::Delay<Time>;
 ░░████████░░██████   ░░█████  █████░░██████  ████ █████
  ░░░░░░░░  ░░░░░░     ░░░░░  ░░░░░  ░░░░░░  ░░░░ ░░░░░   */
 
-pub type Action = (Agent, NodeAction);
+type Action = (Agent, NodeAction);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, exhaustive::Exhaustive, derive_more::Display)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum NodeAction {
-    Tick,
-    #[display("Author(v{_0})")]
+    // Tick,
     Author(Val),
-    #[display("Request(v{_0} <- n{_1})")]
     Request(Val, Agent),
-    #[display("Timeout(v{_0})")]
     Timeout(Val),
-    #[display("Receive(v{_0}, {_1})")]
     Receive(Val, bool),
 }
 
@@ -63,42 +50,15 @@ enum NodeAction {
  ██████   ░░█████ ░░████████  ░░█████ ░░██████
 ░░░░░░     ░░░░░   ░░░░░░░░    ░░░░░   ░░░░░░  */
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub struct State {
-    nodes: OrdMap<Agent, NodeState>,
+    nodes: HashMap<Agent, NodeState>,
 }
 
-impl Display for State {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}\n",
-            self.nodes
-                .iter()
-                .map(|(n, s)| format!("n{n}: {s}"))
-                .join("\n")
-        )
-    }
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Default)]
 struct NodeState {
     values: OrdSet<Val>,
-    requests: Vector<(Time, Val)>,
-}
-
-impl Display for NodeState {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "stored [{}] requests [{}]",
-            self.values.iter().join(" "),
-            self.requests
-                .iter()
-                .map(|(v, t)| format!("{v}:{t}"))
-                .join(",")
-        )
-    }
+    requests: Vector<Val>,
 }
 
 /*                            █████          ████
@@ -136,57 +96,36 @@ impl Machine for Model {
         mut state: Self::State,
         (node, action): Self::Action,
     ) -> TransitionResult<Self> {
-        // match action {
-        //     NodeAction::Tick => println!("Tick"),
-        //     NodeAction::Author(val) => println!("Author v={val} by n{node}"),
-        //     NodeAction::Request(val, from) => println!("Request v={val} from n{from} by n{node}"),
-        //     NodeAction::Timeout(val) => println!("Timeout v={val} by n{node}"),
-        //     NodeAction::Receive(val, found) => {
-        //         println!("Received {found} response for v={val:?} by n{node}")
-        //     }
-        // }
         match action {
-            NodeAction::Tick => {
-                for (time, v) in state.nodes[&node].requests.iter_mut() {
-                    if time.is_zero() {
-                        bail!("value should have timed out: v={v}")
-                    }
-                    *time = *time - 1;
-                }
+            // Action::Tick => println!("Tick"),
+            NodeAction::Author(val) => println!("Author v={val} by n{node}"),
+            NodeAction::Request(val, from) => println!("Request v={val} from n{from} by n{node}"),
+            NodeAction::Timeout(val) => println!("Timeout v={val} by n{node}"),
+            NodeAction::Receive(val, found) => {
+                println!("Received {found} response for v={val:?} by n{node}")
             }
+        }
+        match action {
             NodeAction::Author(v) => {
                 state.nodes[&node].values.insert(v);
             }
             NodeAction::Request(v, _from) => {
-                if state.nodes[&node]
-                    .requests
-                    .iter()
-                    .find(|(_, i)| *i == v)
-                    .is_some()
-                {
-                    bail!("request already exists")
-                }
-                state.nodes[&node]
-                    .requests
-                    .push_back((Time::new(TIMEOUT), v));
+                state.nodes[&node].requests.push_back(v);
             }
             NodeAction::Timeout(v) => {
-                let (time, popped) = state.nodes[&node]
+                let popped = state.nodes[&node]
                     .requests
                     .pop_front()
                     .ok_or(anyhow!("no requests to timeout"))?;
                 if popped != v {
                     bail!("timeout doesn't match")
                 }
-                if !time.is_zero() {
-                    bail!("timed out too early or too late")
-                }
             }
             NodeAction::Receive(v, found) => {
                 if found {
                     state.nodes[&node].values.insert(v);
                 }
-                state.nodes[&node].requests.retain(|(_, i)| *i != v);
+                state.nodes[&node].requests.retain(|i| *i != v);
             }
         }
 
@@ -226,32 +165,25 @@ impl polestar::mapping::ModelMapping for RealtimeMapping {
     type Event = Action;
 
     fn map_state(&mut self, system: &Self::System) -> Option<StateOf<Self::Model>> {
-        todo!();
-        // let model = State {
-        //     nodes: system
-        //         .nodes
-        //         .iter()
-        //         .map(|(n, v)| {
-        //             (
-        //                 Agent::new(*n),
-        //                 NodeState {
-        //                     values: v.values.clone(),
-        //                     requests: v.requests.iter().map(|(v, _)| v.clone()).collect(),
-        //                 },
-        //             )
-        //         })
-        //         .collect(),
-        // };
-        // Some(model)
+        let model = State {
+            nodes: system
+                .nodes
+                .iter()
+                .map(|(n, v)| {
+                    (
+                        Agent::new(*n),
+                        NodeState {
+                            values: v.values.clone(),
+                            requests: v.requests.iter().map(|(v, _)| v.clone()).collect(),
+                        },
+                    )
+                })
+                .collect(),
+        };
+        Some(model)
     }
 
     fn map_event(&mut self, event: &Self::Event) -> Option<ActionOf<Self::Model>> {
-        // match event.1 {
-        //     NodeAction::Tick => {
-        //         self.recent_ticks.push_front(Instant::now());
-        //     }
-        //     _ => {}
-        // }
         Some((event.0, event.1.clone()))
     }
 }
@@ -305,39 +237,9 @@ struct RequestData {
  █████░███ █████░░████████ █████ ████ █████
 ░░░░░ ░░░ ░░░░░  ░░░░░░░░ ░░░░░ ░░░░ ░░░░░   */
 
-fn explore(do_graph: bool) {
-    let model = Model {
-        nodes: (0..NUM_AGENTS).map(|n| Agent::new(n)).collect(),
-    };
-    let initial = model.initial();
-    let config = TraversalConfig::builder()
-        .graphing(TraversalGraphingConfig {
-            ignore_loopbacks: true,
-        })
-        .trace_every(100_000)
-        // .trace_error(true)
-        .build();
-
-    let (report, graph, _) = traverse(model.into(), initial, config, Some).unwrap();
-    dbg!(&report);
-
-    if do_graph {
-        let graph = graph.unwrap();
-        let graph = graph.map(|_, n| n, |_, (i, e)| format!("n{i}: {e}"));
-        write_dot("out.dot", &graph, &[]);
-    }
-}
-
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
-    tracing_subscriber::fmt::fmt()
-        .with_max_level(tracing::Level::INFO)
-        .init();
-
-    explore(false);
-    return;
-
-    const NUM_NODES: usize = NUM_AGENTS;
+    const NUM_NODES: usize = 3;
     const TIMEOUT: tokio::time::Duration = tokio::time::Duration::from_secs(1);
 
     let nodes = (0..NUM_NODES)

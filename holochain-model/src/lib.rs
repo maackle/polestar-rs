@@ -1,4 +1,4 @@
-#![allow(unused_imports)]
+#![allow(deprecated, unused)]
 
 pub mod op_family;
 // pub mod op_family_known_deps;

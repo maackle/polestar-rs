@@ -173,7 +173,7 @@ impl<N: Id> Machine for NodeMachine<N> {
         Ok((state, ()))
     }
 
-    fn is_terminal(&self, s: &Self::State) -> bool {
+    fn is_terminal(&self, _s: &Self::State) -> bool {
         false
     }
 }

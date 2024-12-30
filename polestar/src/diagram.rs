@@ -101,6 +101,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn test_state_diagrams() {
         let (nodes_montecarlo, edges_montecarlo) = {
             use super::montecarlo::*;
