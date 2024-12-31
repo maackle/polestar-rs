@@ -5,7 +5,10 @@
 //! The model features a model of time, to put constraints on the behavior around timeouts, ensuring
 //! that timeouts eventually happen, and that they don't happen too soon.
 
-use std::{fmt::Display, sync::Arc};
+use std::{
+    fmt::Display,
+    sync::{atomic::AtomicBool, Arc},
+};
 
 use anyhow::{anyhow, bail};
 use im::{HashMap, OrdMap, OrdSet, Vector};
@@ -23,7 +26,7 @@ use polestar::{
 use rand::Rng;
 use tokio::{sync::Mutex, task::JoinSet, time::Instant};
 
-const NUM_VALUES: usize = 1;
+const NUM_VALUES: usize = 2;
 const NUM_AGENTS: usize = 3;
 const TIMEOUT: usize = 1;
 const TIME_CHOICES: usize = TIMEOUT + 1;
@@ -143,15 +146,6 @@ impl Machine for Model {
         mut state: Self::State,
         (node, action): Self::Action,
     ) -> TransitionResult<Self> {
-        // match action {
-        //     NodeAction::Tick => println!("Tick"),
-        //     NodeAction::Author(val) => println!("Author v={val} by n{node}"),
-        //     NodeAction::Request(val, from) => println!("Request v={val} from n{from} by n{node}"),
-        //     NodeAction::Timeout(val) => println!("Timeout v={val} by n{node}"),
-        //     NodeAction::Receive(val, found) => {
-        //         println!("Received {found} response for v={val:?} by n{node}")
-        //     }
-        // }
         match action {
             NodeAction::Tick => {
                 for (time, v) in state.nodes[&node].requests.iter_mut() {
@@ -307,13 +301,7 @@ fn explore(do_graph: bool) {
     dbg!(&report);
 }
 
-#[tokio::main(flavor = "multi_thread")]
-async fn main() {
-    // TODO: add system mapping stuff, from fetch_timeless
-    tracing_subscriber::fmt::fmt()
-        .with_max_level(tracing::Level::INFO)
-        .init();
-
+fn model_check() {
     let model = Model {
         nodes: (0..NUM_AGENTS).map(|n| Agent::new(n)).collect(),
     };
@@ -323,6 +311,16 @@ async fn main() {
     let checker = ModelChecker::new(model, propmap, &ltl).unwrap();
 
     model_checker_report(checker.check(initial));
+}
+
+#[tokio::main(flavor = "multi_thread")]
+async fn main() {
+    // TODO: add system mapping stuff, from fetch_timeless
+    tracing_subscriber::fmt::fmt()
+        .with_max_level(tracing::Level::INFO)
+        .init();
+
+    run().await;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -400,33 +398,40 @@ impl polestar::mapping::ModelMapping for RealtimeMapping {
     type Event = Action;
 
     fn map_state(&mut self, system: &Self::System) -> Option<StateOf<Self::Model>> {
-        todo!();
-        // let model = State {
-        //     nodes: system
-        //         .nodes
-        //         .iter()
-        //         .map(|(n, v)| {
-        //             (
-        //                 Agent::new(*n),
-        //                 NodeState {
-        //                     values: v.values.clone(),
-        //                     requests: v.requests.iter().map(|(v, _)| v.clone()).collect(),
-        //                 },
-        //             )
-        //         })
-        //         .collect(),
-        // };
-        // Some(model)
+        let model = State {
+            nodes: system
+                .nodes
+                .iter()
+                .map(|(n, v)| {
+                    (
+                        Agent::new(*n),
+                        NodeState {
+                            values: v.values.clone(),
+                            requests: v
+                                .requests
+                                .iter()
+                                .map(|(v, _)| (Time::new(TIMEOUT), v.clone()))
+                                .collect(),
+                        },
+                    )
+                })
+                .collect(),
+        };
+        Some(model)
     }
 
     fn map_event(&mut self, event: &Self::Event) -> Option<ActionOf<Self::Model>> {
-        // match event.1 {
-        //     NodeAction::Tick => {
-        //         self.recent_ticks.push_front(Instant::now());
-        //     }
-        //     _ => {}
-        // }
-        Some((event.0, event.1.clone()))
+        let (node, action) = event;
+        match action {
+            NodeAction::Tick => println!("Tick n{node}"),
+            NodeAction::Author(val) => println!("Author v={val} by n{node}"),
+            NodeAction::Request(val, from) => println!("Request v={val} from n{from} by n{node}"),
+            NodeAction::Timeout(val) => println!("Timeout v={val} by n{node}"),
+            NodeAction::Receive(val, found) => {
+                println!("Received {found} response for v={val:?} by n{node}")
+            }
+        }
+        Some((*node, action.clone()))
     }
 }
 
@@ -468,4 +473,163 @@ struct SystemNode {
 struct RequestData {
     from: usize,
     time: Instant,
+}
+
+async fn run() {
+    const NUM_NODES: usize = 3;
+    const TICK_INTERVAL: tokio::time::Duration = tokio::time::Duration::from_millis(1000);
+    let timeout = TICK_INTERVAL * 1;
+
+    let nodes = (0..NUM_NODES)
+        .map(|_| Arc::new(Mutex::new(SystemNode::default())))
+        .collect::<Vec<_>>();
+    let model = Model {
+        nodes: (0..NUM_NODES).map(|n| Agent::new(n)).collect(),
+    };
+    let mapping = Arc::new(Mutex::new(RealtimeMapping::new(model)));
+
+    for v in 0..NUM_VALUES {
+        let n = v % NUM_NODES;
+        let v = Val::new(v);
+        let mut node = nodes[n].lock().await;
+        node.values.insert(v);
+        mapping
+            .lock()
+            .await
+            .handle(&(n, NodeAction::Author(v)))
+            .unwrap();
+    }
+
+    let mut joinset = JoinSet::new();
+
+    nodes
+        .clone()
+        .into_iter()
+        .enumerate()
+        .for_each(|(receiver_ix, receiver)| {
+            let nodes = nodes.clone();
+            let mapping = mapping.clone();
+            let stop = Arc::new(AtomicBool::new(false));
+
+            // joinset.spawn({
+            //     let mapping = mapping.clone();
+            //     let stop = stop.clone();
+            //     async move {
+            //         loop {
+            //             if stop.load(std::sync::atomic::Ordering::SeqCst) {
+            //                 break;
+            //             }
+            //             tokio::time::sleep(TICK_INTERVAL).await;
+            //             mapping
+            //                 .lock()
+            //                 .await
+            //                 .handle(&(receiver_ix, NodeAction::Tick))
+            //                 .unwrap();
+            //         }
+            //     }
+            // });
+
+            joinset.spawn(async move {
+                let mut last_tick = Instant::now();
+                loop {
+                    while last_tick.elapsed() >= TICK_INTERVAL {
+                        mapping
+                            .lock()
+                            .await
+                            .handle(&(receiver_ix, NodeAction::Tick))
+                            .unwrap();
+                        last_tick += TICK_INTERVAL;
+                    }
+
+                    let receiver = receiver.clone();
+                    // Select target val and requestee
+                    let r = rand::thread_rng().gen_range(0..NUM_VALUES);
+                    let mut giver_ix = rand::thread_rng().gen_range(0..NUM_NODES);
+                    while receiver_ix == giver_ix {
+                        giver_ix = rand::thread_rng().gen_range(0..NUM_NODES);
+                    }
+                    let giver = nodes[giver_ix].clone();
+                    let val = Val::new(r);
+
+                    // Make the request if not holding that value
+                    if !receiver.lock().await.values.contains(&val) {
+                        {
+                            let mut rcv = receiver.lock().await;
+                            if let Some(existing) = rcv.requests.get(&val) {
+                                if existing.time.elapsed() >= timeout {
+                                    rcv.requests.remove(&val);
+                                    mapping
+                                        .lock()
+                                        .await
+                                        .handle(&(receiver_ix, NodeAction::Timeout(val)))
+                                        .unwrap();
+                                } else {
+                                    continue;
+                                }
+                            }
+                            rcv.requests.insert(
+                                val,
+                                RequestData {
+                                    from: giver_ix,
+                                    time: Instant::now(),
+                                },
+                            );
+                            mapping
+                                .lock()
+                                .await
+                                .handle(&(
+                                    receiver_ix,
+                                    NodeAction::Request(val, Agent::new(giver_ix)),
+                                ))
+                                .unwrap();
+                        }
+
+                        // request has 50% success rate
+                        if rand::thread_rng().gen_bool(0.5) {
+                            let delay = tokio::time::Duration::from_millis(
+                                rand::thread_rng().gen_range(10..500),
+                            );
+                            let receiver = receiver.clone();
+                            let mapping = mapping.clone();
+                            tokio::spawn(async move {
+                                tokio::time::sleep(delay).await;
+
+                                let reply = giver.lock().await.values.contains(&val).then_some(val);
+                                let mut receiver = receiver.lock().await;
+                                if let Some(r) = reply {
+                                    receiver.values.insert(r);
+                                }
+                                receiver.requests.remove(&val);
+                                mapping
+                                    .lock()
+                                    .await
+                                    .handle(&(
+                                        receiver_ix,
+                                        NodeAction::Receive(val, reply.is_some()),
+                                    ))
+                                    .unwrap();
+                            });
+                        }
+                    }
+
+                    // Establish termination condition
+                    let mut good = true;
+                    if receiver.lock().await.values.len() != NUM_VALUES {
+                        good = false;
+                    }
+                    if receiver.lock().await.requests.len() != 0 {
+                        good = false;
+                    }
+
+                    if good {
+                        stop.store(true, std::sync::atomic::Ordering::SeqCst);
+                        break;
+                    }
+
+                    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+                }
+            });
+        });
+
+    joinset.join_all().await;
 }
