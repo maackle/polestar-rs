@@ -29,23 +29,25 @@ tracing-subscriber = "0.3"
 exhaustive = { version = "*", optional = true }
 petgraph = { version = "*", optional = true }
 prettydiff = { version = "*", optional = true }
+rand = { version = "*", optional = true }
 serde = { version = "*", features = ["derive"], optional = true }
 serde_json = { version = "*", optional = true }
+tokio = { version = "*", features = ["full"], optional = true }
 
 [dev-dependencies]
-tokio = { version = "*", features = ["full"] }
-rand = "*"
-# polestar = { path = ".", features = ["diagrams", "testing"] }
+polestar = { path = ".", features = ["diagrams", "testing"] }
 
 [build-dependencies]
 rustversion = "*"
 
 [features]
-default = ["diagrams", "invariant-testing", "recording"]
+default = ["diagrams", "example-models", "invariant-testing", "recording"]
 
 diagrams = ["exhaustive", "petgraph"]
+example-models = ["testing"]
 invariant-testing = ["prettydiff"]
 recording = ["serde", "serde_json"]
+testing = ["rand", "tokio"]
 
 nightly = []
 

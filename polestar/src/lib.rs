@@ -7,6 +7,10 @@ pub mod machine;
 pub mod model_checker;
 // pub mod lens;
 pub mod event_handler;
+pub mod ext;
+pub mod logic;
+pub mod ltl;
+pub mod mapping;
 pub mod traversal;
 pub mod util;
 
@@ -14,10 +18,9 @@ pub mod util;
 
 #[cfg(feature = "diagrams")]
 pub mod diagram;
-pub mod ext;
-pub mod logic;
-pub mod ltl;
-pub mod mapping;
+
+#[cfg(feature = "example-models")]
+pub mod example_models;
 
 pub use actor::Actor;
 pub use event_handler::{EventHandler, EventSink};
