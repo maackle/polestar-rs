@@ -31,7 +31,6 @@ const TIME_CHOICES: usize = TIMEOUT + 1;
 type Val = UpTo<NUM_VALUES>;
 type Agent = UpTo<NUM_AGENTS>;
 type Time = UpTo<TIME_CHOICES>;
-type Delay = polestar::util::Delay<Time>;
 
 /*                   █████     ███
                     ░░███     ░░░
@@ -46,14 +45,19 @@ pub type Action = (Agent, NodeAction);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, exhaustive::Exhaustive, derive_more::Display)]
 enum NodeAction {
+    #[display("Tick")]
     Tick,
-    #[display("Author(v{_0})")]
+
+    #[display("Auth(v{_0})")]
     Author(Val),
-    #[display("Request(v{_0} <- n{_1})")]
+
+    #[display("Req(v{_0} ⇐ n{_1})")]
     Request(Val, Agent),
+
     #[display("Timeout(v{_0})")]
     Timeout(Val),
-    #[display("Receive(v{_0}, {_1})")]
+
+    #[display("Recv(v{_0}, {_1})")]
     Receive(Val, bool),
 }
 
@@ -169,6 +173,12 @@ impl Machine for Model {
                 {
                     bail!("request already exists")
                 }
+
+                // fixes "G (({stored} && !{req}) -> G !{req})"
+                if state.nodes[&node].values.contains(&v) {
+                    bail!("value already stored, don't request it again")
+                }
+
                 state.nodes[&node]
                     .requests
                     .push_back((Time::new(TIMEOUT), v));
@@ -196,6 +206,167 @@ impl Machine for Model {
         Ok((state, ()))
     }
 }
+
+/* █████       ███████████ █████
+ * ░░███       ░█░░░███░░░█░░███
+ *  ░███       ░   ░███  ░  ░███
+ *  ░███           ░███     ░███
+ *  ░███           ░███     ░███
+ *  ░███      █    ░███     ░███      █
+ *  ███████████    █████    ███████████
+ * ░░░░░░░░░░░    ░░░░░    ░░░░░░░░░░░   */
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, derive_more::Display)]
+enum Prop {
+    #[display("requesting__n{_0}_v{_1}")]
+    Requesting(Agent, Val),
+
+    #[display("stored__n{_0}_v{_1}")]
+    Stored(Agent, Val),
+
+    #[display("no_requests__n{_0}")]
+    NoRequests(Agent),
+}
+
+impl Propositions<Prop> for Pair<State> {
+    fn eval(&self, prop: &Prop) -> bool {
+        let (state, _) = self;
+        match prop {
+            Prop::Requesting(agent, val) => state
+                .nodes
+                .get(&agent)
+                .map(|n| n.requests.iter().any(|(_, v)| v == val))
+                .unwrap_or(false),
+
+            Prop::Stored(agent, val) => state
+                .nodes
+                .get(&agent)
+                .map(|n| n.values.contains(val))
+                .unwrap_or(false),
+
+            Prop::NoRequests(agent) => state.nodes[&agent].requests.is_empty(),
+        }
+    }
+}
+
+fn props_and_ltl() -> (PropRegistry<Prop>, String) {
+    let mut propmap = PropRegistry::empty();
+    let pairs = product2(Agent::all_values(), Val::all_values());
+    let pairwise = conjoin(pairs.flat_map(|(agent, val)| {
+        let req = propmap.add(Prop::Requesting(agent, val)).unwrap();
+        let stored = propmap.add(Prop::Stored(agent, val)).unwrap();
+        [
+            // don't make a request for data you're already storing
+            format!("G (({stored} && !{req}) -> G !{req})"),
+        ]
+    }));
+    let agentwise = conjoin(Agent::all_values().into_iter().flat_map(|agent| {
+        let no_requests = propmap.add(Prop::NoRequests(agent)).unwrap();
+        [
+            // always chew through all requests
+            format!("G F {no_requests}"),
+        ]
+    }));
+    let ltl = conjoin([pairwise, agentwise]);
+    (propmap, ltl)
+}
+
+/*                          ███
+                           ░░░
+ █████████████    ██████   ████  ████████
+░░███░░███░░███  ░░░░░███ ░░███ ░░███░░███
+ ░███ ░███ ░███   ███████  ░███  ░███ ░███
+ ░███ ░███ ░███  ███░░███  ░███  ░███ ░███
+ █████░███ █████░░████████ █████ ████ █████
+░░░░░ ░░░ ░░░░░  ░░░░░░░░ ░░░░░ ░░░░ ░░░░░   */
+
+fn explore(do_graph: bool) {
+    let model = Model {
+        nodes: (0..NUM_AGENTS).map(|n| Agent::new(n)).collect(),
+    };
+    let initial = model.initial();
+
+    let config = TraversalConfig::builder()
+        .graphing(TraversalGraphingConfig {
+            ignore_loopbacks: true,
+        })
+        .trace_every(100_000)
+        // .trace_error(true)
+        .build();
+    let (report, graph, _) = traverse(model.into(), initial, config, Some).unwrap();
+    if do_graph {
+        let graph = graph.unwrap();
+        let graph = graph.map(|_, n| n, |_, (i, e)| format!("n{i}: {e}"));
+        write_dot("out.dot", &graph, &[]);
+        println!(
+            "wrote out.dot. nodes={}, edges={}",
+            graph.node_count(),
+            graph.edge_count()
+        );
+    }
+    dbg!(&report);
+}
+
+#[tokio::main(flavor = "multi_thread")]
+async fn main() {
+    // TODO: add system mapping stuff, from fetch_timeless
+    tracing_subscriber::fmt::fmt()
+        .with_max_level(tracing::Level::INFO)
+        .init();
+
+    let model = Model {
+        nodes: (0..NUM_AGENTS).map(|n| Agent::new(n)).collect(),
+    };
+    let (propmap, ltl) = props_and_ltl();
+    println!("checking LTL:\n{}", ltl);
+    let initial = model.initial();
+    let checker = ModelChecker::new(model, propmap, &ltl).unwrap();
+
+    model_checker_report(checker.check(initial));
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /*                                              ███
                                                ░░░
@@ -297,108 +468,4 @@ struct SystemNode {
 struct RequestData {
     from: usize,
     time: Instant,
-}
-
-/* █████       ███████████ █████
- * ░░███       ░█░░░███░░░█░░███
- *  ░███       ░   ░███  ░  ░███
- *  ░███           ░███     ░███
- *  ░███           ░███     ░███
- *  ░███      █    ░███     ░███      █
- *  ███████████    █████    ███████████
- * ░░░░░░░░░░░    ░░░░░    ░░░░░░░░░░░   */
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, derive_more::Display)]
-enum Prop {
-    #[display("requesting__n{_0}_v{_1}")]
-    Requesting(Agent, Val),
-
-    #[display("stored__n{_0}_v{_1}")]
-    Stored(Agent, Val),
-}
-
-impl Propositions<Prop> for Pair<State> {
-    fn eval(&self, prop: &Prop) -> bool {
-        let (state, _) = self;
-        match prop {
-            Prop::Requesting(agent, val) => state
-                .nodes
-                .get(&agent)
-                .map(|n| n.requests.iter().any(|(_, v)| v == val))
-                .unwrap_or(false),
-
-            Prop::Stored(agent, val) => state
-                .nodes
-                .get(&agent)
-                .map(|n| n.values.contains(val))
-                .unwrap_or(false),
-        }
-    }
-}
-
-fn props_and_ltl() -> (PropRegistry<Prop>, String) {
-    let mut propmap = PropRegistry::empty();
-    let pairs = product2(Agent::all_values(), Val::all_values());
-    let ltl = conjoin(pairs.map(|(agent, val)| {
-        let req = propmap.add(Prop::Requesting(agent, val)).unwrap();
-        let stored = propmap.add(Prop::Stored(agent, val)).unwrap();
-        format!("G ({req} -> !{stored})")
-    }));
-    (propmap, ltl)
-}
-
-/*                          ███
-                           ░░░
- █████████████    ██████   ████  ████████
-░░███░░███░░███  ░░░░░███ ░░███ ░░███░░███
- ░███ ░███ ░███   ███████  ░███  ░███ ░███
- ░███ ░███ ░███  ███░░███  ░███  ░███ ░███
- █████░███ █████░░████████ █████ ████ █████
-░░░░░ ░░░ ░░░░░  ░░░░░░░░ ░░░░░ ░░░░ ░░░░░   */
-
-fn explore(do_graph: bool) {
-    let model = Model {
-        nodes: (0..NUM_AGENTS).map(|n| Agent::new(n)).collect(),
-    };
-    let initial = model.initial();
-
-    let config = TraversalConfig::builder()
-        .graphing(TraversalGraphingConfig {
-            ignore_loopbacks: true,
-        })
-        .trace_every(100_000)
-        // .trace_error(true)
-        .build();
-    let (report, graph, _) = traverse(model.into(), initial, config, Some).unwrap();
-    if do_graph {
-        let graph = graph.unwrap();
-        let graph = graph.map(|_, n| n, |_, (i, e)| format!("n{i}: {e}"));
-        write_dot("out.dot", &graph, &[]);
-        println!(
-            "wrote out.dot. nodes={}, edges={}",
-            graph.node_count(),
-            graph.edge_count()
-        );
-    }
-    dbg!(&report);
-}
-
-#[tokio::main(flavor = "multi_thread")]
-async fn main() {
-    // TODO: add system mapping stuff, from fetch_timeless
-    tracing_subscriber::fmt::fmt()
-        .with_max_level(tracing::Level::INFO)
-        .init();
-
-    let model = Model {
-        nodes: (0..NUM_AGENTS).map(|n| Agent::new(n)).collect(),
-    };
-    let (propmap, ltl) = props_and_ltl();
-    println!("checking LTL:\n{}", ltl);
-    let initial = model.initial();
-    let checker = ModelChecker::new(model, propmap, &ltl).unwrap();
-
-    model_checker_report(checker.check(initial));
-
-    // explore(true);
 }
