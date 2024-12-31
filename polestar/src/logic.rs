@@ -1,5 +1,7 @@
 use std::{collections::HashMap, fmt::Display};
 
+use itertools::Itertools;
+
 mod promela_parser;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -194,6 +196,13 @@ where
             .unwrap_or_else(|| panic!("no closure for prop: {}", prop));
         self.states.eval(&name)
     }
+}
+
+pub fn conjoin(predicates: impl IntoIterator<Item = String>) -> String {
+    predicates
+        .into_iter()
+        .map(|p| format!("({p})"))
+        .join(" && ")
 }
 
 #[cfg(test)]

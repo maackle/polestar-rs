@@ -346,7 +346,7 @@ mod tests {
     use polestar::{
         diagram::exhaustive::write_dot_state_diagram_mapped,
         id::{IdUnit, UpTo},
-        logic::{Pair, PropRegistry, Propositions},
+        logic::{conjoin, Pair, PropRegistry, Propositions},
         model_checker::{model_checker_report, ModelChecker},
         traversal::TraversalConfig,
     };
@@ -426,20 +426,16 @@ mod tests {
 
         let machine: OpFamilyMachine<A, T> = OpFamilyMachine::new();
 
-        let ltl = pairs
-            .into_iter()
-            .flat_map(|(o, b)| {
-                let ow = propmap.add(Prop::OpAwaiting(o, b)).unwrap();
-                let aw = propmap.add(Prop::ActionAwaiting(b, o.0)).unwrap();
-                let oi = propmap.add(Prop::OpIntegrated(o)).unwrap();
-                let ai = propmap.add(Prop::ActionIntegrated(b)).unwrap();
-                vec![
-                    format!("G ({ow} -> !{aw} )"),
-                    format!("G ({ow} -> (G {oi} -> {ai} ) )"),
-                ]
-            })
-            .map(|s| format!("({s})"))
-            .join(" && ");
+        let ltl = conjoin(pairs.into_iter().flat_map(|(o, b)| {
+            let ow = propmap.add(Prop::OpAwaiting(o, b)).unwrap();
+            let aw = propmap.add(Prop::ActionAwaiting(b, o.0)).unwrap();
+            let oi = propmap.add(Prop::OpIntegrated(o)).unwrap();
+            let ai = propmap.add(Prop::ActionIntegrated(b)).unwrap();
+            vec![
+                format!("G ({ow} -> !{aw} )"),
+                format!("G ({ow} -> (G {oi} -> {ai} ) )"),
+            ]
+        }));
 
         let initial = machine.initial();
         let checker = ModelChecker::new(machine.clone(), propmap, &ltl).unwrap();

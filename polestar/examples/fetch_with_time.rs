@@ -13,14 +13,17 @@ use itertools::Itertools;
 use num_traits::Zero;
 use polestar::{
     diagram::write_dot,
+    logic::{conjoin, Pair, PropRegistry, Propositions},
     mapping::{ActionOf, EventHandler, ModelMapping, StateOf},
+    model_checker::{model_checker_report, ModelChecker},
     prelude::*,
     traversal::{traverse, TraversalConfig, TraversalGraphingConfig},
+    util::product2,
 };
 use rand::Rng;
 use tokio::{sync::Mutex, task::JoinSet, time::Instant};
 
-const NUM_VALUES: usize = 2;
+const NUM_VALUES: usize = 1;
 const NUM_AGENTS: usize = 3;
 const TIMEOUT: usize = 1;
 const TIME_CHOICES: usize = TIMEOUT + 1;
@@ -296,6 +299,54 @@ struct RequestData {
     time: Instant,
 }
 
+/* █████       ███████████ █████
+ * ░░███       ░█░░░███░░░█░░███
+ *  ░███       ░   ░███  ░  ░███
+ *  ░███           ░███     ░███
+ *  ░███           ░███     ░███
+ *  ░███      █    ░███     ░███      █
+ *  ███████████    █████    ███████████
+ * ░░░░░░░░░░░    ░░░░░    ░░░░░░░░░░░   */
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, derive_more::Display)]
+enum Prop {
+    #[display("requesting__n{_0}_v{_1}")]
+    Requesting(Agent, Val),
+
+    #[display("stored__n{_0}_v{_1}")]
+    Stored(Agent, Val),
+}
+
+impl Propositions<Prop> for Pair<State> {
+    fn eval(&self, prop: &Prop) -> bool {
+        let (state, _) = self;
+        match prop {
+            Prop::Requesting(agent, val) => state
+                .nodes
+                .get(&agent)
+                .map(|n| n.requests.iter().any(|(_, v)| v == val))
+                .unwrap_or(false),
+
+            Prop::Stored(agent, val) => state
+                .nodes
+                .get(&agent)
+                .map(|n| n.values.contains(val))
+                .unwrap_or(false),
+        }
+    }
+}
+
+fn props_and_ltl() -> (PropRegistry<Prop>, String) {
+    let mut propmap = PropRegistry::empty();
+    let pairs = product2(Agent::all_values(), Val::all_values());
+    let ltl = conjoin(pairs.map(|(agent, val)| {
+        let req = propmap.add(Prop::Requesting(agent, val)).unwrap();
+        let stored = propmap.add(Prop::Stored(agent, val)).unwrap();
+        format!("G ({req} -> !{stored})")
+    }));
+    (propmap, ltl)
+}
+
 /*                          ███
                            ░░░
  █████████████    ██████   ████  ████████
@@ -310,6 +361,7 @@ fn explore(do_graph: bool) {
         nodes: (0..NUM_AGENTS).map(|n| Agent::new(n)).collect(),
     };
     let initial = model.initial();
+
     let config = TraversalConfig::builder()
         .graphing(TraversalGraphingConfig {
             ignore_loopbacks: true,
@@ -317,148 +369,36 @@ fn explore(do_graph: bool) {
         .trace_every(100_000)
         // .trace_error(true)
         .build();
-
     let (report, graph, _) = traverse(model.into(), initial, config, Some).unwrap();
-    dbg!(&report);
-
     if do_graph {
         let graph = graph.unwrap();
         let graph = graph.map(|_, n| n, |_, (i, e)| format!("n{i}: {e}"));
         write_dot("out.dot", &graph, &[]);
+        println!(
+            "wrote out.dot. nodes={}, edges={}",
+            graph.node_count(),
+            graph.edge_count()
+        );
     }
+    dbg!(&report);
 }
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
+    // TODO: add system mapping stuff, from fetch_timeless
     tracing_subscriber::fmt::fmt()
         .with_max_level(tracing::Level::INFO)
         .init();
 
-    explore(false);
-    return;
-
-    const NUM_NODES: usize = NUM_AGENTS;
-    const TIMEOUT: tokio::time::Duration = tokio::time::Duration::from_secs(1);
-
-    let nodes = (0..NUM_NODES)
-        .map(|_| Arc::new(Mutex::new(SystemNode::default())))
-        .collect::<Vec<_>>();
     let model = Model {
-        nodes: (0..NUM_NODES).map(|n| Agent::new(n)).collect(),
+        nodes: (0..NUM_AGENTS).map(|n| Agent::new(n)).collect(),
     };
-    let mapping = Arc::new(Mutex::new(RealtimeMapping::new(model)));
+    let (propmap, ltl) = props_and_ltl();
+    println!("checking LTL:\n{}", ltl);
+    let initial = model.initial();
+    let checker = ModelChecker::new(model, propmap, &ltl).unwrap();
 
-    for v in 0..NUM_VALUES {
-        let n = v % NUM_NODES;
-        let v = Val::new(v);
-        let mut node = nodes[n].lock().await;
-        node.values.insert(v);
-        mapping
-            .lock()
-            .await
-            .handle(&(n, NodeAction::Author(v)))
-            .unwrap();
-    }
+    model_checker_report(checker.check(initial));
 
-    let mut joinset = JoinSet::new();
-
-    nodes
-        .clone()
-        .into_iter()
-        .enumerate()
-        .for_each(|(receiver_ix, receiver)| {
-            let nodes = nodes.clone();
-            let mapping = mapping.clone();
-            joinset.spawn(async move {
-                loop {
-                    let receiver = receiver.clone();
-                    // Select target val and requestee
-                    let r = rand::thread_rng().gen_range(0..NUM_VALUES);
-                    let mut giver_ix = rand::thread_rng().gen_range(0..NUM_NODES);
-                    while receiver_ix == giver_ix {
-                        giver_ix = rand::thread_rng().gen_range(0..NUM_NODES);
-                    }
-                    let giver = nodes[giver_ix].clone();
-                    let val = Val::new(r);
-
-                    // Make the request if not holding that value
-                    if !receiver.lock().await.values.contains(&val) {
-                        {
-                            let mut rcv = receiver.lock().await;
-                            if let Some(existing) = rcv.requests.get(&val) {
-                                if existing.time.elapsed() >= TIMEOUT {
-                                    rcv.requests.remove(&val);
-                                    mapping
-                                        .lock()
-                                        .await
-                                        .handle(&(receiver_ix, NodeAction::Timeout(val)))
-                                        .unwrap();
-                                } else {
-                                    continue;
-                                }
-                            }
-                            rcv.requests.insert(
-                                val,
-                                RequestData {
-                                    from: giver_ix,
-                                    time: Instant::now(),
-                                },
-                            );
-                            mapping
-                                .lock()
-                                .await
-                                .handle(&(
-                                    receiver_ix,
-                                    NodeAction::Request(val, Agent::new(giver_ix)),
-                                ))
-                                .unwrap();
-                        }
-
-                        // request has 50% success rate
-                        if rand::thread_rng().gen_bool(0.5) {
-                            let delay = tokio::time::Duration::from_millis(
-                                rand::thread_rng().gen_range(10..500),
-                            );
-                            let receiver = receiver.clone();
-                            let mapping = mapping.clone();
-                            tokio::spawn(async move {
-                                tokio::time::sleep(delay).await;
-
-                                let reply = giver.lock().await.values.contains(&val).then_some(val);
-                                let mut receiver = receiver.lock().await;
-                                if let Some(r) = reply {
-                                    receiver.values.insert(r);
-                                }
-                                receiver.requests.remove(&val);
-                                mapping
-                                    .lock()
-                                    .await
-                                    .handle(&(
-                                        receiver_ix,
-                                        NodeAction::Receive(val, reply.is_some()),
-                                    ))
-                                    .unwrap();
-                            });
-                        }
-                    }
-
-                    // Establish termination condition
-                    let mut good = true;
-                    if receiver.lock().await.values.len() != NUM_VALUES {
-                        good = false;
-                    }
-                    if receiver.lock().await.requests.len() != 0 {
-                        good = false;
-                    }
-
-                    if good {
-                        break;
-                    }
-
-                    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
-                }
-            });
-        });
-
-    joinset.join_all().await;
+    // explore(true);
 }

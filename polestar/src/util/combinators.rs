@@ -23,6 +23,16 @@ pub fn swap2<A, B>(tup: (A, B)) -> (B, A) {
     (tup.1, tup.0)
 }
 
+pub fn product2<A, B, IB>(a: impl IntoIterator<Item = A>, b: IB) -> impl Iterator<Item = (A, B)>
+where
+    A: Clone,
+    IB: IntoIterator<Item = B>,
+    IB::IntoIter: Clone,
+{
+    use itertools::Itertools;
+    a.into_iter().cartesian_product(b.into_iter())
+}
+
 /// Convenience for updating state by returning an optional owned value
 pub fn maybe_update<S, E>(s: &mut S, f: impl FnOnce(&S) -> (Option<S>, E)) -> E
 where
