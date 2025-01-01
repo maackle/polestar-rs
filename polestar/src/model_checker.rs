@@ -10,7 +10,7 @@ use std::{fmt::Debug, hash::Hash};
 
 use buchi::*;
 
-use crate::logic::{Pair, PropMapping, Propositions};
+use crate::logic::{PropMapping, Propositions, Transition};
 use crate::machine::{
     store_path::{StorePathMachine, StorePathState},
     Machine, TransitionResult,
@@ -21,7 +21,7 @@ where
     M: Machine,
     P: PropMapping,
 {
-    buchi: BuchiAutomaton<M::State, P>,
+    buchi: BuchiAutomaton<M, P>,
     machine: StorePathMachine<M>,
 }
 
@@ -42,7 +42,7 @@ where
     P: PropMapping,
     // TODO: if a proc macro is ever written, make it clearer that you must implement Propositions for pairs, not just the state.
     //       (or somehow make this easier)
-    Pair<M::State>: Propositions<P::Prop>,
+    Transition<M>: Propositions<P::Prop>,
 {
     type State = ModelCheckerState<M::State, M::Action>;
     type Action = M::Action;
@@ -59,12 +59,12 @@ where
 
         let (next, fx) = self
             .machine
-            .transition(state.clone(), action)
+            .transition(state.clone(), action.clone())
             .map_err(ModelCheckerTransitionError::MachineError)?;
 
         let buchi_next = self
             .buchi
-            .transition_(buchi, (prev.clone(), next.state.clone()))
+            .transition_(buchi, Transition(prev.clone(), action, next.state.clone()))
             .map_err(|error| {
                 ModelCheckerTransitionError::BuchiError(ModelCheckerBuchiError {
                     error,

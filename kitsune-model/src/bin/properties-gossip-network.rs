@@ -3,9 +3,9 @@ use exhaustive::*;
 use itertools::Itertools;
 use kitsune_model::gossip::gossip_network::*;
 use kitsune_model::gossip::gossip_node::*;
-use polestar::logic::Pair;
 use polestar::logic::PropRegistry;
 use polestar::logic::Propositions;
+use polestar::logic::Transition;
 use polestar::model_checker::ModelChecker;
 use polestar::prelude::*;
 use tracing::Level;
@@ -53,9 +53,9 @@ fn main() {
         Ready(N, N),
     }
 
-    impl Propositions<Prop> for Pair<GossipState<N>> {
+    impl Propositions<Prop> for Transition<GossipMachine<N>> {
         fn eval(&self, prop: &Prop) -> bool {
-            let (s0, s1) = self;
+            let Transition(s0, _action, s1) = self;
             match *prop {
                 Prop::Ready(n, p) => {
                     assert_ne!(n, p);

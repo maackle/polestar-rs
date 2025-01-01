@@ -3,7 +3,7 @@
 use std::fmt::Display;
 
 use crate::{
-    logic::{conjoin, Pair, PropRegistry, Propositions},
+    logic::{conjoin, PropRegistry, Propositions, Transition},
     prelude::*,
     util::product2,
 };
@@ -12,14 +12,14 @@ use im::{OrdMap, OrdSet, Vector};
 use itertools::Itertools;
 use num_traits::Zero;
 
-const NUM_VALUES: usize = 2;
-const NUM_AGENTS: usize = 3;
-const TIMEOUT: usize = 1;
-const TIME_CHOICES: usize = TIMEOUT + 1;
+pub const NUM_VALUES: usize = 1;
+pub const NUM_AGENTS: usize = 2;
+pub const TIMEOUT: usize = 1;
+pub const TIME_CHOICES: usize = TIMEOUT + 1;
 
-type Val = UpTo<NUM_VALUES>;
-type Agent = UpTo<NUM_AGENTS>;
-type Time = UpTo<TIME_CHOICES>;
+pub type Val = UpTo<NUM_VALUES>;
+pub type Agent = UpTo<NUM_AGENTS>;
+pub type Time = UpTo<TIME_CHOICES>;
 
 /*                   █████     ███
                     ░░███     ░░░
@@ -197,21 +197,24 @@ impl Machine for Model {
  *  ███████████    █████    ███████████
  * ░░░░░░░░░░░    ░░░░░    ░░░░░░░░░░░   */
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, derive_more::Display)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, derive_more::Display)]
 enum Prop {
-    #[display("requesting__n{_0}_v{_1}")]
+    #[display("Requesting_n{_0}_v{_1}")]
     Requesting(Agent, Val),
 
-    #[display("stored__n{_0}_v{_1}")]
+    #[display("Stored_n{_0}_v{_1}")]
     Stored(Agent, Val),
 
-    #[display("no_requests__n{_0}")]
+    #[display("NoRequests_n{_0}")]
     NoRequests(Agent),
+
+    #[display("Action_n{_0}_{_1}", _0 = _0.0, _1 = _0.1)]
+    Action(Action),
 }
 
-impl Propositions<Prop> for Pair<State> {
+impl Propositions<Prop> for Transition<Model> {
     fn eval(&self, prop: &Prop) -> bool {
-        let (state, _) = self;
+        let Transition(state, action, _) = self;
         match prop {
             Prop::Requesting(agent, val) => state
                 .nodes
@@ -226,6 +229,8 @@ impl Propositions<Prop> for Pair<State> {
                 .unwrap_or(false),
 
             Prop::NoRequests(agent) => state.nodes[&agent].requests.is_empty(),
+
+            Prop::Action(a) => a == action,
         }
     }
 }
@@ -236,9 +241,23 @@ fn props_and_ltl() -> (PropRegistry<Prop>, String) {
     let pairwise = conjoin(pairs.flat_map(|(agent, val)| {
         let req = propmap.add(Prop::Requesting(agent, val)).unwrap();
         let stored = propmap.add(Prop::Stored(agent, val)).unwrap();
+
+        let action_timeout = propmap
+            .add(Prop::Action((agent, NodeAction::Timeout(val))))
+            .unwrap();
+        let action_tick = propmap
+            .add(Prop::Action((agent, NodeAction::Tick)))
+            .unwrap();
+        // let action_request = propmap
+        //     .add(Prop::Action((agent, NodeAction::Request(val, agent))))
+        //     .unwrap();
+
         [
             // don't make a request for data you're already storing
             format!("G (({stored} && !{req}) -> G !{req})"),
+            // must tick at least once between timeout and next request
+            // TODO: this one isn't quite right
+            format!("G (({req} && X {action_timeout}) -> X (!{req} U {action_tick}))"),
         ]
     }));
     let agentwise = conjoin(Agent::all_values().into_iter().flat_map(|agent| {

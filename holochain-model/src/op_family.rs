@@ -346,7 +346,7 @@ mod tests {
     use polestar::{
         diagram::exhaustive::write_dot_state_diagram_mapped,
         id::{IdUnit, UpTo},
-        logic::{conjoin, Pair, PropRegistry, Propositions},
+        logic::{conjoin, PropRegistry, Propositions, Transition},
         model_checker::{model_checker_report, ModelChecker},
         traversal::TraversalConfig,
     };
@@ -379,9 +379,9 @@ mod tests {
             }
         }
 
-        impl Propositions<Prop> for Pair<OpFamilyState<A, T>> {
+        impl Propositions<Prop> for Transition<OpFamilyMachine<A, T>> {
             fn eval(&self, prop: &Prop) -> bool {
-                let (state, _) = self;
+                let Transition(state, _, _) = self;
                 match prop {
                     Prop::OpAwaiting(o, b) => state
                         .get(&o)

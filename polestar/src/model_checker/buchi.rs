@@ -9,27 +9,28 @@ use std::{
 use anyhow::anyhow;
 
 use crate::{
-    logic::{LogicPredicate, Pair, PropMapping, Propositions},
+    logic::{LogicPredicate, PropMapping, Propositions, Transition},
     Machine, TransitionResult,
 };
 
 #[derive(derive_more::Debug)]
-pub struct BuchiAutomaton<S, PM: PropMapping> {
+pub struct BuchiAutomaton<M: Machine, PM: PropMapping> {
     pub states: HashMap<StateName, Arc<BuchiState>>,
 
     #[debug(skip)]
     propmap: PM,
     #[debug(skip)]
-    phantom: PhantomData<S>,
+    phantom: PhantomData<M>,
 }
 
-impl<S, PM> Machine for BuchiAutomaton<S, PM>
+impl<M, PM> Machine for BuchiAutomaton<M, PM>
 where
+    M: Machine,
     PM: PropMapping,
-    Pair<S>: Propositions<PM::Prop>,
+    Transition<M>: Propositions<PM::Prop>,
 {
     type State = BuchiPaths;
-    type Action = Pair<S>;
+    type Action = Transition<M>;
     type Error = BuchiError;
     type Fx = ();
 
@@ -80,7 +81,7 @@ pub enum BuchiError {
     LtlError(anyhow::Error),
 }
 
-impl<S, PM: PropMapping> BuchiAutomaton<S, PM> {
+impl<M: Machine, PM: PropMapping> BuchiAutomaton<M, PM> {
     pub fn from_ltl(propmap: PM, ltl_str: &str) -> Result<Self, anyhow::Error> {
         let output = Command::new("ltl3ba")
             .args(["-f", &format!("{ltl_str}")])

@@ -14,7 +14,7 @@ where
     M::Action: Clone + Debug + Eq + Hash + Exhaustive + Send + Sync + 'static,
     M::Error: Debug + Send + Sync + 'static,
     P: PropMapping + Send + Sync + 'static,
-    Pair<M::State>: Propositions<P::Prop>,
+    Transition<M>: Propositions<P::Prop>,
 {
     pub fn check(
         self: Arc<Self>,

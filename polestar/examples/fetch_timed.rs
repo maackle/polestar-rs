@@ -9,21 +9,12 @@ use std::sync::{atomic::AtomicBool, Arc};
 
 use im::{HashMap, OrdSet};
 use polestar::{
-    example_models::fetch_timed::{Action, Model, NodeAction, NodeState, State},
+    example_models::fetch_timed::{Action, Model, NodeAction, NodeState, State, *},
     mapping::{ActionOf, EventHandler, ModelMapping, StateOf},
     prelude::*,
 };
 use rand::Rng;
 use tokio::{sync::Mutex, task::JoinSet, time::Instant};
-
-const NUM_VALUES: usize = 2;
-const NUM_AGENTS: usize = 3;
-const TIMEOUT: usize = 1;
-const TIME_CHOICES: usize = TIMEOUT + 1;
-
-type Val = UpTo<NUM_VALUES>;
-type Agent = UpTo<NUM_AGENTS>;
-type Time = UpTo<TIME_CHOICES>;
 
 /*                          ███
                            ░░░

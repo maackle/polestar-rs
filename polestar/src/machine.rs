@@ -93,3 +93,14 @@ where
 
 pub type TransitionResult<S> =
     Result<(<S as Machine>::State, <S as Machine>::Fx), <S as Machine>::Error>;
+
+impl Machine for () {
+    type State = ();
+    type Action = ();
+    type Fx = ();
+    type Error = ();
+
+    fn transition(&self, (): (), (): ()) -> TransitionResult<Self> {
+        Ok(((), ()))
+    }
+}

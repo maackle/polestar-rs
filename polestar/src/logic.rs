@@ -2,6 +2,8 @@ use std::{collections::HashMap, fmt::Display};
 
 use itertools::Itertools;
 
+use crate::Machine;
+
 mod promela_parser;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -88,7 +90,7 @@ pub trait Propositions<P> {
     fn eval(&self, prop: &P) -> bool;
 }
 
-pub type Pair<T> = (T, T);
+pub struct Transition<M: Machine>(pub M::State, pub M::Action, pub M::State);
 
 pub struct PropositionsAllTrue;
 
@@ -105,10 +107,10 @@ pub trait PropMapping {
 
     fn map(&self, name: &str) -> Option<Self::Prop>;
 
-    fn bind<S>(&self, states: Pair<S>) -> PropositionBindings<S, Self>
+    fn bind<M: Machine>(&self, states: Transition<M>) -> PropositionBindings<M, Self>
     where
         Self: Sized,
-        Pair<S>: Propositions<Self::Prop>,
+        Transition<M>: Propositions<Self::Prop>,
     {
         PropositionBindings {
             props: self,
@@ -176,18 +178,20 @@ where
     }
 }
 
-pub struct PropositionBindings<'p, S, P>
+pub struct PropositionBindings<'p, M, P>
 where
+    M: Machine,
     P: PropMapping,
 {
     props: &'p P,
-    states: Pair<S>,
+    states: Transition<M>,
 }
 
-impl<'p, S, P> Propositions<String> for PropositionBindings<'p, S, P>
+impl<'p, M, P> Propositions<String> for PropositionBindings<'p, M, P>
 where
+    M: Machine,
     P: PropMapping,
-    Pair<S>: Propositions<P::Prop>,
+    Transition<M>: Propositions<P::Prop>,
 {
     fn eval(&self, prop: &String) -> bool {
         let name = self

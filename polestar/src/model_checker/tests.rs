@@ -54,26 +54,26 @@ impl Machine for TestMachine2 {
     }
 }
 
-impl Propositions<String> for Pair<u8> {
+impl Propositions<String> for Transition<TestMachine2> {
     fn eval(&self, p: &String) -> bool {
-        let (s, ss) = &self;
+        let Transition(s, _, ss) = *self;
         match p.as_str() {
             "even" => s % 2 == 0,
-            "max" => *s == (MODULO - 1) as u8,
-            "building" => *s < 4,
-            "loopmin" => *s % LOOP == 0,
-            "increasing" => *s < *ss,
-            "is1" => *s == 1,
-            "is2" => *s == 2,
-            "is3" => *s == 3,
-            "is4" => *s == 4,
-            "is5" => *s == 5,
-            "is6" => *s == 6,
-            "is7" => *s == 7,
-            "is8" => *s == 8,
-            "is9" => *s == 9,
-            "is11" => *s == 11,
-            "is15" => *s == 15,
+            "max" => s == (MODULO - 1) as u8,
+            "building" => s < 4,
+            "loopmin" => s % LOOP == 0,
+            "increasing" => s < ss,
+            "is1" => s == 1,
+            "is2" => s == 2,
+            "is3" => s == 3,
+            "is4" => s == 4,
+            "is5" => s == 5,
+            "is6" => s == 6,
+            "is7" => s == 7,
+            "is8" => s == 8,
+            "is9" => s == 9,
+            "is11" => s == 11,
+            "is15" => s == 15,
             p => unreachable!("can't eval unknown prop '{p}' with state {s}"),
         }
     }
