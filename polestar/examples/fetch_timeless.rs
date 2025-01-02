@@ -1,3 +1,7 @@
+fn main() {}
+
+/*
+
 //! This example demonstrates a system of nodes where each node can author a value,
 //! and each other node can request that value from a node who knows about it.
 //! Nodes will timeout their requests if they don't receive a response within a certain time.
@@ -183,8 +187,8 @@ impl polestar::mapping::ModelMapping for RealtimeMapping {
         Some(model)
     }
 
-    fn map_event(&mut self, event: &Self::Event) -> Option<ActionOf<Self::Model>> {
-        Some((event.0, event.1.clone()))
+    fn map_event(&mut self, event: &Self::Event) -> Vec<ActionOf<Self::Model>> {
+        vec![(event.0, event.1.clone())]
     }
 }
 
@@ -364,3 +368,4 @@ async fn main() {
 
     joinset.join_all().await;
 }
+*/

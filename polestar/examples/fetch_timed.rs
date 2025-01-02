@@ -5,13 +5,17 @@
 //! The model features a model of time, to put constraints on the behavior around timeouts, ensuring
 //! that timeouts eventually happen, and that they don't happen too soon.
 
-use std::sync::{atomic::AtomicBool, Arc};
+use std::{
+    sync::{atomic::AtomicBool, Arc},
+    time::Duration,
+};
 
 use im::{HashMap, OrdSet};
 use polestar::{
     example_models::fetch_timed::{Action, Model, NodeAction, NodeState, State, *},
     mapping::{ActionOf, EventHandler, ModelMapping, StateOf},
     prelude::*,
+    time::RealTime,
 };
 use rand::Rng;
 use tokio::{sync::Mutex, task::JoinSet, time::Instant};
@@ -47,24 +51,28 @@ async fn main() {
                            █████     █████                     ░░██████
                           ░░░░░     ░░░░░                       ░░░░░░   */
 
+pub type Time = RealTime;
+
 struct RealtimeMapping {
-    model: Model,
-    state: State,
+    model: Model<Time>,
+    state: State<Time>,
+    last_tick: Instant,
 }
 
 impl RealtimeMapping {
-    pub fn new(model: Model) -> Self {
+    pub fn new(model: Model<Time>) -> Self {
         Self {
             state: model.initial(),
             model,
+            last_tick: Instant::now(),
         }
     }
 }
 
 impl polestar::mapping::ModelMapping for RealtimeMapping {
-    type Model = Model;
+    type Model = Model<Time>;
     type System = System;
-    type Event = Action;
+    type Event = Action<Time>;
 
     fn map_state(&mut self, system: &Self::System) -> Option<StateOf<Self::Model>> {
         let model = State::new(
@@ -79,7 +87,7 @@ impl polestar::mapping::ModelMapping for RealtimeMapping {
                             requests: v
                                 .requests
                                 .iter()
-                                .map(|(v, _)| (Time::new(TIMEOUT), v.clone()))
+                                .map(|(v, _)| (self.model.timeout, v.clone()))
                                 .collect(),
                         },
                     )
@@ -89,10 +97,21 @@ impl polestar::mapping::ModelMapping for RealtimeMapping {
         Some(model)
     }
 
-    fn map_event(&mut self, event: &Self::Event) -> Option<ActionOf<Self::Model>> {
+    fn map_event(&mut self, event: &Self::Event) -> Vec<ActionOf<Self::Model>> {
+        todo!("tick buffering");
+        // let mut last_tick = Instant::now();
+        // while last_tick.elapsed() >= tick_interval.into() {
+        //     mapping
+        //         .lock()
+        //         .await
+        //         .handle(&(receiver_ix, NodeAction::Tick))
+        //         .unwrap();
+        //     last_tick += tick_interval;
+        // }
+
         let (node, action) = event;
         match action {
-            NodeAction::Tick => println!("Tick n{node}"),
+            NodeAction::Tick(RealTime) => println!("Tick n{node} {RealTime}"),
             NodeAction::Author(val) => println!("Author v={val} by n{node}"),
             NodeAction::Request(val, from) => println!("Request v={val} from n{from} by n{node}"),
             NodeAction::Timeout(val) => println!("Timeout v={val} by n{node}"),
@@ -100,17 +119,20 @@ impl polestar::mapping::ModelMapping for RealtimeMapping {
                 println!("Received {found} response for v={val:?} by n{node}")
             }
         }
-        Some((*node, action.clone()))
+        vec![(*node, action.clone())]
     }
 }
 
-impl polestar::mapping::EventHandler<(usize, NodeAction)> for RealtimeMapping {
+impl polestar::mapping::EventHandler<(usize, NodeAction<Time>)> for RealtimeMapping {
     type Error = anyhow::Error;
 
-    fn handle(&mut self, event: &(usize, NodeAction)) -> Result<(), Self::Error> {
+    fn handle(&mut self, event: &(usize, NodeAction<Time>)) -> Result<(), Self::Error> {
         let event = (Agent::new(event.0), event.1);
-        let action = self.map_event(&event).unwrap();
-        self.state = self.model.transition_(self.state.clone(), action)?;
+        let actions = self.map_event(&event);
+        self.state = self
+            .model
+            .apply_actions_(self.state.clone(), actions)
+            .map_err(|(e, _, _)| e)?;
         Ok(())
     }
 }
@@ -146,13 +168,13 @@ struct RequestData {
 
 async fn run() {
     const NUM_NODES: usize = 3;
-    const TICK_INTERVAL: tokio::time::Duration = tokio::time::Duration::from_millis(1000);
-    let timeout = TICK_INTERVAL * 1;
+    let tick_interval: RealTime = RealTime::from(tokio::time::Duration::from_millis(1000));
+    let timeout = tick_interval * 1;
 
     let nodes = (0..NUM_NODES)
         .map(|_| Arc::new(Mutex::new(SystemNode::default())))
         .collect::<Vec<_>>();
-    let model = Model::new((0..NUM_NODES).map(|n| Agent::new(n)).collect());
+    let model = Model::new(timeout, (0..NUM_NODES).map(|n| Agent::new(n)).collect());
     let mapping = Arc::new(Mutex::new(RealtimeMapping::new(model)));
 
     for v in 0..NUM_VALUES {
@@ -186,7 +208,7 @@ async fn run() {
             //             if stop.load(std::sync::atomic::Ordering::SeqCst) {
             //                 break;
             //             }
-            //             tokio::time::sleep(TICK_INTERVAL).await;
+            //             tokio::time::sleep(tick_interval).await;
             //             mapping
             //                 .lock()
             //                 .await
@@ -197,17 +219,7 @@ async fn run() {
             // });
 
             joinset.spawn(async move {
-                let mut last_tick = Instant::now();
                 loop {
-                    while last_tick.elapsed() >= TICK_INTERVAL {
-                        mapping
-                            .lock()
-                            .await
-                            .handle(&(receiver_ix, NodeAction::Tick))
-                            .unwrap();
-                        last_tick += TICK_INTERVAL;
-                    }
-
                     let receiver = receiver.clone();
                     // Select target val and requestee
                     let r = rand::thread_rng().gen_range(0..NUM_VALUES);
@@ -223,7 +235,7 @@ async fn run() {
                         {
                             let mut rcv = receiver.lock().await;
                             if let Some(existing) = rcv.requests.get(&val) {
-                                if existing.time.elapsed() >= timeout {
+                                if existing.time.elapsed() >= timeout.into() {
                                     rcv.requests.remove(&val);
                                     mapping
                                         .lock()

@@ -1,16 +1,21 @@
 //! A model of
 
-use std::fmt::Display;
+use std::{
+    fmt::Display,
+    marker::PhantomData,
+    ops::{Mul, Sub},
+};
 
 use crate::{
     logic::{conjoin, PropRegistry, Propositions, Transition},
     prelude::*,
+    time::TimeInterval,
     util::product2,
 };
 use anyhow::{anyhow, bail};
 use im::{OrdMap, OrdSet, Vector};
 use itertools::Itertools;
-use num_traits::Zero;
+use num_traits::{Bounded, Zero};
 
 pub const NUM_VALUES: usize = 1;
 pub const NUM_AGENTS: usize = 2;
@@ -19,8 +24,7 @@ pub const TIME_CHOICES: usize = TIMEOUT + 1;
 
 pub type Val = UpTo<NUM_VALUES>;
 pub type Agent = UpTo<NUM_AGENTS>;
-pub type Time = UpTo<TIME_CHOICES>;
-
+// pub type Time = UpTo<TIME_CHOICES>;
 /*                   █████     ███
                     ░░███     ░░░
   ██████    ██████  ███████   ████   ██████  ████████
@@ -30,12 +34,12 @@ pub type Time = UpTo<TIME_CHOICES>;
 ░░████████░░██████   ░░█████  █████░░██████  ████ █████
  ░░░░░░░░  ░░░░░░     ░░░░░  ░░░░░  ░░░░░░  ░░░░ ░░░░░   */
 
-pub type Action = (Agent, NodeAction);
+pub type Action<Time> = (Agent, NodeAction<Time>);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, exhaustive::Exhaustive, derive_more::Display)]
-pub enum NodeAction {
-    #[display("Tick")]
-    Tick,
+pub enum NodeAction<Time: TimeInterval> {
+    #[display("Tick {_0}")]
+    Tick(Time),
 
     #[display("Auth(v{_0})")]
     Author(Val),
@@ -60,11 +64,11 @@ pub enum NodeAction {
 ░░░░░░     ░░░░░   ░░░░░░░░    ░░░░░   ░░░░░░  */
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, derive_more::Constructor)]
-pub struct State {
-    pub nodes: OrdMap<Agent, NodeState>,
+pub struct State<Time: TimeInterval> {
+    pub nodes: OrdMap<Agent, NodeState<Time>>,
 }
 
-impl Display for State {
+impl<Time: TimeInterval> Display for State<Time> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -77,13 +81,22 @@ impl Display for State {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
-pub struct NodeState {
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct NodeState<Time: TimeInterval> {
     pub values: OrdSet<Val>,
     pub requests: Vector<(Time, Val)>,
 }
 
-impl Display for NodeState {
+impl<Time: TimeInterval> Default for NodeState<Time> {
+    fn default() -> Self {
+        Self {
+            values: OrdSet::new(),
+            requests: Vector::new(),
+        }
+    }
+}
+
+impl<Time: TimeInterval> Display for NodeState<Time> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -107,12 +120,13 @@ impl Display for NodeState {
 ░░░░░ ░░░ ░░░░░  ░░░░░░   ░░░░░░░░  ░░░░░░  ░░░░░  */
 
 #[derive(derive_more::Constructor)]
-pub struct Model {
+pub struct Model<Time: TimeInterval> {
+    pub timeout: Time,
     nodes: Vec<Agent>,
 }
 
-impl Model {
-    pub fn initial(&self) -> State {
+impl<Time: TimeInterval> Model<Time> {
+    pub fn initial(&self) -> State<Time> {
         State {
             nodes: self
                 .nodes
@@ -123,9 +137,9 @@ impl Model {
     }
 }
 
-impl Machine for Model {
-    type State = State;
-    type Action = Action;
+impl<Time: TimeInterval> Machine for Model<Time> {
+    type State = State<Time>;
+    type Action = Action<Time>;
     type Error = anyhow::Error;
 
     fn transition(
@@ -134,12 +148,12 @@ impl Machine for Model {
         (node, action): Self::Action,
     ) -> TransitionResult<Self> {
         match action {
-            NodeAction::Tick => {
+            NodeAction::Tick(dur) => {
                 for (time, v) in state.nodes[&node].requests.iter_mut() {
                     if time.is_zero() {
                         bail!("value should have timed out: v={v}")
                     }
-                    *time = *time - 1;
+                    *time = *time - dur;
                 }
             }
             NodeAction::Author(v) => {
@@ -162,7 +176,7 @@ impl Machine for Model {
 
                 state.nodes[&node]
                     .requests
-                    .push_back((Time::new(TIMEOUT), v));
+                    .push_back((self.timeout.clone(), v));
             }
             NodeAction::Timeout(v) => {
                 let (time, popped) = state.nodes[&node]
@@ -198,7 +212,7 @@ impl Machine for Model {
  * ░░░░░░░░░░░    ░░░░░    ░░░░░░░░░░░   */
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, derive_more::Display)]
-enum Prop {
+enum Prop<Time: TimeInterval> {
     #[display("Requesting_n{_0}_v{_1}")]
     Requesting(Agent, Val),
 
@@ -208,12 +222,12 @@ enum Prop {
     #[display("NoRequests_n{_0}")]
     NoRequests(Agent),
 
-    #[display("Action_n{_0}_{_1}", _0 = _0.0, _1 = _0.1)]
-    Action(Action),
+    #[display("Action_n{}_{}", _0.0, _0.1)]
+    Action(Action<Time>),
 }
 
-impl Propositions<Prop> for Transition<Model> {
-    fn eval(&self, prop: &Prop) -> bool {
+impl<Time: TimeInterval> Propositions<Prop<Time>> for Transition<Model<Time>> {
+    fn eval(&self, prop: &Prop<Time>) -> bool {
         let Transition(state, action, _) = self;
         match prop {
             Prop::Requesting(agent, val) => state
@@ -235,29 +249,17 @@ impl Propositions<Prop> for Transition<Model> {
     }
 }
 
-fn props_and_ltl() -> (PropRegistry<Prop>, String) {
+fn props_and_ltl<Time: TimeInterval>() -> (PropRegistry<Prop<Time>>, String) {
     let mut propmap = PropRegistry::empty();
     let pairs = product2(Agent::all_values(), Val::all_values());
     let pairwise = conjoin(pairs.flat_map(|(agent, val)| {
         let req = propmap.add(Prop::Requesting(agent, val)).unwrap();
         let stored = propmap.add(Prop::Stored(agent, val)).unwrap();
 
-        let action_timeout = propmap
-            .add(Prop::Action((agent, NodeAction::Timeout(val))))
-            .unwrap();
-        let action_tick = propmap
-            .add(Prop::Action((agent, NodeAction::Tick)))
-            .unwrap();
-        // let action_request = propmap
-        //     .add(Prop::Action((agent, NodeAction::Request(val, agent))))
-        //     .unwrap();
-
         [
             // don't make a request for data you're already storing
             format!("G (({stored} && !{req}) -> G !{req})"),
-            // must tick at least once between timeout and next request
-            // TODO: this one isn't quite right
-            format!("G (({req} && X {action_timeout}) -> X (!{req} U {action_tick}))"),
+            // TODO: don't restart a round too soon
         ]
     }));
     let agentwise = conjoin(Agent::all_values().into_iter().flat_map(|agent| {
@@ -292,6 +294,7 @@ mod tests {
 
     fn explore(do_graph: bool) {
         let model = Model {
+            timeout: UpTo::<TIME_CHOICES>::new(TIMEOUT),
             nodes: (0..NUM_AGENTS).map(|n| Agent::new(n)).collect(),
         };
         let initial = model.initial();
@@ -319,6 +322,7 @@ mod tests {
 
     fn model_check() {
         let model = Model {
+            timeout: UpTo::<TIME_CHOICES>::new(TIMEOUT),
             nodes: (0..NUM_AGENTS).map(|n| Agent::new(n)).collect(),
         };
         let (propmap, ltl) = props_and_ltl();

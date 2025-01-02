@@ -11,6 +11,7 @@ pub mod ext;
 pub mod logic;
 pub mod ltl;
 pub mod mapping;
+pub mod time;
 pub mod traversal;
 pub mod util;
 

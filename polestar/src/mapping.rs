@@ -24,7 +24,7 @@ where
     type Event;
 
     fn map_state(&mut self, system: &Self::System) -> Option<StateOf<Self::Model>>;
-    fn map_event(&mut self, event: &Self::Event) -> Option<ActionOf<Self::Model>>;
+    fn map_event(&mut self, event: &Self::Event) -> Vec<ActionOf<Self::Model>>;
 }
 
 pub type StateOf<M> = <M as Machine>::State;
@@ -67,13 +67,15 @@ where
     }
 
     pub fn write_event(&mut self, event: &M::Event) -> io::Result<()> {
-        let action = self.mapping.map_event(event);
-
-        if let Some(action) = action {
-            self.write_action(action)?;
-        } else {
+        let actions = self.mapping.map_event(event);
+        if actions.is_empty() {
             tracing::warn!("no action for event: {event:?}");
+        } else {
+            for action in actions {
+                self.write_action(action)?;
+            }
         }
+
         Ok(())
     }
 

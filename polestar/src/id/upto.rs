@@ -1,5 +1,7 @@
 use std::ops::Mul;
 
+use num_traits::Bounded;
+
 use super::*;
 
 /// A number in the range [0, N)
@@ -128,6 +130,23 @@ impl<const N: usize> num_traits::Zero for UpTo<N> {
 impl<const N: usize> Mul<UpTo<N>> for UpTo<N> {
     type Output = Self;
     fn mul(self, rhs: Self) -> Self::Output {
-        Self((self.0 * rhs.0) % N)
+        Self::new(self.0 * rhs.0)
+    }
+}
+
+impl<const N: usize> Mul<usize> for UpTo<N> {
+    type Output = Self;
+    fn mul(self, rhs: usize) -> Self::Output {
+        Self::new(self.0 * rhs)
+    }
+}
+
+impl<const N: usize> Bounded for UpTo<N> {
+    fn min_value() -> Self {
+        Self(0)
+    }
+
+    fn max_value() -> Self {
+        Self(N - 1)
     }
 }
