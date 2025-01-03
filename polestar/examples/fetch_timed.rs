@@ -273,14 +273,18 @@ impl polestar::mapping::ModelMapping for RealtimeMapping {
             self.tick_buffers
                 .resize_with(node + 1, || TickBuffer::new(self.start_time.into()));
         }
+
+        let mut ticks = vec![];
+
         let mut actions = self.tick_buffers[*node]
             .tick(Instant::now().into())
             .map(|t| {
-                println!("tick {node} {t}");
+                ticks.push(t);
                 (*node, NodeAction::Tick(t))
             })
             .collect_vec();
 
+        print!("{ticks:?}   \t");
         let action = match event {
             Event::Author(val) => {
                 println!("Author v={val} by n{node}");
