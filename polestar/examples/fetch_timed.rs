@@ -4,6 +4,9 @@
 //!
 //! The model features a model of time, to put constraints on the behavior around timeouts, ensuring
 //! that timeouts eventually happen, and that they don't happen too soon.
+//!
+//! KNOWN ISSUES:
+//! - there is a race condition where a node can request a value even after it has stored that value
 
 use std::{
     sync::{atomic::AtomicBool, Arc},
@@ -37,114 +40,7 @@ async fn main() {
         .with_max_level(tracing::Level::INFO)
         .init();
 
-    run().await;
-}
-
-/*                                              ███
-                                               ░░░
- █████████████    ██████   ████████  ████████  ████  ████████    ███████
-░░███░░███░░███  ░░░░░███ ░░███░░███░░███░░███░░███ ░░███░░███  ███░░███
- ░███ ░███ ░███   ███████  ░███ ░███ ░███ ░███ ░███  ░███ ░███ ░███ ░███
- ░███ ░███ ░███  ███░░███  ░███ ░███ ░███ ░███ ░███  ░███ ░███ ░███ ░███
- █████░███ █████░░████████ ░███████  ░███████  █████ ████ █████░░███████
-░░░░░ ░░░ ░░░░░  ░░░░░░░░  ░███░░░   ░███░░░  ░░░░░ ░░░░ ░░░░░  ░░░░░███
-                           ░███      ░███                       ███ ░███
-                           █████     █████                     ░░██████
-                          ░░░░░     ░░░░░                       ░░░░░░   */
-
-pub type Time = RealTime;
-
-struct RealtimeMapping {
-    model: Model<Time>,
-    state: State<Time>,
-    actions: Vec<Action<Time>>,
-    tick_buffer: TickBuffer<Time>,
-}
-
-impl RealtimeMapping {
-    pub fn new(model: Model<Time>, tick_buffer: TickBuffer<Time>) -> Self {
-        Self {
-            actions: vec![],
-            state: model.initial(),
-            model,
-            tick_buffer,
-        }
-    }
-}
-
-impl polestar::mapping::ModelMapping for RealtimeMapping {
-    type Model = Model<Time>;
-    type System = System;
-    type Event = Action<Time>;
-
-    fn map_state(&mut self, system: &Self::System) -> Option<StateOf<Self::Model>> {
-        let model = State::new(
-            system
-                .nodes
-                .iter()
-                .map(|(n, v)| {
-                    (
-                        Agent::new(*n),
-                        NodeState {
-                            values: v.values.clone(),
-                            requests: v
-                                .requests
-                                .iter()
-                                .map(|(v, _)| (self.model.timeout, v.clone()))
-                                .collect(),
-                        },
-                    )
-                })
-                .collect(),
-        );
-        Some(model)
-    }
-
-    fn map_event(&mut self, event: &Self::Event) -> Vec<ActionOf<Self::Model>> {
-        let (node, action) = event;
-
-        let mut actions = self
-            .tick_buffer
-            .tick(Instant::now().into())
-            .map(|t| (*node, NodeAction::Tick(t)))
-            .collect_vec();
-
-        match action {
-            NodeAction::Author(val) => println!("Author v={val} by n{node}"),
-            NodeAction::Request(val, from) => println!("Request v={val} from n{from} by n{node}"),
-            NodeAction::Timeout(val) => println!("Timeout v={val} by n{node}"),
-            NodeAction::Receive(val, found) => {
-                println!("Received {found} response for v={val:?} by n{node}")
-            }
-
-            NodeAction::Tick(_) => {
-                unreachable!("Don't send Tick events from the system, time is handled automatically in the mapping")
-            }
-        }
-
-        actions.push((*node, action.clone()));
-
-        self.actions.extend(actions.clone());
-
-        actions
-    }
-}
-
-impl polestar::mapping::EventHandler<(usize, NodeAction<Time>)> for RealtimeMapping {
-    type Error = anyhow::Error;
-
-    fn handle(&mut self, event: &(usize, NodeAction<Time>)) -> Result<(), Self::Error> {
-        let event = (Agent::new(event.0), event.1);
-        let actions = self.map_event(&event);
-        self.state = self
-            .model
-            .apply_actions_(self.state.clone(), actions)
-            .map_err(|(e, _, _)| {
-                println!("MAPPING ERROR. All actions: {:#?}", self.actions);
-                e
-            })?;
-        Ok(())
-    }
+    run(7, 11).await;
 }
 
 /*                           █████
@@ -158,6 +54,18 @@ impl polestar::mapping::EventHandler<(usize, NodeAction<Time>)> for RealtimeMapp
           ███ ░███
          ░░██████
           ░░░░░░                                              */
+
+pub type Agent = usize;
+pub type Val = usize;
+pub type Time = RealTime;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Event {
+    Author(Val),
+    Request(Val, Agent),
+    Timeout(Val),
+    Receive(Val, bool),
+}
 
 struct System {
     nodes: HashMap<usize, SystemNode>,
@@ -176,27 +84,26 @@ struct RequestData {
     time: Instant,
 }
 
-async fn run() {
-    let tick_interval: RealTime = RealTime::from(tokio::time::Duration::from_millis(1000));
-    let timeout = tick_interval * 1;
+async fn run(num_agents: usize, num_values: usize) {
+    let timeout = RealTime::from(tokio::time::Duration::from_millis(1000));
 
-    let nodes = (0..NUM_AGENTS)
+    let nodes = (0..num_agents)
         .map(|_| Arc::new(Mutex::new(SystemNode::default())))
         .collect::<Vec<_>>();
-    let model = Model::new(timeout, (0..NUM_AGENTS).map(|n| Agent::new(n)).collect());
-    let tick_buffer = TickBuffer::new(Instant::now().into());
-    let mapping = Arc::new(Mutex::new(RealtimeMapping::new(model, tick_buffer)));
+    let model = Model::new(
+        timeout,
+        (0..num_agents)
+            .map(|n| Agent::try_from(n).unwrap())
+            .collect(),
+    );
+    let mapping = Arc::new(Mutex::new(RealtimeMapping::new(model, Instant::now())));
 
-    for v in 0..NUM_VALUES {
-        let n = v % NUM_AGENTS;
-        let v = Val::new(v);
+    for v in 0..num_values {
+        let n = v % num_agents;
+        let v = Val::from(v);
         let mut node = nodes[n].lock().await;
         node.values.insert(v);
-        mapping
-            .lock()
-            .await
-            .handle(&(n, NodeAction::Author(v)))
-            .unwrap();
+        mapping.lock().await.handle(&(n, Event::Author(v))).unwrap();
     }
 
     let mut joinset = JoinSet::new();
@@ -210,35 +117,17 @@ async fn run() {
             let mapping = mapping.clone();
             let stop = Arc::new(AtomicBool::new(false));
 
-            // joinset.spawn({
-            //     let mapping = mapping.clone();
-            //     let stop = stop.clone();
-            //     async move {
-            //         loop {
-            //             if stop.load(std::sync::atomic::Ordering::SeqCst) {
-            //                 break;
-            //             }
-            //             tokio::time::sleep(tick_interval).await;
-            //             mapping
-            //                 .lock()
-            //                 .await
-            //                 .handle(&(receiver_ix, NodeAction::Tick))
-            //                 .unwrap();
-            //         }
-            //     }
-            // });
-
             joinset.spawn(async move {
                 loop {
                     let receiver = receiver.clone();
                     // Select target val and requestee
-                    let r = rand::thread_rng().gen_range(0..NUM_VALUES);
-                    let mut giver_ix = rand::thread_rng().gen_range(0..NUM_AGENTS);
+                    let r = rand::thread_rng().gen_range(0..num_values);
+                    let mut giver_ix = rand::thread_rng().gen_range(0..num_agents);
                     while receiver_ix == giver_ix {
-                        giver_ix = rand::thread_rng().gen_range(0..NUM_AGENTS);
+                        giver_ix = rand::thread_rng().gen_range(0..num_agents);
                     }
                     let giver = nodes[giver_ix].clone();
-                    let val = Val::new(r);
+                    let val = r;
 
                     // Make the request if not holding that value
                     if !receiver.lock().await.values.contains(&val) {
@@ -250,7 +139,7 @@ async fn run() {
                                     mapping
                                         .lock()
                                         .await
-                                        .handle(&(receiver_ix, NodeAction::Timeout(val)))
+                                        .handle(&(receiver_ix, Event::Timeout(val)))
                                         .unwrap();
                                 } else {
                                     continue;
@@ -266,10 +155,7 @@ async fn run() {
                             mapping
                                 .lock()
                                 .await
-                                .handle(&(
-                                    receiver_ix,
-                                    NodeAction::Request(val, Agent::new(giver_ix)),
-                                ))
+                                .handle(&(receiver_ix, Event::Request(val, Agent::from(giver_ix))))
                                 .unwrap();
                         }
 
@@ -292,10 +178,7 @@ async fn run() {
                                 mapping
                                     .lock()
                                     .await
-                                    .handle(&(
-                                        receiver_ix,
-                                        NodeAction::Receive(val, reply.is_some()),
-                                    ))
+                                    .handle(&(receiver_ix, Event::Receive(val, reply.is_some())))
                                     .unwrap();
                             });
                         }
@@ -303,7 +186,7 @@ async fn run() {
 
                     // Establish termination condition
                     let mut good = true;
-                    if receiver.lock().await.values.len() != NUM_VALUES {
+                    if receiver.lock().await.values.len() != num_values {
                         good = false;
                     }
                     if receiver.lock().await.requests.len() != 0 {
@@ -321,4 +204,134 @@ async fn run() {
         });
 
     joinset.join_all().await;
+}
+
+/*                                              ███
+                                               ░░░
+ █████████████    ██████   ████████  ████████  ████  ████████    ███████
+░░███░░███░░███  ░░░░░███ ░░███░░███░░███░░███░░███ ░░███░░███  ███░░███
+ ░███ ░███ ░███   ███████  ░███ ░███ ░███ ░███ ░███  ░███ ░███ ░███ ░███
+ ░███ ░███ ░███  ███░░███  ░███ ░███ ░███ ░███ ░███  ░███ ░███ ░███ ░███
+ █████░███ █████░░████████ ░███████  ░███████  █████ ████ █████░░███████
+░░░░░ ░░░ ░░░░░  ░░░░░░░░  ░███░░░   ░███░░░  ░░░░░ ░░░░ ░░░░░  ░░░░░███
+                           ░███      ░███                       ███ ░███
+                           █████     █████                     ░░██████
+                          ░░░░░     ░░░░░                       ░░░░░░   */
+
+struct RealtimeMapping {
+    model: Model<Agent, Val, Time>,
+    state: State<Agent, Val, Time>,
+    actions: Vec<Action<Agent, Val, Time>>,
+    start_time: Instant,
+    tick_buffers: Vec<TickBuffer<Time>>,
+}
+
+impl RealtimeMapping {
+    pub fn new(model: Model<Agent, Val, Time>, start_time: Instant) -> Self {
+        Self {
+            actions: vec![],
+            state: model.initial(),
+            model,
+            tick_buffers: vec![],
+            start_time,
+        }
+    }
+}
+
+impl polestar::mapping::ModelMapping for RealtimeMapping {
+    type Model = Model<Agent, Val, Time>;
+    type System = System;
+    type Event = (Agent, Event);
+
+    fn map_state(&mut self, system: &Self::System) -> Option<StateOf<Self::Model>> {
+        let model = State::new(
+            system
+                .nodes
+                .iter()
+                .map(|(n, v)| {
+                    (
+                        Agent::try_from(*n).unwrap(),
+                        NodeState {
+                            values: v.values.clone(),
+                            requests: v
+                                .requests
+                                .iter()
+                                .map(|(v, _)| (self.model.timeout, v.clone()))
+                                .collect(),
+                        },
+                    )
+                })
+                .collect(),
+        );
+        Some(model)
+    }
+
+    fn map_event(&mut self, (node, event): &Self::Event) -> Vec<ActionOf<Self::Model>> {
+        if *node >= self.tick_buffers.len() {
+            self.tick_buffers
+                .resize_with(node + 1, || TickBuffer::new(self.start_time.into()));
+        }
+        let mut actions = self.tick_buffers[*node]
+            .tick(Instant::now().into())
+            .map(|t| {
+                println!("tick {node} {t}");
+                (*node, NodeAction::Tick(t))
+            })
+            .collect_vec();
+
+        let action = match event {
+            Event::Author(val) => {
+                println!("Author v={val} by n{node}");
+                NodeAction::Author(*val)
+            }
+            Event::Request(val, from) => {
+                println!("Request v={val} from n{from} by n{node}");
+                NodeAction::Request(*val, *from)
+            }
+            Event::Timeout(val) => {
+                println!("Timeout v={val} by n{node}");
+                NodeAction::Timeout(*val)
+            }
+            Event::Receive(val, found) => {
+                println!("Received {found} response for v={val:?} by n{node}");
+                NodeAction::Receive(*val, *found)
+            }
+        };
+
+        actions.push((*node, action.clone()));
+
+        self.actions.extend(actions.clone());
+
+        actions
+    }
+}
+
+impl polestar::mapping::EventHandler<(usize, Event)> for RealtimeMapping {
+    type Error = anyhow::Error;
+
+    fn handle(&mut self, event: &(usize, Event)) -> Result<(), Self::Error> {
+        let event = (Agent::from(event.0), event.1);
+        let actions = self.map_event(&event);
+        self.state = self
+            .model
+            .apply_actions_(self.state.clone(), actions)
+            .map_err(|(e, s, a)| {
+                println!("MAPPING ERROR.");
+                println!();
+                println!("All actions:");
+                for (i, action) in self.actions.iter().enumerate() {
+                    println!("{i:>4}: {action:?}");
+                }
+                println!();
+                println!("Last state: {s:?}");
+                println!();
+
+                if a != *self.actions.last().unwrap() {
+                    println!("WARNING: Last action different (what does this mean?): {a:?}");
+                }
+                e
+            })
+            .unwrap();
+        Ok(())
+    }
 }

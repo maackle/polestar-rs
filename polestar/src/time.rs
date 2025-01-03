@@ -1,3 +1,4 @@
+use human_repr::HumanDuration;
 use num_traits::*;
 use std::{
     fmt::Display,
@@ -80,7 +81,7 @@ impl TimeInterval for RealTime {
 
 /// Wall clock time.
 #[derive(
-    Debug,
+    // Debug,
     Clone,
     Copy,
     PartialEq,
@@ -89,13 +90,15 @@ impl TimeInterval for RealTime {
     Ord,
     Hash,
     derive_more::Display,
+    derive_more::Debug,
     derive_more::Deref,
     derive_more::Add,
     derive_more::Sub,
     derive_more::From,
     derive_more::Into,
 )]
-#[display("{:?}", _0)]
+#[display("{}", _0.human_duration())]
+#[debug("{}", _0.human_duration())]
 pub struct RealTime(std::time::Duration);
 
 impl Zero for RealTime {

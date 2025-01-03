@@ -1,3 +1,6 @@
+use exhaustive::Exhaustive;
+use itertools::Itertools;
+
 /// Return the first element of a 2-tuple
 pub fn first<A, B>(tup: (A, B)) -> A {
     tup.0
@@ -30,6 +33,16 @@ where
     IB::IntoIter: Clone,
 {
     use itertools::Itertools;
+    a.into_iter().cartesian_product(b.into_iter())
+}
+
+pub fn product_exhaustive<A, B>() -> impl Iterator<Item = (A, B)>
+where
+    A: Clone + Exhaustive,
+    B: Clone + Exhaustive,
+{
+    let a = A::iter_exhaustive(None).collect_vec();
+    let b = B::iter_exhaustive(None).collect_vec();
     a.into_iter().cartesian_product(b.into_iter())
 }
 

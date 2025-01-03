@@ -1,27 +1,15 @@
-//! A model of
-
-use std::{
-    fmt::Display,
-    marker::PhantomData,
-    ops::{Mul, Sub},
-};
+use std::{fmt::Display, marker::PhantomData};
 
 use crate::{
     logic::{conjoin, PropRegistry, Propositions, Transition},
     prelude::*,
     time::TimeInterval,
-    util::product2,
+    util::{product2, product_exhaustive},
 };
 use anyhow::{anyhow, bail};
+use exhaustive::Exhaustive;
 use im::{OrdMap, OrdSet, Vector};
 use itertools::Itertools;
-use num_traits::{Bounded, Zero};
-
-pub const NUM_VALUES: usize = 1;
-pub const NUM_AGENTS: usize = 2;
-
-pub type Val = UpTo<NUM_VALUES>;
-pub type Agent = UpTo<NUM_AGENTS>;
 
 /*                   █████     ███
                     ░░███     ░░░
@@ -32,10 +20,10 @@ pub type Agent = UpTo<NUM_AGENTS>;
 ░░████████░░██████   ░░█████  █████░░██████  ████ █████
  ░░░░░░░░  ░░░░░░     ░░░░░  ░░░░░  ░░░░░░  ░░░░ ░░░░░   */
 
-pub type Action<Time> = (Agent, NodeAction<Time>);
+pub type Action<Agent, Val, Time> = (Agent, NodeAction<Agent, Val, Time>);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, exhaustive::Exhaustive, derive_more::Display)]
-pub enum NodeAction<Time: TimeInterval> {
+pub enum NodeAction<Agent, Val, Time: TimeInterval> {
     #[display("Tick {_0}")]
     Tick(Time),
 
@@ -62,11 +50,11 @@ pub enum NodeAction<Time: TimeInterval> {
 ░░░░░░     ░░░░░   ░░░░░░░░    ░░░░░   ░░░░░░  */
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, derive_more::Constructor)]
-pub struct State<Time: TimeInterval> {
-    pub nodes: OrdMap<Agent, NodeState<Time>>,
+pub struct State<Agent: Clone + Ord, Val: Clone + Ord, Time: Ord + Clone> {
+    pub nodes: OrdMap<Agent, NodeState<Val, Time>>,
 }
 
-impl<Time: TimeInterval> Display for State<Time> {
+impl<Agent: Id, Val: Id, Time: TimeInterval> Display for State<Agent, Val, Time> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -80,12 +68,12 @@ impl<Time: TimeInterval> Display for State<Time> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct NodeState<Time: TimeInterval> {
+pub struct NodeState<Val: Clone + Ord, Time: Clone> {
     pub values: OrdSet<Val>,
     pub requests: Vector<(Time, Val)>,
 }
 
-impl<Time: TimeInterval> Default for NodeState<Time> {
+impl<Val: Id, Time: TimeInterval> Default for NodeState<Val, Time> {
     fn default() -> Self {
         Self {
             values: OrdSet::new(),
@@ -94,7 +82,7 @@ impl<Time: TimeInterval> Default for NodeState<Time> {
     }
 }
 
-impl<Time: TimeInterval> Display for NodeState<Time> {
+impl<Val: Id, Time: TimeInterval> Display for NodeState<Val, Time> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -117,14 +105,22 @@ impl<Time: TimeInterval> Display for NodeState<Time> {
  █████░███ █████░░██████ ░░████████░░██████  █████
 ░░░░░ ░░░ ░░░░░  ░░░░░░   ░░░░░░░░  ░░░░░░  ░░░░░  */
 
-#[derive(derive_more::Constructor)]
-pub struct Model<Time: TimeInterval> {
+pub struct Model<Agent: Id, Val: Id, Time: TimeInterval> {
     pub timeout: Time,
     nodes: Vec<Agent>,
+    phantom: PhantomData<Val>,
 }
 
-impl<Time: TimeInterval> Model<Time> {
-    pub fn initial(&self) -> State<Time> {
+impl<Agent: Id, Val: Id, Time: TimeInterval> Model<Agent, Val, Time> {
+    pub fn new(timeout: Time, nodes: Vec<Agent>) -> Self {
+        Self {
+            timeout,
+            nodes,
+            phantom: PhantomData,
+        }
+    }
+
+    pub fn initial(&self) -> State<Agent, Val, Time> {
         State {
             nodes: self
                 .nodes
@@ -135,9 +131,9 @@ impl<Time: TimeInterval> Model<Time> {
     }
 }
 
-impl<Time: TimeInterval> Machine for Model<Time> {
-    type State = State<Time>;
-    type Action = Action<Time>;
+impl<Agent: Id, Val: Id, Time: TimeInterval> Machine for Model<Agent, Val, Time> {
+    type State = State<Agent, Val, Time>;
+    type Action = Action<Agent, Val, Time>;
     type Error = anyhow::Error;
 
     fn transition(
@@ -180,17 +176,16 @@ impl<Time: TimeInterval> Machine for Model<Time> {
                     .requests
                     .push_back((self.timeout.clone(), v));
             }
-            NodeAction::Timeout(v) => {
-                let (time, popped) = state.nodes[&node]
+            NodeAction::Timeout(val) => {
+                let (ix, (time, _found)) = state.nodes[&node]
                     .requests
-                    .pop_front()
+                    .iter()
+                    .find_position(|(_, v)| *v == val)
                     .ok_or(anyhow!("no requests to timeout"))?;
-                if popped != v {
-                    bail!("timeout doesn't match")
-                }
                 if !time.is_zero() {
-                    bail!("timed out too early or too late")
+                    bail!("timed out too early. time={time}")
                 }
+                state.nodes[&node].requests.remove(ix);
             }
             NodeAction::Receive(v, found) => {
                 if found {
@@ -214,7 +209,7 @@ impl<Time: TimeInterval> Machine for Model<Time> {
  * ░░░░░░░░░░░    ░░░░░    ░░░░░░░░░░░   */
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, derive_more::Display)]
-enum Prop<Time: TimeInterval> {
+enum Prop<Agent: Id, Val: Id, Time: TimeInterval> {
     #[display("Requesting_n{_0}_v{_1}")]
     Requesting(Agent, Val),
 
@@ -225,11 +220,13 @@ enum Prop<Time: TimeInterval> {
     NoRequests(Agent),
 
     #[display("Action_n{}_{}", _0.0, _0.1)]
-    Action(Action<Time>),
+    Action(Action<Agent, Val, Time>),
 }
 
-impl<Time: TimeInterval> Propositions<Prop<Time>> for Transition<Model<Time>> {
-    fn eval(&self, prop: &Prop<Time>) -> bool {
+impl<Agent: Id, Val: Id, Time: TimeInterval> Propositions<Prop<Agent, Val, Time>>
+    for Transition<Model<Agent, Val, Time>>
+{
+    fn eval(&self, prop: &Prop<Agent, Val, Time>) -> bool {
         let Transition(state, action, _) = self;
         match prop {
             Prop::Requesting(agent, val) => state
@@ -251,9 +248,10 @@ impl<Time: TimeInterval> Propositions<Prop<Time>> for Transition<Model<Time>> {
     }
 }
 
-fn props_and_ltl<Time: TimeInterval>() -> (PropRegistry<Prop<Time>>, String) {
+fn props_and_ltl<Agent: Id + Exhaustive, Val: Id + Exhaustive, Time: TimeInterval>(
+) -> (PropRegistry<Prop<Agent, Val, Time>>, String) {
     let mut propmap = PropRegistry::empty();
-    let pairs = product2(Agent::all_values(), Val::all_values());
+    let pairs = product_exhaustive::<Agent, Val>();
     let pairwise = conjoin(pairs.flat_map(|(agent, val)| {
         let req = propmap.add(Prop::Requesting(agent, val)).unwrap();
         let stored = propmap.add(Prop::Stored(agent, val)).unwrap();
@@ -264,7 +262,7 @@ fn props_and_ltl<Time: TimeInterval>() -> (PropRegistry<Prop<Time>>, String) {
             // TODO: don't restart a round too soon
         ]
     }));
-    let agentwise = conjoin(Agent::all_values().into_iter().flat_map(|agent| {
+    let agentwise = conjoin(Agent::iter_exhaustive(None).flat_map(|agent| {
         let no_requests = propmap.add(Prop::NoRequests(agent)).unwrap();
         [
             // always chew through all requests
@@ -293,18 +291,24 @@ mod tests {
         traversal::{traverse, TraversalConfig, TraversalGraphingConfig},
     };
 
+    const AGENTS: usize = 2;
+    const VALUES: usize = 2;
     const TIMEOUT: usize = 1;
     const TIME_CHOICES: usize = TIMEOUT + 1;
 
+    type Agent = UpTo<AGENTS>;
+    type Val = UpTo<VALUES>;
     type Time = FiniteTime<TIME_CHOICES, 1000>;
+
+    type Model = crate::example_models::fetch_timed::Model<Agent, Val, Time>;
 
     use super::*;
 
     fn explore(do_graph: bool) {
-        let model = Model::<Time> {
-            timeout: UpTo::<TIME_CHOICES>::new(TIMEOUT).into(),
-            nodes: (0..NUM_AGENTS).map(|n| Agent::new(n)).collect(),
-        };
+        let model = Model::new(
+            UpTo::<TIME_CHOICES>::new(TIMEOUT).into(),
+            (0..AGENTS).map(|n| Agent::new(n)).collect(),
+        );
         let initial = model.initial();
 
         let config = TraversalConfig::builder()
@@ -329,10 +333,10 @@ mod tests {
     }
 
     fn model_check() {
-        let model = Model::<Time> {
-            timeout: UpTo::<TIME_CHOICES>::new(TIMEOUT).into(),
-            nodes: (0..NUM_AGENTS).map(|n| Agent::new(n)).collect(),
-        };
+        let model = Model::new(
+            UpTo::<TIME_CHOICES>::new(TIMEOUT).into(),
+            (0..AGENTS).map(|n| Agent::new(n)).collect(),
+        );
         let (propmap, ltl) = props_and_ltl();
         println!("checking LTL:\n{}", ltl);
         let initial = model.initial();
