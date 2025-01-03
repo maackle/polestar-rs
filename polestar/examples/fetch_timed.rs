@@ -15,7 +15,7 @@ use polestar::{
     example_models::fetch_timed::{Action, Model, NodeAction, NodeState, State, *},
     mapping::{ActionOf, EventHandler, ModelMapping, StateOf},
     prelude::*,
-    time::RealTime,
+    time::{RealTime, TickBuffer},
 };
 use rand::Rng;
 use tokio::{sync::Mutex, task::JoinSet, time::Instant};
@@ -56,15 +56,15 @@ pub type Time = RealTime;
 struct RealtimeMapping {
     model: Model<Time>,
     state: State<Time>,
-    last_tick: Instant,
+    tick_buffer: TickBuffer<Time>,
 }
 
 impl RealtimeMapping {
-    pub fn new(model: Model<Time>) -> Self {
+    pub fn new(model: Model<Time>, tick_buffer: TickBuffer<Time>) -> Self {
         Self {
             state: model.initial(),
             model,
-            last_tick: Instant::now(),
+            tick_buffer,
         }
     }
 }
@@ -175,7 +175,8 @@ async fn run() {
         .map(|_| Arc::new(Mutex::new(SystemNode::default())))
         .collect::<Vec<_>>();
     let model = Model::new(timeout, (0..NUM_NODES).map(|n| Agent::new(n)).collect());
-    let mapping = Arc::new(Mutex::new(RealtimeMapping::new(model)));
+    let tick_buffer = todo!();
+    let mapping = Arc::new(Mutex::new(RealtimeMapping::new(model, tick_buffer)));
 
     for v in 0..NUM_VALUES {
         let n = v % NUM_NODES;

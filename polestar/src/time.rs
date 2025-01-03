@@ -64,11 +64,14 @@ pub struct TickBuffer<T: TimeInterval> {
     /// The function which converts a duration into a time interval, with remainder.
     /// Essentially, division with remainder.
     /// The Duration argument is the time since the last tick.
-    division: Box<dyn Fn(Duration) -> (T, Duration)>,
+    division: Box<dyn Fn(Duration) -> (T, Duration) + 'static + Send + Sync>,
 }
 
 impl<T: TimeInterval> TickBuffer<T> {
-    pub fn new(start: Instant, scaling: impl Fn(Duration) -> (T, Duration) + 'static) -> Self {
+    pub fn new(
+        start: Instant,
+        scaling: impl Fn(Duration) -> (T, Duration) + 'static + Send + Sync,
+    ) -> Self {
         Self {
             last_tick: start,
             division: Box::new(scaling),
