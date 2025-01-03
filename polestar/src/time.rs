@@ -1,9 +1,12 @@
 use num_traits::*;
 use std::{
     fmt::Display,
+    marker::PhantomData,
     ops::{Mul, Sub},
     time::{Duration, Instant},
 };
+
+use crate::id::UpTo;
 
 /// Types which can represent an interval of time as needed by a model.
 pub trait TimeInterval:
@@ -15,14 +18,59 @@ pub trait TimeInterval:
     + Display
     + std::fmt::Debug
     + Zero
-    + Sub<Output = Self>
-    + Mul<usize, Output = Self>
+    + Sub<Output = Self> // + Mul<usize, Output = Self>
 {
+    /// The function which converts a duration into a time interval, with remainder.
+    /// Essentially, division with remainder.
+    /// The Duration argument is the time since the last tick.
+    fn division(duration: Duration) -> (Self, Duration);
 }
 
-impl TimeInterval for usize {}
-impl<const N: usize> TimeInterval for crate::id::UpTo<N> {}
-impl TimeInterval for RealTime {}
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    exhaustive::Exhaustive,
+    derive_more::Display,
+    derive_more::Deref,
+    derive_more::Add,
+    derive_more::Sub,
+    derive_more::From,
+    derive_more::Into,
+)]
+pub struct FiniteTime<const N: usize, const T: u64>(UpTo<N>);
+
+// impl<const N: usize, const T_MILLIS: u64> From<UpTo<N>> for FiniteTime<N, T_MILLIS> {
+//     fn from(t: UpTo<N>) -> Self {
+//         Self(t)
+//     }
+// }
+
+impl<const N: usize, const T_MILLIS: u64> Zero for FiniteTime<N, T_MILLIS> {
+    fn zero() -> Self {
+        Self(UpTo::new(0))
+    }
+
+    fn is_zero(&self) -> bool {
+        self.0.is_zero()
+    }
+}
+
+impl<const N: usize, const T_MILLIS: u64> TimeInterval for FiniteTime<N, T_MILLIS> {
+    fn division(duration: Duration) -> (Self, Duration) {
+        let (t, d) = int_time_scaling(N, Duration::from_millis(T_MILLIS))(duration);
+        (Self(UpTo::new(t)), d)
+    }
+}
+
+impl TimeInterval for RealTime {
+    fn division(duration: Duration) -> (Self, Duration) {
+        (Self(duration), Duration::ZERO)
+    }
+}
 
 /// Wall clock time.
 #[derive(
@@ -61,20 +109,14 @@ impl Mul<usize> for RealTime {
 
 pub struct TickBuffer<T: TimeInterval> {
     last_tick: Instant,
-    /// The function which converts a duration into a time interval, with remainder.
-    /// Essentially, division with remainder.
-    /// The Duration argument is the time since the last tick.
-    division: Box<dyn Fn(Duration) -> (T, Duration) + 'static + Send + Sync>,
+    phantom: PhantomData<T>,
 }
 
 impl<T: TimeInterval> TickBuffer<T> {
-    pub fn new(
-        start: Instant,
-        scaling: impl Fn(Duration) -> (T, Duration) + 'static + Send + Sync,
-    ) -> Self {
+    pub fn new(start: Instant) -> Self {
         Self {
             last_tick: start,
-            division: Box::new(scaling),
+            phantom: PhantomData,
         }
     }
 
@@ -82,7 +124,7 @@ impl<T: TimeInterval> TickBuffer<T> {
         let mut elapsed = now - self.last_tick;
         let mut ticks = Vec::new();
         loop {
-            let (t, d) = (self.division)(elapsed);
+            let (t, d) = T::division(elapsed);
             elapsed = d;
             if t.is_zero() {
                 break;
@@ -154,20 +196,26 @@ mod tests {
         let d4 = Duration::from_millis(5500);
         let d5 = Duration::from_millis(500);
 
-        let mut b = TickBuffer::<UpTo<3>>::new(start.clone(), |d| {
-            let (t, q) = int_time_scaling(3, Duration::from_secs(1))(d);
-            (UpTo::new(t), q)
-        });
+        type T = FiniteTime<3, 1000>;
+
+        let mut b = TickBuffer::<T>::new(start.clone());
 
         assert_eq!(b.tick(start + d1).collect_vec(), vec![]);
-        assert_eq!(b.tick(start + d1 + d2).collect_vec(), vec![UpTo::new(1)]);
+        assert_eq!(
+            b.tick(start + d1 + d2).collect_vec(),
+            vec![UpTo::new(1).into()]
+        );
         assert_eq!(
             b.tick(start + d1 + d2 + d3).collect_vec(),
-            vec![UpTo::new(2), UpTo::new(2)]
+            vec![UpTo::new(2).into(), UpTo::new(2).into()]
         );
         assert_eq!(
             b.tick(start + d1 + d2 + d3 + d4).collect_vec(),
-            vec![UpTo::new(2), UpTo::new(2), UpTo::new(1)]
+            vec![
+                UpTo::new(2).into(),
+                UpTo::new(2).into(),
+                UpTo::new(1).into()
+            ]
         );
         assert_eq!(b.tick(start + d1 + d2 + d3 + d4 + d5).collect_vec(), vec![]);
 
@@ -180,7 +228,7 @@ mod tests {
         let start = Instant::now();
         let d1 = Duration::from_millis(350);
         let d2 = Duration::from_millis(801);
-        let mut b = TickBuffer::<RealTime>::new(start, |d| (d.into(), Duration::ZERO));
+        let mut b = TickBuffer::<RealTime>::new(start);
 
         assert_eq!(b.tick(start + d1).collect_vec(), vec![d1.into()]);
         assert_eq!(b.tick(start + d1 + d2).collect_vec(), vec![d2.into()]);

@@ -287,14 +287,17 @@ mod tests {
     use crate::{
         diagram::write_dot,
         model_checker::{model_checker_report, ModelChecker},
+        time::FiniteTime,
         traversal::{traverse, TraversalConfig, TraversalGraphingConfig},
     };
+
+    type Time = FiniteTime<TIME_CHOICES, 1000>;
 
     use super::*;
 
     fn explore(do_graph: bool) {
-        let model = Model {
-            timeout: UpTo::<TIME_CHOICES>::new(TIMEOUT),
+        let model = Model::<Time> {
+            timeout: UpTo::<TIME_CHOICES>::new(TIMEOUT).into(),
             nodes: (0..NUM_AGENTS).map(|n| Agent::new(n)).collect(),
         };
         let initial = model.initial();
@@ -321,8 +324,8 @@ mod tests {
     }
 
     fn model_check() {
-        let model = Model {
-            timeout: UpTo::<TIME_CHOICES>::new(TIMEOUT),
+        let model = Model::<Time> {
+            timeout: UpTo::<TIME_CHOICES>::new(TIMEOUT).into(),
             nodes: (0..NUM_AGENTS).map(|n| Agent::new(n)).collect(),
         };
         let (propmap, ltl) = props_and_ltl();
