@@ -70,7 +70,7 @@ impl<Agent: Id, Val: Id, Time: TimeInterval> Display for State<Agent, Val, Time>
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct NodeState<Val: Clone + Ord, Time: Clone> {
     pub values: OrdSet<Val>,
-    pub requests: Vector<(Time, Val)>,
+    pub requests: Vector<Request<Val, Time>>,
 }
 
 impl<Val: Id, Time: TimeInterval> Default for NodeState<Val, Time> {
@@ -90,9 +90,24 @@ impl<Val: Id, Time: TimeInterval> Display for NodeState<Val, Time> {
             self.values.iter().join(" "),
             self.requests
                 .iter()
-                .map(|(v, t)| format!("{v}:{t}"))
+                .map(|r| format!("{}:{}", r.val, r.elapsed))
                 .join(",")
         )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Request<Val: Clone + Ord, Time: Clone> {
+    pub val: Val,
+    pub elapsed: Time,
+}
+
+impl<Val: Id, Time: TimeInterval> Request<Val, Time> {
+    pub fn new(val: Val) -> Self {
+        Self {
+            val,
+            elapsed: Time::zero(),
+        }
     }
 }
 
@@ -107,14 +122,17 @@ impl<Val: Id, Time: TimeInterval> Display for NodeState<Val, Time> {
 
 pub struct Model<Agent: Id, Val: Id, Time: TimeInterval> {
     pub timeout: Time,
+    pub timeout_grace: Time,
     nodes: Vec<Agent>,
     phantom: PhantomData<Val>,
 }
 
 impl<Agent: Id, Val: Id, Time: TimeInterval> Model<Agent, Val, Time> {
-    pub fn new(timeout: Time, nodes: Vec<Agent>) -> Self {
+    pub fn new(timeout: Time, timeout_grace: Time, nodes: Vec<Agent>) -> Self {
+        assert!(timeout < timeout_grace);
         Self {
             timeout,
+            timeout_grace,
             nodes,
             phantom: PhantomData,
         }
@@ -143,15 +161,11 @@ impl<Agent: Id, Val: Id, Time: TimeInterval> Machine for Model<Agent, Val, Time>
     ) -> TransitionResult<Self> {
         match action {
             NodeAction::Tick(dur) => {
-                for (time, v) in state.nodes[&node].requests.iter_mut() {
-                    if time.is_zero() {
-                        bail!("value should have timed out: v={v}")
+                for req in state.nodes[&node].requests.iter_mut() {
+                    if req.elapsed >= self.timeout_grace {
+                        bail!("value should have timed out: v={}", req.val);
                     }
-                    *time = if *time >= dur {
-                        *time - dur
-                    } else {
-                        Time::zero()
-                    };
+                    req.elapsed = req.elapsed + dur;
                 }
             }
             NodeAction::Author(v) => {
@@ -161,7 +175,7 @@ impl<Agent: Id, Val: Id, Time: TimeInterval> Machine for Model<Agent, Val, Time>
                 if state.nodes[&node]
                     .requests
                     .iter()
-                    .find(|(_, i)| *i == v)
+                    .find(|r| r.val == v)
                     .is_some()
                 {
                     bail!("request already exists")
@@ -172,18 +186,16 @@ impl<Agent: Id, Val: Id, Time: TimeInterval> Machine for Model<Agent, Val, Time>
                     bail!("value already stored, don't request it again")
                 }
 
-                state.nodes[&node]
-                    .requests
-                    .push_back((self.timeout.clone(), v));
+                state.nodes[&node].requests.push_back(Request::new(v));
             }
             NodeAction::Timeout(val) => {
-                let (ix, (time, _found)) = state.nodes[&node]
+                let (ix, req) = state.nodes[&node]
                     .requests
                     .iter()
-                    .find_position(|(_, v)| *v == val)
+                    .find_position(|req| req.val == val)
                     .ok_or(anyhow!("no requests to timeout"))?;
-                if !time.is_zero() {
-                    bail!("timed out too early. time={time}")
+                if req.elapsed < self.timeout {
+                    bail!("timed out too early. elapsed={}", req.elapsed);
                 }
                 state.nodes[&node].requests.remove(ix);
             }
@@ -191,7 +203,7 @@ impl<Agent: Id, Val: Id, Time: TimeInterval> Machine for Model<Agent, Val, Time>
                 if found {
                     state.nodes[&node].values.insert(v);
                 }
-                state.nodes[&node].requests.retain(|(_, i)| *i != v);
+                state.nodes[&node].requests.retain(|r| r.val != v);
             }
         }
 
@@ -232,7 +244,7 @@ impl<Agent: Id, Val: Id, Time: TimeInterval> Propositions<Prop<Agent, Val, Time>
             Prop::Requesting(agent, val) => state
                 .nodes
                 .get(&agent)
-                .map(|n| n.requests.iter().any(|(_, v)| v == val))
+                .map(|n| n.requests.iter().any(|req| req.val == *val))
                 .unwrap_or(false),
 
             Prop::Stored(agent, val) => state
@@ -294,7 +306,8 @@ mod tests {
     const AGENTS: usize = 2;
     const VALUES: usize = 2;
     const TIMEOUT: usize = 1;
-    const TIME_CHOICES: usize = TIMEOUT + 1;
+    const TIMEOUT_GRACE: usize = 1;
+    const TIME_CHOICES: usize = TIMEOUT_GRACE + 1;
 
     type Agent = UpTo<AGENTS>;
     type Val = UpTo<VALUES>;
@@ -307,6 +320,7 @@ mod tests {
     fn explore(do_graph: bool) {
         let model = Model::new(
             UpTo::<TIME_CHOICES>::new(TIMEOUT).into(),
+            UpTo::<TIME_CHOICES>::new(TIMEOUT_GRACE).into(),
             (0..AGENTS).map(|n| Agent::new(n)).collect(),
         );
         let initial = model.initial();
@@ -335,6 +349,7 @@ mod tests {
     fn model_check() {
         let model = Model::new(
             UpTo::<TIME_CHOICES>::new(TIMEOUT).into(),
+            UpTo::<TIME_CHOICES>::new(TIMEOUT_GRACE).into(),
             (0..AGENTS).map(|n| Agent::new(n)).collect(),
         );
         let (propmap, ltl) = props_and_ltl();

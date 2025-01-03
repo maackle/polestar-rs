@@ -86,12 +86,14 @@ struct RequestData {
 
 async fn run(num_agents: usize, num_values: usize) {
     let timeout = RealTime::from(tokio::time::Duration::from_millis(1000));
+    let timeout_grace = RealTime::from(tokio::time::Duration::from_millis(1500));
 
     let nodes = (0..num_agents)
         .map(|_| Arc::new(Mutex::new(SystemNode::default())))
         .collect::<Vec<_>>();
     let model = Model::new(
         timeout,
+        timeout_grace,
         (0..num_agents)
             .map(|n| Agent::try_from(n).unwrap())
             .collect(),
@@ -256,7 +258,7 @@ impl polestar::mapping::ModelMapping for RealtimeMapping {
                             requests: v
                                 .requests
                                 .iter()
-                                .map(|(v, _)| (self.model.timeout, v.clone()))
+                                .map(|(v, _)| Request::new(v.clone()))
                                 .collect(),
                         },
                     )
