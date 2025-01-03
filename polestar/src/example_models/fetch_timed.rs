@@ -19,12 +19,10 @@ use num_traits::{Bounded, Zero};
 
 pub const NUM_VALUES: usize = 1;
 pub const NUM_AGENTS: usize = 2;
-pub const TIMEOUT: usize = 1;
-pub const TIME_CHOICES: usize = TIMEOUT + 1;
 
 pub type Val = UpTo<NUM_VALUES>;
 pub type Agent = UpTo<NUM_AGENTS>;
-// pub type Time = UpTo<TIME_CHOICES>;
+
 /*                   █████     ███
                     ░░███     ░░░
   ██████    ██████  ███████   ████   ██████  ████████
@@ -153,7 +151,11 @@ impl<Time: TimeInterval> Machine for Model<Time> {
                     if time.is_zero() {
                         bail!("value should have timed out: v={v}")
                     }
-                    *time = *time - dur;
+                    *time = if *time >= dur {
+                        *time - dur
+                    } else {
+                        Time::zero()
+                    };
                 }
             }
             NodeAction::Author(v) => {
@@ -290,6 +292,9 @@ mod tests {
         time::FiniteTime,
         traversal::{traverse, TraversalConfig, TraversalGraphingConfig},
     };
+
+    const TIMEOUT: usize = 1;
+    const TIME_CHOICES: usize = TIMEOUT + 1;
 
     type Time = FiniteTime<TIME_CHOICES, 1000>;
 

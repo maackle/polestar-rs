@@ -14,6 +14,8 @@ pub trait TimeInterval:
     + Copy
     + PartialEq
     + Eq
+    + PartialOrd
+    + Ord
     + std::hash::Hash
     + Display
     + std::fmt::Debug
@@ -26,12 +28,16 @@ pub trait TimeInterval:
     fn division(duration: Duration) -> (Self, Duration);
 }
 
+/// Represents a bounded integer time interval.
+/// Useful for modeling discrete time with few possibilities.
 #[derive(
     Debug,
     Clone,
     Copy,
     PartialEq,
     Eq,
+    PartialOrd,
+    Ord,
     Hash,
     exhaustive::Exhaustive,
     derive_more::Display,
@@ -41,7 +47,7 @@ pub trait TimeInterval:
     derive_more::From,
     derive_more::Into,
 )]
-pub struct FiniteTime<const N: usize, const T: u64>(UpTo<N>);
+pub struct FiniteTime<const N: usize, const T_MILLIS: u64>(UpTo<N>);
 
 // impl<const N: usize, const T_MILLIS: u64> From<UpTo<N>> for FiniteTime<N, T_MILLIS> {
 //     fn from(t: UpTo<N>) -> Self {
@@ -79,6 +85,8 @@ impl TimeInterval for RealTime {
     Copy,
     PartialEq,
     Eq,
+    PartialOrd,
+    Ord,
     Hash,
     derive_more::Display,
     derive_more::Deref,

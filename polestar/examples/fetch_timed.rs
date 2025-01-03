@@ -11,6 +11,7 @@ use std::{
 };
 
 use im::{HashMap, OrdSet};
+use itertools::Itertools;
 use polestar::{
     example_models::fetch_timed::{Action, Model, NodeAction, NodeState, State, *},
     mapping::{ActionOf, EventHandler, ModelMapping, StateOf},
@@ -56,12 +57,14 @@ pub type Time = RealTime;
 struct RealtimeMapping {
     model: Model<Time>,
     state: State<Time>,
+    actions: Vec<Action<Time>>,
     tick_buffer: TickBuffer<Time>,
 }
 
 impl RealtimeMapping {
     pub fn new(model: Model<Time>, tick_buffer: TickBuffer<Time>) -> Self {
         Self {
+            actions: vec![],
             state: model.initial(),
             model,
             tick_buffer,
@@ -98,28 +101,32 @@ impl polestar::mapping::ModelMapping for RealtimeMapping {
     }
 
     fn map_event(&mut self, event: &Self::Event) -> Vec<ActionOf<Self::Model>> {
-        todo!("tick buffering");
-        // let mut last_tick = Instant::now();
-        // while last_tick.elapsed() >= tick_interval.into() {
-        //     mapping
-        //         .lock()
-        //         .await
-        //         .handle(&(receiver_ix, NodeAction::Tick))
-        //         .unwrap();
-        //     last_tick += tick_interval;
-        // }
-
         let (node, action) = event;
+
+        let mut actions = self
+            .tick_buffer
+            .tick(Instant::now().into())
+            .map(|t| (*node, NodeAction::Tick(t)))
+            .collect_vec();
+
         match action {
-            NodeAction::Tick(RealTime) => println!("Tick n{node} {RealTime}"),
             NodeAction::Author(val) => println!("Author v={val} by n{node}"),
             NodeAction::Request(val, from) => println!("Request v={val} from n{from} by n{node}"),
             NodeAction::Timeout(val) => println!("Timeout v={val} by n{node}"),
             NodeAction::Receive(val, found) => {
                 println!("Received {found} response for v={val:?} by n{node}")
             }
+
+            NodeAction::Tick(_) => {
+                unreachable!("Don't send Tick events from the system, time is handled automatically in the mapping")
+            }
         }
-        vec![(*node, action.clone())]
+
+        actions.push((*node, action.clone()));
+
+        self.actions.extend(actions.clone());
+
+        actions
     }
 }
 
@@ -132,7 +139,10 @@ impl polestar::mapping::EventHandler<(usize, NodeAction<Time>)> for RealtimeMapp
         self.state = self
             .model
             .apply_actions_(self.state.clone(), actions)
-            .map_err(|(e, _, _)| e)?;
+            .map_err(|(e, _, _)| {
+                println!("MAPPING ERROR. All actions: {:#?}", self.actions);
+                e
+            })?;
         Ok(())
     }
 }
@@ -167,19 +177,18 @@ struct RequestData {
 }
 
 async fn run() {
-    const NUM_NODES: usize = 3;
     let tick_interval: RealTime = RealTime::from(tokio::time::Duration::from_millis(1000));
     let timeout = tick_interval * 1;
 
-    let nodes = (0..NUM_NODES)
+    let nodes = (0..NUM_AGENTS)
         .map(|_| Arc::new(Mutex::new(SystemNode::default())))
         .collect::<Vec<_>>();
-    let model = Model::new(timeout, (0..NUM_NODES).map(|n| Agent::new(n)).collect());
-    let tick_buffer = todo!();
+    let model = Model::new(timeout, (0..NUM_AGENTS).map(|n| Agent::new(n)).collect());
+    let tick_buffer = TickBuffer::new(Instant::now().into());
     let mapping = Arc::new(Mutex::new(RealtimeMapping::new(model, tick_buffer)));
 
     for v in 0..NUM_VALUES {
-        let n = v % NUM_NODES;
+        let n = v % NUM_AGENTS;
         let v = Val::new(v);
         let mut node = nodes[n].lock().await;
         node.values.insert(v);
@@ -224,9 +233,9 @@ async fn run() {
                     let receiver = receiver.clone();
                     // Select target val and requestee
                     let r = rand::thread_rng().gen_range(0..NUM_VALUES);
-                    let mut giver_ix = rand::thread_rng().gen_range(0..NUM_NODES);
+                    let mut giver_ix = rand::thread_rng().gen_range(0..NUM_AGENTS);
                     while receiver_ix == giver_ix {
-                        giver_ix = rand::thread_rng().gen_range(0..NUM_NODES);
+                        giver_ix = rand::thread_rng().gen_range(0..NUM_AGENTS);
                     }
                     let giver = nodes[giver_ix].clone();
                     let val = Val::new(r);
