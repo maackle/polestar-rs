@@ -40,7 +40,7 @@ async fn main() {
         .with_max_level(tracing::Level::INFO)
         .init();
 
-    run(7, 11).await;
+    run(2, 4).await;
 }
 
 /*                           █████
@@ -300,8 +300,6 @@ impl polestar::mapping::ModelMapping for RealtimeMapping {
 
         actions.push((*node, action.clone()));
 
-        self.actions.extend(actions.clone());
-
         actions
     }
 }
@@ -314,8 +312,14 @@ impl polestar::mapping::EventHandler<(usize, Event)> for RealtimeMapping {
         let actions = self.map_event(&event);
         self.state = self
             .model
-            .apply_actions_(self.state.clone(), actions)
+            .apply_each_action(self.state.clone(), actions, |action, _| {
+                self.actions.push(action.clone());
+            })
             .map_err(|(e, s, a)| {
+                assert_ne!(a, *self.actions.last().unwrap());
+
+                self.actions.push(a);
+
                 println!("MAPPING ERROR.");
                 println!();
                 println!("All actions:");
@@ -326,12 +330,10 @@ impl polestar::mapping::EventHandler<(usize, Event)> for RealtimeMapping {
                 println!("Last state: {s:?}");
                 println!();
 
-                if a != *self.actions.last().unwrap() {
-                    println!("WARNING: Last action different (what does this mean?): {a:?}");
-                }
                 e
             })
-            .unwrap();
+            .unwrap()
+            .0;
         Ok(())
     }
 }

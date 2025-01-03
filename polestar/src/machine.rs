@@ -48,7 +48,7 @@ where
         &self,
         mut state: Self::State,
         actions: impl IntoIterator<Item = Self::Action>,
-        on_action: impl Fn(&Self::Action, &Self::State),
+        mut on_action: impl FnMut(&Self::Action, &Self::State),
     ) -> Result<(Self::State, Vec<Self::Fx>), (Self::Error, Self::State, Self::Action)>
     where
         Self::State: Clone,
