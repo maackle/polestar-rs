@@ -129,7 +129,7 @@ pub struct Model<Agent: Id, Val: Id, Time: TimeInterval> {
 
 impl<Agent: Id, Val: Id, Time: TimeInterval> Model<Agent, Val, Time> {
     pub fn new(timeout: Time, timeout_grace: Time, nodes: Vec<Agent>) -> Self {
-        assert!(timeout < timeout_grace);
+        assert!(timeout <= timeout_grace);
         Self {
             timeout,
             timeout_grace,
@@ -303,7 +303,7 @@ mod tests {
         traversal::{traverse, TraversalConfig, TraversalGraphingConfig},
     };
 
-    const AGENTS: usize = 2;
+    const AGENTS: usize = 3;
     const VALUES: usize = 2;
     const TIMEOUT: usize = 1;
     const TIMEOUT_GRACE: usize = 1;
@@ -319,8 +319,8 @@ mod tests {
 
     fn explore(do_graph: bool) {
         let model = Model::new(
-            UpTo::<TIME_CHOICES>::new(TIMEOUT).into(),
-            UpTo::<TIME_CHOICES>::new(TIMEOUT_GRACE).into(),
+            UpTo::new(TIMEOUT).into(),
+            UpTo::new(TIMEOUT_GRACE).into(),
             (0..AGENTS).map(|n| Agent::new(n)).collect(),
         );
         let initial = model.initial();
@@ -348,8 +348,8 @@ mod tests {
 
     fn model_check() {
         let model = Model::new(
-            UpTo::<TIME_CHOICES>::new(TIMEOUT).into(),
-            UpTo::<TIME_CHOICES>::new(TIMEOUT_GRACE).into(),
+            UpTo::new(TIMEOUT).into(),
+            UpTo::new(TIMEOUT_GRACE).into(),
             (0..AGENTS).map(|n| Agent::new(n)).collect(),
         );
         let (propmap, ltl) = props_and_ltl();

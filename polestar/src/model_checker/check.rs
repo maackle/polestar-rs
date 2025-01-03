@@ -33,7 +33,7 @@ where
     {
         let config = TraversalConfig::builder()
             .record_terminals(false)
-            // .trace_every(1000)
+            .trace_every(100_000)
             .graphing(TraversalGraphingConfig::default())
             .is_fatal_error(|e| !matches!(e, ModelCheckerTransitionError::MachineError(_)))
             .build();
