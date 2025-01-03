@@ -40,7 +40,13 @@ async fn main() {
         .with_max_level(tracing::Level::INFO)
         .init();
 
-    run(2, 4).await;
+    run(
+        7,
+        30,
+        Duration::from_millis(500),
+        Duration::from_millis(2000),
+    )
+    .await;
 }
 
 /*                           █████
@@ -84,9 +90,9 @@ struct RequestData {
     time: Instant,
 }
 
-async fn run(num_agents: usize, num_values: usize) {
-    let timeout = RealTime::from(tokio::time::Duration::from_millis(1000));
-    let timeout_grace = RealTime::from(tokio::time::Duration::from_millis(1500));
+async fn run(num_agents: usize, num_values: usize, timeout: Duration, timeout_grace: Duration) {
+    let timeout = RealTime::from(timeout);
+    let timeout_grace = RealTime::from(timeout_grace);
 
     let nodes = (0..num_agents)
         .map(|_| Arc::new(Mutex::new(SystemNode::default())))

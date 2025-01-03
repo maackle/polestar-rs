@@ -163,7 +163,11 @@ impl<Agent: Id, Val: Id, Time: TimeInterval> Machine for Model<Agent, Val, Time>
             NodeAction::Tick(dur) => {
                 for req in state.nodes[&node].requests.iter_mut() {
                     if req.elapsed >= self.timeout_grace {
-                        bail!("value should have timed out: v={}", req.val);
+                        bail!(
+                            "value did not time out during grace period: v={}, t={}",
+                            req.val,
+                            req.elapsed
+                        );
                     }
                     req.elapsed = req.elapsed + dur;
                 }
