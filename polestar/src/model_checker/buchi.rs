@@ -77,7 +77,7 @@ where
 
 #[derive(Debug)]
 pub enum BuchiError {
-    Internal(anyhow::Error),
+    // Internal(anyhow::Error),
     LtlError(anyhow::Error),
 }
 

@@ -1,6 +1,6 @@
 use std::ops::Mul;
 
-use num_traits::Bounded;
+use num_traits::{Bounded, WrappingAdd, WrappingSub};
 
 use super::*;
 
@@ -18,15 +18,15 @@ use super::*;
     derive_more::Deref,
 )]
 #[cfg_attr(feature = "recording", derive(serde::Serialize, serde::Deserialize))]
-pub struct UpTo<const N: usize>(pub(super) usize);
+pub struct UpTo<const N: usize, const WRAP: bool = false>(pub(super) usize);
 
-impl<const N: usize> Id for UpTo<N> {
+impl<const N: usize, const WRAP: bool> Id for UpTo<N, WRAP> {
     fn choices() -> IdChoices {
         IdChoices::Small(N)
     }
 }
 
-impl<const N: usize> UpTo<N> {
+impl<const N: usize, const WRAP: bool> UpTo<N, WRAP> {
     pub fn new(n: usize) -> Self {
         Self::try_from(n).expect(&format!("Attempted to initialize UpTo<{N}> with {n}"))
     }
@@ -48,13 +48,13 @@ impl<const N: usize> UpTo<N> {
     }
 }
 
-impl<const N: usize> exhaustive::Exhaustive for UpTo<N> {
+impl<const N: usize, const WRAP: bool> exhaustive::Exhaustive for UpTo<N, WRAP> {
     fn generate(u: &mut exhaustive::DataSourceTaker) -> exhaustive::Result<Self> {
         u.choice(N).map(Self)
     }
 }
 
-impl<const N: usize> TryFrom<usize> for UpTo<N> {
+impl<const N: usize, const WRAP: bool> TryFrom<usize> for UpTo<N, WRAP> {
     type Error = String;
     fn try_from(value: usize) -> Result<Self, Self::Error> {
         if value < N {
@@ -65,57 +65,76 @@ impl<const N: usize> TryFrom<usize> for UpTo<N> {
     }
 }
 
-impl<const N: usize> std::fmt::Debug for UpTo<N> {
+impl<const N: usize, const WRAP: bool> std::fmt::Debug for UpTo<N, WRAP> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Id({})", self.0)
     }
 }
 
-impl<const N: usize> std::fmt::Display for UpTo<N> {
+impl<const N: usize, const WRAP: bool> std::fmt::Display for UpTo<N, WRAP> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
 }
 
-impl<const N: usize> std::ops::Add<usize> for UpTo<N> {
+impl<const N: usize, const WRAP: bool> std::ops::Add<usize> for UpTo<N, WRAP> {
     type Output = Self;
     fn add(self, rhs: usize) -> Self::Output {
-        Self((self.0 + rhs) % N)
+        if WRAP {
+            Self((self.0 + rhs) % N)
+        } else {
+            Self(self.0 + rhs)
+        }
     }
 }
 
-impl<const N: usize> std::ops::Add<UpTo<N>> for UpTo<N> {
+impl<const N: usize, const WRAP: bool> std::ops::Add<UpTo<N, WRAP>> for UpTo<N, WRAP> {
     type Output = Self;
     fn add(self, rhs: Self) -> Self::Output {
-        Self((self.0 + rhs.0) % N)
+        self + rhs.0
     }
 }
 
-impl<const N: usize> std::ops::Sub<usize> for UpTo<N> {
-    type Output = UpTo<N>;
+// impl<const N: usize> WrappingAdd for UpTo<N> {
+//     fn wrapping_add(&self, rhs: &Self) -> Self {
+//         Self((self.0 + rhs.0) % N)
+//     }
+// }
+
+impl<const N: usize, const WRAP: bool> std::ops::Sub<usize> for UpTo<N, WRAP> {
+    type Output = UpTo<N, WRAP>;
     fn sub(self, rhs: usize) -> Self::Output {
-        let rhs = rhs % N;
-        let v = if self.0 < rhs {
-            self.0 + N - rhs
+        if WRAP {
+            let v = if self.0 < rhs {
+                self.0 + N - rhs
+            } else {
+                self.0 - rhs
+            };
+            Self(v)
         } else {
-            self.0 - rhs
-        };
-        UpTo(v)
+            Self(self.0 - rhs)
+        }
     }
 }
 
-impl<const N: usize> std::ops::Sub<UpTo<N>> for UpTo<N> {
+impl<const N: usize, const WRAP: bool> std::ops::Sub<UpTo<N, WRAP>> for UpTo<N, WRAP> {
     type Output = Self;
     fn sub(self, rhs: Self) -> Self::Output {
-        let rhs = rhs.0;
-        let v = if self.0 < rhs {
-            self.0 + N - rhs
-        } else {
-            self.0 - rhs
-        };
-        UpTo(v)
+        self - rhs.0
     }
 }
+
+// impl<const N: usize> WrappingSub for UpTo<N> {
+//     fn wrapping_sub(&self, rhs: &Self) -> Self {
+//         let rhs = rhs.0;
+//         let v = if self.0 < rhs {
+//             self.0 + N - rhs
+//         } else {
+//             self.0 - rhs
+//         };
+//         UpTo(v)
+//     }
+// }
 
 impl<const N: usize> num_traits::Zero for UpTo<N> {
     fn zero() -> Self {

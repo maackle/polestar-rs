@@ -35,7 +35,6 @@ use tokio::{sync::Mutex, task::JoinSet, time::Instant};
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
-    // TODO: add system mapping stuff, from fetch_timeless
     tracing_subscriber::fmt::fmt()
         .with_max_level(tracing::Level::INFO)
         .init();

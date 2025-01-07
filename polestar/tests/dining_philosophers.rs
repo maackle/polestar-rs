@@ -14,7 +14,7 @@ use itertools::Itertools;
 
 const N: usize = 3;
 
-type Id = UpTo<N>;
+type Id = UpTo<N, true>;
 
 /*                   █████     ███
                     ░░███     ░░░
@@ -27,9 +27,10 @@ type Id = UpTo<N>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, exhaustive::Exhaustive)]
 pub enum Action {
-    Eat,
+    BeginEating,
+    StopEating,
     Think,
-    Interact,
+    CleanUp,
 }
 
 /*                                  █████       ███
@@ -56,27 +57,47 @@ impl Machine for Model {
         (p, action): Self::Action,
     ) -> TransitionResult<Self> {
         match action {
-            Action::Eat => {
-                if state.philosophers[*p].hungry && state.can_eat(p) {
-                    state.philosophers[*p].hungry = false;
+            Action::BeginEating => {
+                let can_eat = state.can_eat(p);
+                let phil = &mut state.philosophers[*p];
+                if phil.phase != Phase::Eating && phil.is_hungry() && can_eat {
+                    phil.phase = Phase::Eating;
                     state.forks.left_mut(p).clean = false;
                     state.forks.right_mut(p).clean = false;
+                } else {
+                    return Err(anyhow::anyhow!("cannot start eating"));
+                }
+            }
+            Action::StopEating => {
+                if state.philosophers[*p].phase == Phase::Eating {
+                    state.philosophers[*p].phase = Phase::Sated;
+                } else {
+                    return Err(anyhow::anyhow!("cannot stop eating if not already eating"));
                 }
             }
             Action::Think => {
-                state.philosophers[*p].hungry = true;
-            }
-            Action::Interact => {
-                let left = state.forks.left_mut(p);
-                if left.holder == p && !left.clean {
-                    left.holder = p - 1;
-                    left.clean = true;
+                if state.philosophers[*p].phase == Phase::Sated {
+                    state.philosophers[*p].phase = Phase::Hungry;
+                } else {
+                    return Err(anyhow::anyhow!("cannot think if not sated"));
                 }
+            }
+            Action::CleanUp => {
+                if state.philosophers[*p].phase != Phase::Eating {
+                    let left = state.forks.left_mut(p);
+                    if left.holder == p && !left.clean {
+                        let h = p - 1;
+                        left.holder = h;
+                        left.clean = true;
+                    }
 
-                let right = state.forks.right_mut(p);
-                if right.holder == p && !right.clean {
-                    right.holder = p + 1;
-                    right.clean = true;
+                    let right = state.forks.right_mut(p);
+                    if right.holder == p && !right.clean {
+                        right.holder = p + 1;
+                        right.clean = true;
+                    }
+                } else {
+                    return Err(anyhow::anyhow!("cannot clean up while eating"));
                 }
             }
         }
@@ -118,7 +139,7 @@ impl Default for State {
             ),
             philosophers: Philosophers(
                 (0..N)
-                    .map(|_| Philosopher { hungry: true })
+                    .map(|_| Philosopher::default())
                     .collect_vec()
                     .try_into()
                     .unwrap(),
@@ -153,11 +174,11 @@ pub struct Philosophers([Philosopher; N]);
 
 impl Philosophers {
     fn left(&mut self, p: Id) -> &mut Philosopher {
-        &mut self.0[*(p - 1)]
+        &mut self.0[p.wrapping_sub(1)]
     }
 
     fn right(&mut self, p: Id) -> &mut Philosopher {
-        &mut self.0[*(p + 1)]
+        &mut self.0[p.wrapping_add(1)]
     }
 }
 
@@ -186,9 +207,27 @@ pub struct Fork {
     clean: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
 pub struct Philosopher {
-    hungry: bool,
+    phase: Phase,
+}
+
+impl Philosopher {
+    fn is_hungry(&self) -> bool {
+        self.phase == Phase::Hungry
+    }
+
+    fn is_eating(&self) -> bool {
+        self.phase == Phase::Eating
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
+pub enum Phase {
+    #[default]
+    Hungry,
+    Eating,
+    Sated,
 }
 
 /*█████                      █████
@@ -200,55 +239,151 @@ pub struct Philosopher {
   ░░█████ ░░██████  ██████   ░░█████  ██████
    ░░░░░   ░░░░░░  ░░░░░░     ░░░░░  ░░░░░░*/
 
-#[test]
-fn test_dining_philosophers() {
-    let dining_philosophers = State::default();
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    let traversal_config = TraversalConfig::builder()
-        .graphing(TraversalGraphingConfig {
-            ignore_loopbacks: true,
-            ..Default::default()
-        })
-        .build();
+    use polestar::diagram::write_dot;
+    use polestar::logic::{conjoin, PropRegistry, Propositions, Transition};
+    use polestar::model_checker::{model_checker_report, ModelChecker};
+    use polestar::util::product_exhaustive;
 
-    let (report, graph, _) =
-        traverse::<Model, State>(Model.into(), dining_philosophers, traversal_config, Some)
-            .unwrap();
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, derive_more::Display)]
+    enum Prop {
+        #[display("eating_{}", _0)]
+        Eating(Id),
 
-    {
-        let graph = graph.unwrap().map(
-            |_, s| {
-                Id::iter_exhaustive(None)
-                    .map(|p| {
-                        let mut m = String::new();
+        #[display("hungry_{}", _0)]
+        Hungry(Id),
 
-                        if s.forks.left(p).holder == p {
-                            m.push_str(p.to_string().as_str());
-                        } else {
-                            m.push_str(" ");
-                        }
-
-                        m.push_str(if s.philosophers[*p].hungry { "P" } else { "p" });
-
-                        if s.forks.right(p).holder == p {
-                            m.push_str((p + 1).to_string().as_str());
-                        } else {
-                            m.push_str(" ");
-                        }
-
-                        m
-                    })
-                    .join(" ")
-            },
-            |_, (p, a)| format!("{p}:{a:?}"),
-        );
-        polestar::diagram::write_dot(
-            "dining-philosophers.dot",
-            &graph,
-            // &[petgraph::dot::Config::EdgeNoLabel],
-            &[],
-        );
+        #[display("sharefork_{}_{}", _0, _1)]
+        ShareFork(Id, Id),
     }
 
-    println!("{:#?}", report);
+    impl Propositions<Prop> for Transition<Model> {
+        fn eval(&self, prop: &Prop) -> bool {
+            let Transition(s, _, _) = self;
+            let out = match *prop {
+                Prop::Eating(p) => s.philosophers[*p].phase == Phase::Eating,
+                Prop::Hungry(p) => s.philosophers[*p].phase == Phase::Hungry,
+                Prop::ShareFork(p, q) => {
+                    s.forks.left(p).holder == s.forks.right(q).holder
+                        || s.forks.right(p).holder == s.forks.left(q).holder
+                }
+            };
+            out
+        }
+    }
+
+    #[test]
+    fn model_check_dining_philosophers() {
+        let model = Model;
+
+        let mut props = PropRegistry::empty();
+
+        let exclusive_access = conjoin(product_exhaustive::<Id, Id>().filter_map(|(p, q)| {
+            if p != q {
+                let sharefork = props.add(Prop::ShareFork(p, q)).unwrap();
+                let eating_p = props.add(Prop::Eating(p)).unwrap();
+                let eating_q = props.add(Prop::Eating(q)).unwrap();
+                Some(format!("G( {sharefork} -> !({eating_p} && {eating_q}) )"))
+            } else {
+                None
+            }
+        }));
+
+        let nobody_starves = conjoin(Id::iter_exhaustive(None).map(|p| {
+            let hungry = props.add(Prop::Hungry(p)).unwrap();
+            format!("G F !{hungry}")
+        }));
+
+        let ltl = conjoin([
+            // no two philosophers can eat at the same time
+            exclusive_access,
+            // no philosopher can starve
+            nobody_starves,
+        ]);
+
+        println!("LTL: {ltl}");
+        let checker = ModelChecker::new(model, props, &ltl).unwrap();
+
+        let traversal_config = TraversalConfig::builder()
+            .graphing(TraversalGraphingConfig {
+                ignore_loopbacks: true,
+                ..Default::default()
+            })
+            .build();
+
+        let (_report, graph, _) = traverse(
+            checker.clone(),
+            checker.initial(State::default()),
+            traversal_config,
+            Some,
+        )
+        .unwrap();
+
+        let graph = graph.unwrap();
+        let graph = graph.map(|_, s| format!("{s:?}"), |_, e| format!("{e:?}"));
+        write_dot("dining-philosophers-mc.dot", &graph, &[]);
+
+        let result = checker.check(State::default());
+        model_checker_report(result);
+    }
+
+    #[test]
+    fn graph_dining_philosophers() {
+        let dining_philosophers = State::default();
+
+        let traversal_config = TraversalConfig::builder()
+            .graphing(TraversalGraphingConfig {
+                ignore_loopbacks: true,
+                ..Default::default()
+            })
+            .build();
+
+        let (report, graph, _) =
+            traverse::<Model, State>(Model.into(), dining_philosophers, traversal_config, Some)
+                .unwrap();
+
+        {
+            let graph = graph.unwrap().map(
+                |_, s| {
+                    Id::iter_exhaustive(None)
+                        .map(|p| {
+                            let mut m = String::new();
+
+                            if s.forks.left(p).holder == p {
+                                m.push_str(p.to_string().as_str());
+                            } else {
+                                m.push_str(" ");
+                            }
+
+                            m.push_str(if s.philosophers[*p].is_hungry() {
+                                "P"
+                            } else {
+                                "p"
+                            });
+
+                            if s.forks.right(p).holder == p {
+                                m.push_str((p + 1).to_string().as_str());
+                            } else {
+                                m.push_str(" ");
+                            }
+
+                            m
+                        })
+                        .join(" ")
+                },
+                |_, (p, a)| format!("{p}:{a:?}"),
+            );
+            polestar::diagram::write_dot(
+                "dining-philosophers.dot",
+                &graph,
+                // &[petgraph::dot::Config::EdgeNoLabel],
+                &[],
+            );
+        }
+
+        println!("{:#?}", report);
+    }
 }
