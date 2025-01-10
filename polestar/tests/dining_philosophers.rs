@@ -3,6 +3,8 @@
 //! https://github.com/tlaplus/Examples/blob/master/specifications/State/State.tla
 //!
 
+#![allow(unused)]
+
 use exhaustive::Exhaustive;
 use polestar::{
     id::UpTo,

@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use std::{fmt::Display, marker::PhantomData};
 
 use crate::{
@@ -177,11 +179,7 @@ impl<Agent: Id, Val: Id, Time: TimeInterval> Machine for Model<Agent, Val, Time>
                 state.nodes[&node].values.insert(v);
             }
             NodeAction::Request(v, _from) => {
-                if state.nodes[&node]
-                    .requests
-                    .iter()
-                    .any(|r| r.val == v)
-                {
+                if state.nodes[&node].requests.iter().any(|r| r.val == v) {
                     bail!("request already exists")
                 }
 

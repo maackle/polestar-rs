@@ -27,6 +27,7 @@ pub enum LogicPredicate {
 
 type BoxPredicate = Box<LogicPredicate>;
 
+#[allow(clippy::should_implement_trait)]
 impl LogicPredicate {
     pub fn eval(&self, props: &impl Propositions<String>) -> bool {
         match self {

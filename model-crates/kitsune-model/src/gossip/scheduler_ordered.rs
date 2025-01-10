@@ -116,7 +116,6 @@ impl<K: Eq + Clone, V: Eq + Clone> ScheduleKv<K, V> {
 }
 
 #[cfg(test)]
-#[cfg(test)]
 mod tests {
     use itertools::Itertools;
 

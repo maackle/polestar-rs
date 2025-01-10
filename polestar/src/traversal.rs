@@ -17,6 +17,20 @@ use std::{
 
 use crate::{util::first, Machine};
 
+// pub struct Traversal<M: Machine> {
+//     pub machine: Arc<M>,
+//     pub initial: M::State,
+
+//     pub max_depth: Option<usize>,
+//     pub trace_every: Option<usize>,
+// }
+
+// impl<M: Machine> Traversal<M> {
+//     pub fn new(machine: Arc<M>, initial: M::State) -> Self {
+//         Self { machine, initial }
+//     }
+// }
+
 #[derive(derive_bounded::Clone, bon::Builder)]
 #[bounded_to(M::State)]
 #[allow(clippy::type_complexity)]
