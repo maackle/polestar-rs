@@ -20,6 +20,8 @@ const LOOP: u8 = 4;
 impl Machine for TestMachine1 {
     type State = u8;
     type Action = ();
+    type Error = anyhow::Error;
+    type Fx = ();
 
     fn transition(&self, state: Self::State, (): Self::Action) -> TransitionResult<Self> {
         Ok((state.wrapping_add(2) % MODULO as u8, ()))
@@ -33,6 +35,8 @@ impl Machine for TestMachine1 {
 impl Machine for TestMachine2 {
     type State = u8;
     type Action = bool;
+    type Error = anyhow::Error;
+    type Fx = ();
 
     fn transition(&self, state: Self::State, bump: Self::Action) -> TransitionResult<Self> {
         let n = LOOP;

@@ -27,9 +27,9 @@ type Id = UpTo<N, true>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, exhaustive::Exhaustive)]
 pub enum Action {
-    BeginEating,
-    StopEating,
+    Eat,
     Think,
+    Hunger,
     CleanUp,
 }
 
@@ -57,10 +57,10 @@ impl Machine for Model {
         (p, action): Self::Action,
     ) -> TransitionResult<Self> {
         match action {
-            Action::BeginEating => {
+            Action::Eat => {
                 let can_eat = state.can_eat(p);
                 let phil = &mut state.philosophers[*p];
-                if phil.phase != Phase::Eating && phil.is_hungry() && can_eat {
+                if phil.phase == Phase::Hungry && can_eat {
                     phil.phase = Phase::Eating;
                     state.forks.left_mut(p).clean = false;
                     state.forks.right_mut(p).clean = false;
@@ -68,18 +68,18 @@ impl Machine for Model {
                     return Err(anyhow::anyhow!("cannot start eating"));
                 }
             }
-            Action::StopEating => {
+            Action::Think => {
                 if state.philosophers[*p].phase == Phase::Eating {
-                    state.philosophers[*p].phase = Phase::Sated;
+                    state.philosophers[*p].phase = Phase::Thinking;
                 } else {
-                    return Err(anyhow::anyhow!("cannot stop eating if not already eating"));
+                    return Err(anyhow::anyhow!("cannot think while hungry"));
                 }
             }
-            Action::Think => {
-                if state.philosophers[*p].phase == Phase::Sated {
+            Action::Hunger => {
+                if state.philosophers[*p].phase == Phase::Thinking {
                     state.philosophers[*p].phase = Phase::Hungry;
                 } else {
-                    return Err(anyhow::anyhow!("cannot think if not sated"));
+                    return Err(anyhow::anyhow!("cannot get hungry while eating"));
                 }
             }
             Action::CleanUp => {
@@ -227,7 +227,7 @@ pub enum Phase {
     #[default]
     Hungry,
     Eating,
-    Sated,
+    Thinking,
 }
 
 /*█████                      █████
@@ -386,4 +386,8 @@ mod tests {
 
         println!("{:#?}", report);
     }
+}
+
+mod implementation {
+    use super::*;
 }

@@ -1,6 +1,6 @@
 use std::ops::Mul;
 
-use num_traits::{Bounded, WrappingAdd, WrappingSub};
+use num_traits::Bounded;
 
 use super::*;
 

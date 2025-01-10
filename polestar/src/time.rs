@@ -40,7 +40,6 @@ pub trait TimeInterval:
     PartialOrd,
     Ord,
     Hash,
-    exhaustive::Exhaustive,
     derive_more::Display,
     derive_more::Deref,
     derive_more::Add,
@@ -49,6 +48,12 @@ pub trait TimeInterval:
     derive_more::Into,
 )]
 pub struct FiniteTime<const N: usize, const T_MILLIS: u64>(UpTo<N>);
+
+impl<const N: usize, const T_MILLIS: u64> exhaustive::Exhaustive for FiniteTime<N, T_MILLIS> {
+    fn generate(u: &mut exhaustive::DataSourceTaker) -> exhaustive::Result<Self> {
+        u.choice(N).map(|x| Self(UpTo::new(x)))
+    }
+}
 
 // impl<const N: usize, const T_MILLIS: u64> From<UpTo<N>> for FiniteTime<N, T_MILLIS> {
 //     fn from(t: UpTo<N>) -> Self {

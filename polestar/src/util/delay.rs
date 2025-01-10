@@ -1,6 +1,6 @@
 use std::ops::{Add, Sub};
 
-use num_traits::{One, Zero};
+use num_traits::Zero;
 
 use crate::id::Id;
 

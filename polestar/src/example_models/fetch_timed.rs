@@ -4,7 +4,7 @@ use crate::{
     logic::{conjoin, PropRegistry, Propositions, Transition},
     prelude::*,
     time::TimeInterval,
-    util::{product2, product_exhaustive},
+    util::product_exhaustive,
 };
 use anyhow::{anyhow, bail};
 use exhaustive::Exhaustive;
@@ -153,6 +153,7 @@ impl<Agent: Id, Val: Id, Time: TimeInterval> Machine for Model<Agent, Val, Time>
     type State = State<Agent, Val, Time>;
     type Action = Action<Agent, Val, Time>;
     type Error = anyhow::Error;
+    type Fx = ();
 
     fn transition(
         &self,
