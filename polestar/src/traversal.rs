@@ -17,19 +17,84 @@ use std::{
 
 use crate::{util::first, Machine};
 
-// pub struct Traversal<M: Machine> {
-//     pub machine: Arc<M>,
-//     pub initial: M::State,
+#[derive(Clone)]
+#[allow(clippy::type_complexity)]
+pub struct Traversal<M: Machine, S = <M as Machine>::State, A = <M as Machine>::Action> {
+    pub machine: Arc<M>,
+    pub initial: M::State,
 
-//     pub max_depth: Option<usize>,
-//     pub trace_every: Option<usize>,
-// }
+    max_depth: Option<usize>,
+    trace_every: Option<usize>,
+    ignore_loopbacks: bool,
 
-// impl<M: Machine> Traversal<M> {
-//     pub fn new(machine: Arc<M>, initial: M::State) -> Self {
-//         Self { machine, initial }
-//     }
-// }
+    visitor: Option<Arc<dyn Fn(&M::State, VisitType) -> Result<(), M::Error> + Send + Sync>>,
+    is_fatal_error: Option<Arc<dyn Fn(&M::Error) -> bool + Send + Sync>>,
+    map_state: Option<Arc<dyn Fn(M::State) -> Option<S> + Send + Sync>>,
+    map_action: Option<Arc<dyn Fn(M::Action) -> Option<A> + Send + Sync>>,
+}
+
+impl<M: Machine, S, A> Traversal<M, S, A> {
+    pub fn new(machine: Arc<M>, initial: M::State) -> Self {
+        Self {
+            machine,
+            initial,
+            max_depth: None,
+            trace_every: None,
+            ignore_loopbacks: false,
+            visitor: None,
+            is_fatal_error: None,
+            map_state: None,
+            map_action: None,
+        }
+    }
+
+    pub fn max_depth(mut self, max_depth: usize) -> Self {
+        self.max_depth = Some(max_depth);
+        self
+    }
+
+    pub fn trace_every(mut self, trace_every: usize) -> Self {
+        self.trace_every = Some(trace_every);
+        self
+    }
+
+    pub fn ignore_loopbacks(mut self, ignore_loopbacks: bool) -> Self {
+        self.ignore_loopbacks = ignore_loopbacks;
+        self
+    }
+
+    pub fn visitor(
+        mut self,
+        visitor: impl Fn(&M::State, VisitType) -> Result<(), M::Error> + Send + Sync + 'static,
+    ) -> Self {
+        self.visitor = Some(Arc::new(visitor));
+        self
+    }
+
+    pub fn is_fatal_error(
+        mut self,
+        is_fatal_error: impl Fn(&M::Error) -> bool + Send + Sync + 'static,
+    ) -> Self {
+        self.is_fatal_error = Some(Arc::new(is_fatal_error));
+        self
+    }
+
+    pub fn map_state(
+        mut self,
+        map_state: impl Fn(M::State) -> Option<S> + Send + Sync + 'static,
+    ) -> Self {
+        self.map_state = Some(Arc::new(map_state));
+        self
+    }
+
+    pub fn map_action(
+        mut self,
+        map_action: impl Fn(M::Action) -> Option<A> + Send + Sync + 'static,
+    ) -> Self {
+        self.map_action = Some(Arc::new(map_action));
+        self
+    }
+}
 
 #[derive(derive_bounded::Clone, bon::Builder)]
 #[bounded_to(M::State)]
@@ -107,11 +172,9 @@ pub struct TraversalReport {
     pub time_taken: std::time::Duration,
 }
 
-pub fn traverse<M, S>(
-    machine: Arc<M>,
-    initial: M::State,
-    config: TraversalConfig<M>,
-    map_state: impl Fn(M::State) -> Option<S> + Send + Sync + 'static,
+pub fn traverse<M, S, A>(
+    traversal: Traversal<M, S, A>,
+    graph: bool,
 ) -> Result<
     (
         TraversalReport,
@@ -127,6 +190,16 @@ where
     M::Error: Debug + Send + Sync + 'static,
     S: Clone + Eq + Hash + Debug + Send + Sync + 'static,
 {
+    let machine = traversal.machine;
+    let initial = traversal.initial;
+    let max_depth = traversal.max_depth;
+    let trace_every = traversal.trace_every;
+    let ignore_loopbacks = traversal.ignore_loopbacks;
+    let visitor = traversal.visitor;
+    let is_fatal_error = traversal.is_fatal_error;
+    let map_state = traversal.map_state;
+    let map_action = traversal.map_action;
+
     let terminals: Arc<Mutex<TerminalSet<M::State>>> = Arc::new(Mutex::new(HashSet::new()));
     let loop_terminals: Arc<Mutex<TerminalSet<M::State>>> = Arc::new(Mutex::new(HashSet::new()));
     let visited_states: Arc<Mutex<HashMap<S, NodeIndex>>> = Arc::new(Mutex::new(HashMap::new()));
@@ -149,12 +222,11 @@ where
     let num_edges_skipped = Arc::new(AtomicUsize::new(0));
     let max_depth = Arc::new(AtomicUsize::new(0));
 
-    let all_actions: im::Vector<_> = M::Action::iter_exhaustive(config.max_actions).collect();
+    let all_actions: im::Vector<_> = M::Action::iter_exhaustive(traversal.max_actions).collect();
 
     let start_time = std::time::Instant::now();
 
     let task = {
-        let config = config.clone();
         let graph = graph.clone();
         let stop = stop.clone();
         let total_steps = total_steps.clone();
@@ -168,7 +240,7 @@ where
 
         let active_threads = AtomicUsize::new(0);
         let prev_trace = Mutex::new(IterTrace::default());
-        let trace_every = config.trace_every.unwrap_or(usize::MAX);
+        let trace_every = trace_every.unwrap_or(usize::MAX);
 
         move |thread_index: usize| {
             if thread_index > 0 {
@@ -235,10 +307,6 @@ where
                         depth_str,
                     );
                     *prev = trace;
-                }
-
-                if config.max_iters.map(|m| iter >= m).unwrap_or(false) {
-                    panic!("max iters of {} reached", config.max_iters.unwrap());
                 }
 
                 let (already_seen, node_ix) = if let Some(mapped) = map_state(state.clone()) {
@@ -377,13 +445,13 @@ where
         total_steps: total_steps.load(SeqCst),
         max_depth: max_depth.load(SeqCst),
     };
-    let terminals = config.record_terminals.then(|| {
+    let terminals = traversal.record_terminals.then(|| {
         (
             Arc::into_inner(terminals).unwrap().into_inner(),
             Arc::into_inner(loop_terminals).unwrap().into_inner(),
         )
     });
-    let graph = config
+    let graph = traversal
         .graphing
         .is_some()
         .then_some(Arc::into_inner(graph).unwrap().into_inner());
