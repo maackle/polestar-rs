@@ -15,37 +15,64 @@ use std::{
     },
 };
 
+use crate::logic::{PropMapping, Propositions, Transition};
+use crate::model_checker::{ModelCheckerState, ModelCheckerTransitionError};
+use crate::prelude::ModelChecker;
 use crate::{util::first, Machine};
 
 #[derive(Clone)]
 #[allow(clippy::type_complexity)]
 pub struct Traversal<M: Machine, S = <M as Machine>::State, A = <M as Machine>::Action> {
-    pub machine: Arc<M>,
-    pub initial: M::State,
+    pub machine: M,
+    pub initial: im::Vector<M::State>,
 
     max_depth: Option<usize>,
     trace_every: Option<usize>,
     ignore_loopbacks: bool,
 
-    visitor: Option<Arc<dyn Fn(&M::State, VisitType) -> Result<(), M::Error> + Send + Sync>>,
-    is_fatal_error: Option<Arc<dyn Fn(&M::Error) -> bool + Send + Sync>>,
-    map_state: Option<Arc<dyn Fn(M::State) -> Option<S> + Send + Sync>>,
-    map_action: Option<Arc<dyn Fn(M::Action) -> Option<A> + Send + Sync>>,
+    visitor: Arc<dyn Fn(&M::State, VisitType) -> Result<(), M::Error> + Send + Sync>,
+    is_fatal_error: Arc<dyn Fn(&M::Error) -> bool + Send + Sync>,
+    map_state: Arc<dyn Fn(M::State) -> Option<S> + Send + Sync>,
+    map_action: Arc<dyn Fn(M::Action) -> Option<A> + Send + Sync>,
 }
 
-impl<M: Machine, S, A> Traversal<M, S, A> {
-    pub fn new(machine: Arc<M>, initial: M::State) -> Self {
+impl<M: Machine> Traversal<M> where M::State: Clone {
+    pub fn new(machine: M, initial: impl IntoIterator<Item = M::State>) -> Self {
         Self {
             machine,
-            initial,
+            initial: initial.into_iter().collect(),
             max_depth: None,
             trace_every: None,
             ignore_loopbacks: false,
-            visitor: None,
-            is_fatal_error: None,
-            map_state: None,
-            map_action: None,
+            visitor: Arc::new(|_, _| Ok(())),
+            is_fatal_error: Arc::new(|_| false),
+            map_state: Arc::new(|s| Some(s)),
+            map_action: Arc::new(|a| Some(a)),
         }
+    }
+}
+
+impl<M, S, A> Traversal<M, S, A> 
+where M: Machine, S: 'static + Clone + Debug + Eq + Hash, A: 'static + Clone + Debug, M::State: 'static + Clone + Debug + Eq + Hash, M::Action: 'static + Clone + Debug, M::Error: 'static {
+
+    pub fn model_check<P>(self, props: P, ltl: &str) -> anyhow::Result<Traversal<ModelChecker<M, P>, ModelCheckerState<S, M::Action>, A>> 
+    where P: PropMapping, Transition<M>: Propositions<P::Prop> {
+        let machine = ModelChecker::new(self.machine, props, ltl)?;
+        let initial = self.initial.into_iter().map(|s| machine.initial(s)).collect();
+        let visitor = self.visitor;
+        let map_state = self.map_state;
+        let map_action = self.map_action;
+        Ok(Traversal {
+            machine,
+            initial,
+            max_depth: self.max_depth,
+            trace_every: self.trace_every,
+            ignore_loopbacks: self.ignore_loopbacks,
+            visitor: Arc::new(move |s, visit| visitor(&*s, visit).map_err(ModelCheckerTransitionError::MachineError)),
+            is_fatal_error: Arc::new(|e| !matches!(e, ModelCheckerTransitionError::MachineError(_))),
+            map_state: Arc::new(move |s| s.map_state(|ss| (map_state)(ss))),
+            map_action: Arc::new(move |a| (map_action)(a)),
+        })
     }
 
     pub fn max_depth(mut self, max_depth: usize) -> Self {
@@ -67,7 +94,7 @@ impl<M: Machine, S, A> Traversal<M, S, A> {
         mut self,
         visitor: impl Fn(&M::State, VisitType) -> Result<(), M::Error> + Send + Sync + 'static,
     ) -> Self {
-        self.visitor = Some(Arc::new(visitor));
+        self.visitor = Arc::new(visitor);
         self
     }
 
@@ -75,7 +102,7 @@ impl<M: Machine, S, A> Traversal<M, S, A> {
         mut self,
         is_fatal_error: impl Fn(&M::Error) -> bool + Send + Sync + 'static,
     ) -> Self {
-        self.is_fatal_error = Some(Arc::new(is_fatal_error));
+        self.is_fatal_error = Arc::new(is_fatal_error);
         self
     }
 
@@ -83,7 +110,7 @@ impl<M: Machine, S, A> Traversal<M, S, A> {
         mut self,
         map_state: impl Fn(M::State) -> Option<S> + Send + Sync + 'static,
     ) -> Self {
-        self.map_state = Some(Arc::new(map_state));
+        self.map_state = Arc::new(map_state);
         self
     }
 
@@ -91,7 +118,7 @@ impl<M: Machine, S, A> Traversal<M, S, A> {
         mut self,
         map_action: impl Fn(M::Action) -> Option<A> + Send + Sync + 'static,
     ) -> Self {
-        self.map_action = Some(Arc::new(map_action));
+        self.map_action = Arc::new(map_action);
         self
     }
 }
@@ -197,7 +224,7 @@ where
     let ignore_loopbacks = traversal.ignore_loopbacks;
     let visitor = traversal.visitor;
     let is_fatal_error = traversal.is_fatal_error;
-    let map_state = traversal.map_state;
+    let map_state = traversal.map_state.;
     let map_action = traversal.map_action;
 
     let terminals: Arc<Mutex<TerminalSet<M::State>>> = Arc::new(Mutex::new(HashSet::new()));
@@ -445,7 +472,7 @@ where
         total_steps: total_steps.load(SeqCst),
         max_depth: max_depth.load(SeqCst),
     };
-    let terminals = traversal.record_terminals.then(|| {
+    let terminals = record_terminals.then(|| {
         (
             Arc::into_inner(terminals).unwrap().into_inner(),
             Arc::into_inner(loop_terminals).unwrap().into_inner(),

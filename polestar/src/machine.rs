@@ -1,6 +1,8 @@
 pub mod store_path;
 
-use crate::util::first;
+use std::sync::Arc;
+
+use crate::{traversal::Traversal, util::first};
 
 pub trait Machine
 where
@@ -38,6 +40,13 @@ where
         Self: Machine<Fx = ()>,
     {
         self.transition(state, action).map(first)
+    }
+
+    fn traverse(self, initial: impl IntoIterator<Item = Self::State>) -> Traversal<Self>
+    where
+        Self::State: Clone,
+    {
+        Traversal::new(self, initial)
     }
 
     fn apply_each_action(

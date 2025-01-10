@@ -92,19 +92,21 @@ where
     M::Action: Clone + Debug,
     P: PropMapping,
 {
-    pub fn new(machine: M, propmap: P, ltl: &str) -> anyhow::Result<Arc<Self>> {
+    pub fn new(machine: M, propmap: P, ltl: &str) -> anyhow::Result<Self> {
         let buchi = BuchiAutomaton::from_ltl(propmap, ltl)?;
-        Ok(Arc::new(Self {
+        Ok(Self {
             buchi,
             machine: StorePathMachine::from(machine),
-        }))
+        })
     }
 
     pub fn initial(&self, state: M::State) -> ModelCheckerState<M::State, M::Action> {
         let inits = self
             .buchi
             .states
-            .keys().filter(|&name| name.ends_with("_init")).cloned();
+            .keys()
+            .filter(|&name| name.ends_with("_init"))
+            .cloned();
 
         ModelCheckerState::new(state, inits)
     }
