@@ -55,9 +55,7 @@ impl<O: Id, T: Id> Machine for OpFamilyMachine<O, T> {
         }
 
         // Add a new state when seen if we didn't already bail.
-        if !states.contains_key(&target) {
-            states.insert(target, OpFamilyPhase::default());
-        }
+        states.entry(target).or_default();
 
         if let E::Await(_, dep) = action {
             if dep == target.0 {
@@ -163,6 +161,12 @@ impl<O: Id, T: Id> OpFamilyMachine<O, T> {
             .as_ref()
             .map(|ds| ds.contains(target))
             .unwrap_or(true)
+    }
+}
+
+impl<O: Id, T: Id> Default for OpFamilyMachine<O, T> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -384,14 +388,14 @@ mod tests {
                 let Transition(state, _, _) = self;
                 match prop {
                     Prop::OpAwaiting(o, b) => state
-                        .get(&o)
+                        .get(o)
                         .map(|p| matches!(p, OpFamilyPhase::Awaiting(_, d) if d == b))
                         .unwrap_or(false),
 
                     Prop::ActionAwaiting(a, b) => state.all_awaiting(*a).any(|d| d == *b),
 
                     Prop::OpIntegrated(o) => state
-                        .get(&o)
+                        .get(o)
                         .map(|p| {
                             matches!(p, OpFamilyPhase::Op(OpPhase::Integrated(Outcome::Accepted)))
                         })

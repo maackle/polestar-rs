@@ -42,7 +42,7 @@ impl<N: Id, O: Id, T: Id> Machine for OpNetworkMachine<N, O, T> {
         mut state: Self::State,
         (node, action): Self::Action,
     ) -> TransitionResult<Self> {
-        let fx = state.nodes.owned_upsert(
+        let () = state.nodes.owned_upsert(
             node,
             |_| {
                 // If nodes aren't bounded, add a new node when seen
@@ -151,7 +151,7 @@ impl<N: Id, O: Id, T: Id> Machine for OpNetworkMachine<N, O, T> {
             },
         )?;
 
-        Ok((state, fx))
+        Ok((state, ()))
     }
 
     fn is_terminal(&self, s: &Self::State) -> bool {
@@ -191,6 +191,12 @@ impl<N: Id, O: Id, T: Id> OpNetworkMachine<N, O, T> {
             })
             .unwrap_or_default();
         OpNetworkState { nodes }
+    }
+}
+
+impl<N: Id, O: Id, T: Id> Default for OpNetworkMachine<N, O, T> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -276,7 +282,7 @@ impl<N: Id, O: Id, T: Id> Display for OpNetworkStatePretty<N, O, T> {
             for (_, state) in node.iter() {
                 write!(f, "{state}")?;
             }
-            write!(f, " ]\n")?;
+            writeln!(f, " ]")?;
         }
         Ok(())
     }

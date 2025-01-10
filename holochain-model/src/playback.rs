@@ -53,7 +53,7 @@ mod tests {
             expected.nodes.insert(n.clone(), OpFamilyState::default());
             for op in ops.iter() {
                 expected.nodes.get_mut(&n).unwrap().insert(
-                    op.clone(),
+                    *op,
                     OpFamilyPhase::Op(OpPhase::Integrated(Outcome::Accepted)),
                 );
             }
