@@ -6,8 +6,6 @@ use crate::Machine;
 
 #[cfg(feature = "ltl3ba")]
 mod ltl3ba_parser;
-#[cfg(feature = "ltl3ba")]
-pub use ltl3ba_parser::*;
 
 #[cfg(feature = "ltl3ba")]
 mod propositions;

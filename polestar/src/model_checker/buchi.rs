@@ -14,7 +14,7 @@ use crate::{
 };
 
 #[derive(derive_more::Debug)]
-pub struct BuchiAutomaton<M: Machine, PM: PropMapping> {
+pub(crate) struct BuchiAutomaton<M: Machine, PM: PropMapping> {
     pub states: HashMap<StateName, Arc<BuchiState>>,
 
     #[debug(skip)]

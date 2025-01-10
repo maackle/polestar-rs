@@ -134,7 +134,7 @@ where
     }
 }
 
-pub(crate) trait PropMapping {
+pub trait PropMapping {
     type Prop;
 
     fn map(&self, name: &str) -> Option<Self::Prop>;
@@ -160,7 +160,7 @@ impl PropMapping for () {
 }
 
 /// Used internally in polestar's model checker to bind propositions to states.
-pub(crate) struct PropositionBindings<'p, M, P>
+pub struct PropositionBindings<'p, M, P>
 where
     M: Machine,
     P: PropMapping,
