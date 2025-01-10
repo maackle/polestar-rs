@@ -79,6 +79,12 @@ impl<N: Id> Machine for GossipMachine<N> {
     }
 }
 
+impl<N: Id> Default for GossipMachine<N> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<N: Id> GossipMachine<N> {
     pub fn new() -> Self {
         Self {

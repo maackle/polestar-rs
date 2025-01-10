@@ -28,7 +28,7 @@ impl<const N: usize, const WRAP: bool> Id for UpTo<N, WRAP> {
 
 impl<const N: usize, const WRAP: bool> UpTo<N, WRAP> {
     pub fn new(n: usize) -> Self {
-        Self::try_from(n).expect(&format!("Attempted to initialize UpTo<{N}> with {n}"))
+        Self::try_from(n).unwrap_or_else(|_| panic!("Attempted to initialize UpTo<{N}> with {n}"))
     }
 
     pub fn limit() -> usize {

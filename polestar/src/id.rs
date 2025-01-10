@@ -100,7 +100,7 @@ where
     pub fn lookup(&mut self, v: V) -> Result<I, String> {
         let len = self.map.len();
         match self.map.entry(v) {
-            std::collections::hash_map::Entry::Occupied(e) => Ok(e.get().clone()),
+            std::collections::hash_map::Entry::Occupied(e) => Ok(*e.get()),
             std::collections::hash_map::Entry::Vacant(e) => {
                 let id = I::try_from(len).map_err(|e| format!("{e:?}"))?;
                 e.insert(id);
@@ -138,6 +138,6 @@ mod tests {
         assert_eq!(m.lookup("c"), Ok(UpTo(0)));
         assert_eq!(m.lookup("y"), Ok(UpTo(2)));
         assert_eq!(m.lookup("y"), Ok(UpTo(2)));
-        assert!(matches!(m.lookup("k"), Err(_)));
+        assert!(m.lookup("k").is_err());
     }
 }

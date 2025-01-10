@@ -292,6 +292,12 @@ impl<N: Id> Machine for NodeMachine<N> {
     }
 }
 
+impl<N: Id> Default for NodeMachine<N> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<N: Id> NodeMachine<N> {
     pub fn new() -> Self {
         Self {

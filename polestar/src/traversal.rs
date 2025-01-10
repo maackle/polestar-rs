@@ -285,10 +285,8 @@ where
                         terminals.lock().insert(state);
                     }
                     continue;
-                } else {
-                    if let Some(ref on_terminal) = config.visitor {
-                        on_terminal(&state, VisitType::Normal)?
-                    }
+                } else if let Some(ref on_terminal) = config.visitor {
+                    on_terminal(&state, VisitType::Normal)?
                 }
 
                 // Respect the depth limit
@@ -297,7 +295,7 @@ where
                 }
 
                 // Queue up visits to all nodes reachable from this node..
-                for action in all_actions.iter().cloned() {
+                for action in all_actions.iter() {
                     let prev_node = if config.graphing.is_some() {
                         Some((node_ix, action.clone()))
                     } else {

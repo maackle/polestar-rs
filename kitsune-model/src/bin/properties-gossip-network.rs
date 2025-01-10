@@ -92,8 +92,7 @@ fn main() {
     let predicates = pairs
         .iter()
         .copied()
-        .filter_map(|[n, p]| {
-            (n != p).then(|| {
+        .filter(|&[n, p]| (n != p)).flat_map(|[n, p]| {
                 let ready = propmap.add(Prop::Ready(n, p)).unwrap();
                 let premature = propmap.add(Prop::Premature(n, p)).unwrap();
                 let time_decreases = propmap.add(Prop::TimeDecreases(n, p)).unwrap();
@@ -103,8 +102,6 @@ fn main() {
                     format!("G F {ready}"),
                 ]
             })
-        })
-        .flatten()
         .collect_vec();
 
     let display_predicates = predicates.iter().map(|p| format!("{p:?}")).join("\n");

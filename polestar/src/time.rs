@@ -170,7 +170,7 @@ pub fn int_time_scaling(
         if d.is_zero() {
             return (0, Duration::ZERO);
         }
-        let q = (d / unit) as u64;
+        let q = d / unit;
         let t = q.min(max_plus_1 as u64 - 1);
         (t as usize, Duration::from_micros(d - t * unit))
     }
@@ -214,7 +214,7 @@ mod tests {
 
         type T = FiniteTime<3, 1000>;
 
-        let mut b = TickBuffer::<T>::new(start.clone());
+        let mut b = TickBuffer::<T>::new(start);
 
         assert_eq!(b.tick(start + d1).collect_vec(), vec![]);
         assert_eq!(

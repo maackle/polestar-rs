@@ -49,7 +49,7 @@ impl<const UID: u64> UpToLazy<UID> {
     }
 
     pub fn new(n: usize) -> Self {
-        Self::try_from(n).expect(&format!("Attempted to initialize UpToLazy<{UID}> with {n}"))
+        Self::try_from(n).unwrap_or_else(|_| panic!("Attempted to initialize UpToLazy<{UID}> with {n}"))
     }
 
     pub fn modulo(n: usize) -> Self {

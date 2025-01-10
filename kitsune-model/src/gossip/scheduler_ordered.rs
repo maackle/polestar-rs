@@ -48,10 +48,8 @@ where
                 (t, 0)
             };
             self.items.push_back((Some(time), v));
-        } else {
-            if self.items.iter().find(|(_, vv)| v == *vv).is_none() {
-                self.items.push_back((None, v));
-            }
+        } else if !self.items.iter().any(|(_, vv)| v == *vv) {
+            self.items.push_back((None, v));
         }
         self.items.sort_by(|(tb0, _), (tb1, _)| match (tb0, tb1) {
             (Some(a), Some(b)) => a.cmp(b),

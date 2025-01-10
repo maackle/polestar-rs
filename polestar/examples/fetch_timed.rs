@@ -196,7 +196,7 @@ async fn run(num_agents: usize, num_values: usize, timeout: Duration, timeout_gr
                     if receiver.lock().await.values.len() != num_values {
                         good = false;
                     }
-                    if receiver.lock().await.requests.len() != 0 {
+                    if !receiver.lock().await.requests.is_empty() {
                         good = false;
                     }
 
@@ -263,7 +263,7 @@ impl polestar::mapping::ModelMapping for RealtimeMapping {
                             requests: v
                                 .requests
                                 .iter()
-                                .map(|(v, _)| Request::new(v.clone()))
+                                .map(|(v, _)| Request::new(*v))
                                 .collect(),
                         },
                     )
@@ -309,7 +309,7 @@ impl polestar::mapping::ModelMapping for RealtimeMapping {
             }
         };
 
-        actions.push((*node, action.clone()));
+        actions.push((*node, action));
 
         actions
     }
@@ -324,7 +324,7 @@ impl polestar::mapping::EventHandler<(usize, Event)> for RealtimeMapping {
         self.state = self
             .model
             .apply_each_action(self.state.clone(), actions, |action, _| {
-                self.actions.push(action.clone());
+                self.actions.push(*action);
             })
             .map_err(|(e, s, a)| {
                 assert_ne!(a, *self.actions.last().unwrap());

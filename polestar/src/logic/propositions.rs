@@ -169,7 +169,7 @@ where
     states: Transition<M>,
 }
 
-impl<'p, M, P> Propositions<String> for PropositionBindings<'p, M, P>
+impl<M, P> Propositions<String> for PropositionBindings<'_, M, P>
 where
     M: Machine,
     P: PropMapping,

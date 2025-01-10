@@ -41,7 +41,7 @@ pub fn write_dot_state_diagram<M>(
     M::Action: Exhaustive + Clone + Eq + Hash + Debug + Display,
     M::Error: Debug,
 {
-    write_dot_state_diagram_mapped(path, machine, initial, config, |m| Some(m), |a| Some(a))
+    write_dot_state_diagram_mapped(path, machine, initial, config, Some, Some)
 }
 
 pub fn write_dot_state_diagram_mapped<M, N, E>(
@@ -83,8 +83,8 @@ where
         machine,
         initial,
         config,
-        |m| Some(m),
-        |a| Some(a),
+        Some,
+        Some,
     )
 }
 
@@ -122,7 +122,7 @@ where
     M::Action: Exhaustive + Clone + Eq + Hash + Debug + Display,
     M::Error: Debug,
 {
-    state_diagram_mapped(machine, initial, config, |m| Some(m), |a| Some(a))
+    state_diagram_mapped(machine, initial, config, Some, Some)
 }
 
 /// Generate a state diagram of this state machine by exhaustively taking all possible actions

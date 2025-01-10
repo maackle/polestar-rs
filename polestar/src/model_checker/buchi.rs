@@ -81,7 +81,7 @@ pub enum BuchiError {
 impl<M: Machine, PM: PropMapping> BuchiAutomaton<M, PM> {
     pub fn from_ltl(propmap: PM, ltl_str: &str) -> Result<Self, anyhow::Error> {
         let output = Command::new("ltl3ba")
-            .args(["-f", &format!("{ltl_str}")])
+            .args(["-f", ltl_str])
             .output()
             .unwrap();
 
@@ -124,7 +124,7 @@ impl<M: Machine, PM: PropMapping> BuchiAutomaton<M, PM> {
                 if let BuchiState::Conditional { predicates, .. } = &mut current.as_mut().unwrap().1
                 {
                     predicates.push((
-                        LogicPredicate::from_promela_predicate(&predicate).unwrap(),
+                        LogicPredicate::from_promela_predicate(predicate).unwrap(),
                         next.to_string(),
                     ));
                 } else {
@@ -182,7 +182,7 @@ impl Debug for BuchiState {
                 accepting,
                 predicates,
             } => {
-                let predicates = {
+                {
                     let mut list = f.debug_list();
                     for (ltl, next) in predicates.iter() {
                         list.entry(&format_args!("{ltl:?} -> {next}"));
@@ -191,7 +191,7 @@ impl Debug for BuchiState {
                 };
                 f.debug_struct("Conditional")
                     .field("accepting", accepting)
-                    .field("predicates", &predicates)
+                    .field("predicates", &())
                     .finish()
             }
             BuchiState::Skip => write!(f, "AllAccepting"),

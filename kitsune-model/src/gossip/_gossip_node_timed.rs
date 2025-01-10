@@ -130,7 +130,7 @@ impl<N: Id> Machine for NodeMachine<N> {
                 }
             }),
             NodeAction::AddPeer(peer) => {
-                if let Some(_) = state.peers.insert(peer, PeerState::default()) {
+                if state.peers.insert(peer, PeerState::default()).is_some() {
                     bail!("peer {peer} already exists");
                 }
             }

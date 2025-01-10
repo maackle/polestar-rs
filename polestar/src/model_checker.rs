@@ -75,7 +75,7 @@ where
 
         let next = ModelCheckerState {
             pathstate: next,
-            buchi: buchi_next.into(),
+            buchi: buchi_next,
         };
         Ok((next, fx))
     }
@@ -104,9 +104,7 @@ where
         let inits = self
             .buchi
             .states
-            .keys()
-            .cloned()
-            .filter(|name| name.ends_with("_init"));
+            .keys().filter(|&name| name.ends_with("_init")).cloned();
 
         ModelCheckerState::new(state, inits)
     }

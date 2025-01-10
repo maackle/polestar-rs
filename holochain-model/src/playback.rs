@@ -22,10 +22,10 @@ mod tests {
     {
         let mut expected = OpNetworkState::default();
         for (n, ops) in state.nodes.iter() {
-            expected.nodes.insert(n.clone(), OpFamilyState::default());
+            expected.nodes.insert(*n, OpFamilyState::default());
             for (op, _) in ops.iter() {
                 expected.nodes.get_mut(n).unwrap().insert(
-                    op.clone(),
+                    *op,
                     OpFamilyPhase::Op(OpPhase::Integrated(Outcome::Accepted)),
                 );
             }
@@ -44,13 +44,13 @@ mod tests {
         let mut ops = HashSet::new();
 
         for (n, op_states) in state.nodes.iter() {
-            nodes.insert(n.clone());
+            nodes.insert(*n);
             ops.extend(op_states.keys().cloned());
         }
 
         let mut expected = OpNetworkState::default();
         for n in nodes {
-            expected.nodes.insert(n.clone(), OpFamilyState::default());
+            expected.nodes.insert(n, OpFamilyState::default());
             for op in ops.iter() {
                 expected.nodes.get_mut(&n).unwrap().insert(
                     *op,

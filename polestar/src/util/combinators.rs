@@ -33,7 +33,7 @@ where
     IB::IntoIter: Clone,
 {
     use itertools::Itertools;
-    a.into_iter().cartesian_product(b.into_iter())
+    a.into_iter().cartesian_product(b)
 }
 
 pub fn product_exhaustive<A, B>() -> impl Iterator<Item = (A, B)>
@@ -43,7 +43,7 @@ where
 {
     let a = A::iter_exhaustive(None).collect_vec();
     let b = B::iter_exhaustive(None).collect_vec();
-    a.into_iter().cartesian_product(b.into_iter())
+    a.into_iter().cartesian_product(b)
 }
 
 /// Convenience for updating state by returning an optional owned value

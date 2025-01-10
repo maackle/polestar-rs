@@ -355,7 +355,7 @@ mod tests {
                             if s.forks.left(p).holder == p {
                                 m.push_str(p.to_string().as_str());
                             } else {
-                                m.push_str(" ");
+                                m.push(' ');
                             }
 
                             m.push_str(if s.philosophers[*p].is_hungry() {
@@ -367,7 +367,7 @@ mod tests {
                             if s.forks.right(p).holder == p {
                                 m.push_str((p + 1).to_string().as_str());
                             } else {
-                                m.push_str(" ");
+                                m.push(' ');
                             }
 
                             m
@@ -389,5 +389,5 @@ mod tests {
 }
 
 mod implementation {
-    use super::*;
+    
 }

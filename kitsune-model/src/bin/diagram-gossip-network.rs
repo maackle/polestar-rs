@@ -24,7 +24,7 @@ fn main() {
                 .nodes
                 .iter()
                 .map(|(n, s)| {
-                    let s = NodeStateSimple::new(TIMED, &s);
+                    let s = NodeStateSimple::new(TIMED, s);
                     format!("{s}")
                         .split('\n')
                         .filter_map(|l| (!l.is_empty()).then_some(format!("{n}↤{l}")))
@@ -35,7 +35,7 @@ fn main() {
             format!("{lines}\n")
         },
         |_, GossipAction(node, action)| {
-            format!("{node}: {}", NodeAction::<N, IdUnit>::from(action.clone()))
+            format!("{node}: {}", NodeAction::<N, IdUnit>::from(*action))
         },
     );
 

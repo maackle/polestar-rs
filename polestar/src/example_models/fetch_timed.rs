@@ -56,9 +56,9 @@ pub struct State<Agent: Clone + Ord, Val: Clone + Ord, Time: Ord + Clone> {
 
 impl<Agent: Id, Val: Id, Time: TimeInterval> Display for State<Agent, Val, Time> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
+        writeln!(
             f,
-            "{}\n",
+            "{}",
             self.nodes
                 .iter()
                 .map(|(n, s)| format!("n{n}: {s}"))
@@ -180,8 +180,7 @@ impl<Agent: Id, Val: Id, Time: TimeInterval> Machine for Model<Agent, Val, Time>
                 if state.nodes[&node]
                     .requests
                     .iter()
-                    .find(|r| r.val == v)
-                    .is_some()
+                    .any(|r| r.val == v)
                 {
                     bail!("request already exists")
                 }
@@ -248,17 +247,17 @@ impl<Agent: Id, Val: Id, Time: TimeInterval> Propositions<Prop<Agent, Val, Time>
         match prop {
             Prop::Requesting(agent, val) => state
                 .nodes
-                .get(&agent)
+                .get(agent)
                 .map(|n| n.requests.iter().any(|req| req.val == *val))
                 .unwrap_or(false),
 
             Prop::Stored(agent, val) => state
                 .nodes
-                .get(&agent)
+                .get(agent)
                 .map(|n| n.values.contains(val))
                 .unwrap_or(false),
 
-            Prop::NoRequests(agent) => state.nodes[&agent].requests.is_empty(),
+            Prop::NoRequests(agent) => state.nodes[agent].requests.is_empty(),
 
             Prop::Action(a) => a == action,
         }
@@ -326,7 +325,7 @@ mod tests {
         let model = Model::new(
             UpTo::new(TIMEOUT).into(),
             UpTo::new(TIMEOUT_GRACE).into(),
-            (0..AGENTS).map(|n| Agent::new(n)).collect(),
+            (0..AGENTS).map(Agent::new).collect(),
         );
         let initial = model.initial();
 
@@ -355,7 +354,7 @@ mod tests {
         let model = Model::new(
             UpTo::new(TIMEOUT).into(),
             UpTo::new(TIMEOUT_GRACE).into(),
-            (0..AGENTS).map(|n| Agent::new(n)).collect(),
+            (0..AGENTS).map(Agent::new).collect(),
         );
         let (propmap, ltl) = props_and_ltl();
         println!("checking LTL:\n{}", ltl);
