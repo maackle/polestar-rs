@@ -74,6 +74,8 @@ struct SpamMachine {
 impl Machine for SpamMachine {
     type Action = SpamAction;
     type State = SpamState;
+    type Error = anyhow::Error;
+    type Fx = ();
 
     fn is_terminal(&self, s: &Self::State) -> bool {
         s.len >= self.target

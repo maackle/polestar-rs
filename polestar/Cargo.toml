@@ -14,7 +14,6 @@ human-repr = "*"
 im = { version = "*", features = ["rayon"] }
 itertools = "*"
 once_cell = "*"
-nom = "*"
 num-derive = "0.4"
 num-traits = "0.2"
 parking_lot = "*"
@@ -27,6 +26,7 @@ tracing = "0.1"
 tracing-subscriber = "0.3"
 
 exhaustive = { version = "*", optional = true }
+nom = { version = "*", optional = true }
 petgraph = { version = "*", optional = true }
 prettydiff = { version = "*", optional = true }
 rand = { version = "*", optional = true }
@@ -41,13 +41,19 @@ polestar = { path = ".", features = ["diagrams", "testing"] }
 rustversion = "*"
 
 [features]
-default = ["diagrams", "example-models", "invariant-testing", "recording"]
+default = ["diagrams", "example-models", "recording"]
 
 diagrams = ["exhaustive", "petgraph"]
 example-models = ["testing"]
-invariant-testing = ["prettydiff"]
 recording = ["serde", "serde_json"]
 testing = ["rand", "tokio"]
+
+# this feature must be enabled, but once native LTL-to-Buchi is implemented,
+# this and all related codepaths can go away
+ltl3ba = ["nom"]
+
+# only applicable with the "projection" system
+# invariant-testing = ["prettydiff"]
 
 nightly = []
 

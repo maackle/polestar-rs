@@ -50,15 +50,12 @@ where
                 //     ))
                 // })?;
                 match &**buchi_state {
-                    BuchiState::AcceptAll => todo!(), // vec![Ok((buchi_name, buchi_state))],
-                    BuchiState::Conditional { predicates, .. } => {
-                        (predicates.len());
-                        predicates
-                            .iter()
-                            .filter_map(|(ltl, name)| ((ltl).eval(&props)).then_some(name))
-                            .cloned()
-                            .collect::<BTreeSet<_>>()
-                    }
+                    BuchiState::Skip => BTreeSet::new(), // vec![Ok((buchi_name, buchi_state))],
+                    BuchiState::Conditional { predicates, .. } => predicates
+                        .iter()
+                        .filter_map(|(ltl, name)| ltl.eval(&props).then_some(name))
+                        .cloned()
+                        .collect::<BTreeSet<_>>(),
                 }
             })
             .collect::<BTreeSet<_>>();
@@ -134,7 +131,7 @@ impl<M: Machine, PM: PropMapping> BuchiAutomaton<M, PM> {
                     unreachable!()
                 }
             } else if line.contains("skip") {
-                current.as_mut().unwrap().1 = BuchiState::AcceptAll
+                current.as_mut().unwrap().1 = BuchiState::Skip
             }
         }
 
@@ -166,13 +163,13 @@ pub enum BuchiState {
         accepting: bool,
         predicates: Vec<(LogicPredicate, StateName)>,
     },
-    AcceptAll,
+    Skip,
 }
 
 impl BuchiState {
     pub fn is_accepting(&self) -> bool {
         match self {
-            BuchiState::AcceptAll => true,
+            BuchiState::Skip => true,
             BuchiState::Conditional { accepting, .. } => *accepting,
         }
     }
@@ -197,7 +194,7 @@ impl Debug for BuchiState {
                     .field("predicates", &predicates)
                     .finish()
             }
-            BuchiState::AcceptAll => write!(f, "AllAccepting"),
+            BuchiState::Skip => write!(f, "AllAccepting"),
         }
     }
 }

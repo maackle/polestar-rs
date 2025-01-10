@@ -1,10 +1,9 @@
 use prop::strategy::ValueTree;
 use proptest::prelude::*;
 
-pub trait Generate<T> {
-    // TODO: like From, but includes a Generator to fill in the extra info
-}
-
+/// An interface for the arbitrary generation of values.
+/// This is used for stochastic model checking (as opposed to exhaustive model checking).
+/// Currently, the only implementation uses proptest's Arbitrary trait.
 pub trait Generator {
     fn generate<T: Arbitrary>(&mut self) -> Result<T, prop::test_runner::Reason> {
         self.generate_with(T::arbitrary())

@@ -40,8 +40,8 @@ where
     M::State: Clone + Debug + Eq + Hash,
     M::Action: Clone + Debug,
     P: PropMapping,
-    // TODO: if a proc macro is ever written, make it clearer that you must implement Propositions for pairs, not just the state.
-    //       (or somehow make this easier)
+    // TODO: if a proc macro is ever written, make it clearer that you must implement Propositions for
+    // pairs + action, not just the state. (or somehow make this easier)
     Transition<M>: Propositions<P::Prop>,
 {
     type State = ModelCheckerState<M::State, M::Action>;

@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+/// A Linear Temporal Logic (LTL) formula
 pub enum Ltl<S> {
     True,
     False,
@@ -19,10 +20,8 @@ pub enum Ltl<S> {
     Release(BoxLtl<S>, BoxLtl<S>),
 }
 
+/// A boxed LTL formula
 pub type BoxLtl<S> = Box<Ltl<S>>;
-
-pub type LtlStmt = Ltl<()>;
-pub type LtlPredicate<S> = Ltl<Arc<dyn Fn(&S, &S) -> bool>>;
 
 impl<S> std::fmt::Display for Ltl<S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
