@@ -8,7 +8,11 @@
 //!
 //! The problem we're solving is, how can you reach a target number of emojis
 //! with the minimal effort?
+//!
 //! "Effort" is defined in terms of a cost function [`SpamState::cost`], where each Action has a cost.
+//! - Typing a single character is the lowest cost action.
+//! - Pasting the clipboard is slightly more laborious.
+//! - "Select All" + "Paste" is the most laborious action.
 
 use std::sync::Arc;
 

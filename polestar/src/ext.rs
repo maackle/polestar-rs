@@ -4,6 +4,10 @@ use std::{
     hash::Hash,
 };
 
+/// An extension trait for various Map types, which is useful in
+/// [`Machine::transition`][crate::machine::Machine::transition] functions,
+/// where it is common for the machine's State to contain a map where one key
+/// at a time needs to be updated.
 pub trait MapExt<K, V, O> {
     /// Update the value at `k` with a function taking the owned value and returning a new value.
     fn owned_update(

@@ -41,7 +41,7 @@ polestar = { path = ".", features = ["diagrams", "testing"] }
 rustversion = "*"
 
 [features]
-default = ["diagrams", "example-models", "recording"]
+default = ["diagrams", "example-models", "ltl3ba", "recording"]
 
 diagrams = ["exhaustive", "petgraph"]
 example-models = ["testing"]
