@@ -184,7 +184,7 @@ where
     }
 }
 
-pub fn conjoin(predicates: impl IntoIterator<Item = String>) -> String {
+pub fn conjoin<T: Display>(predicates: impl IntoIterator<Item = T>) -> String {
     predicates
         .into_iter()
         .map(|p| format!("({p})"))

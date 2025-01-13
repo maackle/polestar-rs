@@ -218,8 +218,8 @@ where
         }
     }
 
-    pub fn model_check_report(self) {
-        model_checker_report(self.model_check());
+    pub fn model_check_report(self) -> Result<(), String> {
+        model_checker_report(self.model_check())
     }
 }
 

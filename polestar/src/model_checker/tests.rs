@@ -1,4 +1,4 @@
-use crate::logic::Propositions;
+use crate::logic::{conjoin, Propositions};
 
 use super::*;
 
@@ -95,33 +95,33 @@ struct Node(u8, bool);
 #[test]
 fn model_checker_test() {
     // true negatives:
-    let negatives = [
-        "G ( is4 -> X is5 ) ",
-        "G ( is4 -> X is8 ) ",
-        "G ( is4 -> F is2 )",
-        "G ( (F is4 && !(F is2)) || (F is2 && !(F is4)) )",
-        "G ( is3 -> G F is5 )",
-        "G ( is2 -> F is4 )",
-    ];
+    let negatives = conjoin([
+        "G ( is4 -> ! X is8 ) ",
+        "G ( is4 -> ! F is2 )",
+        "G ( !is1 || ( (F is4 && !(F is2)) || (F is2 && !(F is4)) ))",
+        "G ( is3 -> ! G F is5 )",
+    ]);
 
     // true positives:
-    let positives = [
-        "G ( (is2 && X is6) -> G F is5)",
+    let positives = conjoin([
+        "G ( (is2 && X is8) -> G F is11)",
         "G ( is1 -> (G F is5 || G F is3 || G F is8) )",
         "G ( increasing || X loopmin )",
-    ];
+    ]);
 
-    let ltl = format!(
-        "({}) && ({})",
-        positives.map(|p| format!("({p})")).join(" && "),
-        negatives.map(|p| format!("!({p})")).join(" && "),
-    );
+    let ltl = conjoin([
+        positives,
+        negatives,
+    ]);
+
+    println!("ltl: {ltl}");
 
     TestMachine2
         .traverse([1])
         .specced((), &ltl)
         .unwrap()
-        .model_check_report();
+        .model_check_report()
+        .unwrap();
 
     // write_dot_state_diagram_mapped(
     //     "promela-diagram.dot",

@@ -23,13 +23,18 @@ where
     machine: StorePathMachine<M>,
 }
 
-pub fn model_checker_report<M: Machine>(result: Result<TraversalReport, ModelCheckerError<M>>)
+pub fn model_checker_report<M: Machine>(
+    result: Result<TraversalReport, ModelCheckerError<M>>,
+) -> Result<(), String>
 where
     M::State: Debug,
     M::Action: Debug + Clone,
 {
     match result {
-        Ok(report) => println!("{report:#?}"),
+        Ok(report) => {
+            println!("{report:#?}");
+            Ok(())
+        }
         Err(e) => {
             match e {
                 ModelCheckerError::Safety {
@@ -51,7 +56,7 @@ where
                     println!("paths: {paths:#?}");
                 }
             }
-            panic!("model checker error");
+            Err("model checker error".into())
         }
     }
 }

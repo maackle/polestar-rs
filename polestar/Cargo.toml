@@ -56,5 +56,3 @@ ltl3ba = ["nom"]
 # invariant-testing = ["prettydiff"]
 
 nightly = []
-
-[patch.crates-io]

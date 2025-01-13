@@ -208,68 +208,68 @@ mod tests {
     #[test]
     fn from_promela_never() {
         let promela = r#"
-never { /* G( ( call && F open) -> ((!at-floor && !open) U (open || ((at-floor && !open) U (open || ((!at-floor && !open) U (open || ((at-floor && !open) U (open || (!at-floor U open)))))))))) */
+never { /* G( ( call && F open) -> ((!at_floor && !open) U (open || ((at_floor && !open) U (open || ((!at_floor && !open) U (open || ((at_floor && !open) U (open || (!at_floor U open)))))))))) */
 accept_init:
 	if
 	:: (!call) || (call && open) -> goto accept_init
-	:: (call && !open && at-floor) -> goto T3_S4
-	:: (call && !open && !at-floor) -> goto T4_S9
+	:: (call && !open && at_floor) -> goto T3_S4
+	:: (call && !open && !at_floor) -> goto T4_S9
 	:: (call && !open) -> goto accept_S10
 	fi;
 T0_S1:
 	if
 	:: (open) -> goto accept_init
-	:: (!open && !at-floor) -> goto T0_S1
+	:: (!open && !at_floor) -> goto T0_S1
 	fi;
 T1_S2:
 	if
 	:: (open) -> goto accept_init
-	:: (!open && at-floor) -> goto T1_S2
-	:: (!open && !at-floor) -> goto accept_S5
+	:: (!open && at_floor) -> goto T1_S2
+	:: (!open && !at_floor) -> goto accept_S5
 	fi;
 T2_S3:
 	if
 	:: (open) -> goto accept_init
-	:: (!open && !at-floor) -> goto T2_S3
-	:: (!open && !at-floor) -> goto accept_S5
-	:: (!open && at-floor) -> goto accept_S6
+	:: (!open && !at_floor) -> goto T2_S3
+	:: (!open && !at_floor) -> goto accept_S5
+	:: (!open && at_floor) -> goto accept_S6
 	fi;
 T3_S4:
 	if
 	:: (open) -> goto accept_init
-	:: (!open && at-floor) -> goto T3_S4
-	:: (!open && at-floor) -> goto accept_S6
-	:: (!open && !at-floor) -> goto accept_S7
+	:: (!open && at_floor) -> goto T3_S4
+	:: (!open && at_floor) -> goto accept_S6
+	:: (!open && !at_floor) -> goto accept_S7
 	fi;
 accept_S5:
 	if
 	:: (open) -> goto accept_init
-	:: (!open && !at-floor) -> goto T0_S1
+	:: (!open && !at_floor) -> goto T0_S1
 	fi;
 accept_S6:
 	if
 	:: (open) -> goto accept_init
-	:: (!open && !at-floor) -> goto T0_S1
-	:: (!open && at-floor) -> goto T1_S2
+	:: (!open && !at_floor) -> goto T0_S1
+	:: (!open && at_floor) -> goto T1_S2
 	fi;
 accept_S7:
 	if
 	:: (open) -> goto accept_init
-	:: (!open && at-floor) -> goto T1_S2
-	:: (!open && !at-floor) -> goto T2_S3
+	:: (!open && at_floor) -> goto T1_S2
+	:: (!open && !at_floor) -> goto T2_S3
 	fi;
 accept_S8:
 	if
 	:: (open) -> goto accept_init
-	:: (!open && !at-floor) -> goto T2_S3
-	:: (!open && at-floor) -> goto T3_S4
+	:: (!open && !at_floor) -> goto T2_S3
+	:: (!open && at_floor) -> goto T3_S4
 	fi;
 T4_S9:
 	if
 	:: (open) -> goto accept_init
-	:: (!open && !at-floor) -> goto accept_S7
-	:: (!open && at-floor) -> goto accept_S8
-	:: (!open && !at-floor) -> goto T4_S9
+	:: (!open && !at_floor) -> goto accept_S7
+	:: (!open && at_floor) -> goto accept_S8
+	:: (!open && !at_floor) -> goto T4_S9
 	fi;
 accept_S10:
 	if
@@ -277,7 +277,7 @@ accept_S10:
 	fi;
 }
         "#;
-        let propmap = PropRegistry::<String>::new(["open", "call", "at-floor"]).unwrap();
+        let propmap = PropRegistry::<String>::new(["open", "call", "at_floor"]).unwrap();
         let machine = BuchiAutomaton::<(), PropRegistry<String>>::from_promela(propmap, promela);
         dbg!(&machine);
     }
