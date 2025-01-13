@@ -331,7 +331,7 @@ where
     let map_action = traversal.map_action;
 
     let terminals: Arc<Mutex<TerminalSet<S>>> = Arc::new(Mutex::new(HashSet::new()));
-    let loop_terminals: Arc<Mutex<TerminalSet<S>>> = Arc::new(Mutex::new(HashSet::new()));
+    // let loop_terminals: Arc<Mutex<TerminalSet<S>>> = Arc::new(Mutex::new(HashSet::new()));
     let visited_states: Arc<Mutex<HashMap<S, NodeIndex>>> = Arc::new(Mutex::new(HashMap::new()));
     let visited_edges: Arc<Mutex<HashSet<(NodeIndex, NodeIndex, A)>>> =
         Arc::new(Mutex::new(HashSet::new()));
@@ -484,15 +484,15 @@ where
                     }
                 }
 
-                // // Don't explore the same node twice
-                // if already_seen {
-                //     visitor(&state, VisitType::LoopTerminal)?;
-                //     if record_terminals {
-                //         loop_terminals.lock().insert(state);
-                //     }
+                // Don't explore the same node twice
+                if already_seen {
+                    //     visitor(&state, VisitType::LoopTerminal)?;
+                    //     if record_terminals {
+                    //         loop_terminals.lock().insert(state);
+                    //     }
 
-                //     continue;
-                // }
+                    continue;
+                }
 
                 // If this is a terminal state, no need to explore further.
                 // TODO: should also check if terminal due to no outgoing actions

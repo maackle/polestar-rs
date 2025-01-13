@@ -41,8 +41,6 @@ where
 mod tests {
     use std::collections::HashSet;
 
-    use crate::traversal::{traverse, TraversalConfig, TraversalGraphingConfig};
-
     use super::*;
     use ::exhaustive::Exhaustive;
     use num_derive::{FromPrimitive, ToPrimitive};
@@ -160,24 +158,5 @@ mod tests {
         assert_eq!(edges_montecarlo, edges_exhaustive);
         assert_eq!(nodes_exhaustive, nodes_traversal);
         assert_eq!(edges_exhaustive, edges_traversal);
-    }
-
-    #[test]
-    fn test_exhaustive_state_diagram() {
-        use super::exhaustive::*;
-
-        let config = DiagramConfig::default();
-
-        let graph1 = state_diagram(CycleMachine, Cycle::D, &config);
-        let nodes1: HashSet<_> = graph1.node_weights().collect();
-        let edges1: HashSet<_> = graph1.edge_weights().collect();
-
-        let graph2 = state_diagram(CycleMachine, Cycle::D, &config);
-        let nodes2: HashSet<_> = graph2.node_weights().collect();
-        let edges2: HashSet<_> = graph2.edge_weights().collect();
-
-        assert_eq!(nodes1, nodes2);
-        assert_eq!(edges1, edges2);
-        println!("{}", to_dot(&graph1, &[]));
     }
 }

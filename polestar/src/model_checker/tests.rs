@@ -1,11 +1,6 @@
-use crate::{
-    logic::Propositions,
-    traversal::{traverse, TraversalConfig, TraversalGraphingConfig},
-};
-use itertools::Itertools;
+use crate::logic::Propositions;
 
 use super::*;
-use crate::diagram::exhaustive::*;
 
 const MODULO: usize = 16;
 
@@ -83,6 +78,7 @@ impl Propositions<String> for Transition<TestMachine2> {
     }
 }
 
+#[allow(unused)]
 #[derive(Debug, derive_more::Display, Clone, Copy, PartialEq, Eq)]
 #[display("({}, {})", _0, _1)]
 struct Node(u8, bool);
@@ -216,42 +212,6 @@ fn model_checker_test() {
 }
 
 #[test]
-#[cfg(todo)]
-fn test_checker() {
-    tracing_subscriber::fmt::init();
-
-    let even = P::atom("is-even".to_string(), |s: &u8| s % 2 == 0);
-    let small = P::atom("single-digit".to_string(), |s: &u8| *s < 10);
-    let big = P::atom("20-and-up".to_string(), |s: &u8| *s >= 20);
-    let reallybig = P::atom("100-and-up".to_string(), |s: &u8| *s >= 100);
-    let not_teens = small.clone().or(big.clone());
-
-    let redundant = P::or(reallybig.clone(), reallybig.clone());
-
-    let checker = Mach.checked().with_predicates([
-        P::always(even.clone().implies(P::next(P::not(even.clone())))),
-        P::always(P::not(even.clone()).implies(P::next(even.clone()))),
-        P::always(not_teens),
-        P::eventually(reallybig),
-    ]);
-
-    checker.check_fold(0, [1, 2, 3, 108, 21]).unwrap();
-
-    let err = checker.check_fold(0, [1, 2, 3, 23, 21]).unwrap_err();
-    dbg!(&err);
-    assert_eq!(err.unwrap_predicate().path, vector![1, 2, 3, 23, 21]);
-
-    let err = checker.check_fold(1, [2, 12, 33]).unwrap_err();
-    dbg!(&err);
-    assert_eq!(err.unwrap_predicate().path, vector![2, 12]);
-
-    Mach.checked()
-        .with_predicates([P::always(redundant)])
-        .check_fold(0, [100])
-        .unwrap();
-}
-
-#[test]
 #[ignore = "diagram"]
 fn model_checker_diagram() {
     let graph = TestMachine2.traverse([1]).graph().unwrap();
@@ -261,17 +221,5 @@ fn model_checker_diagram() {
         &graph,
         // &[petgraph::dot::Config::EdgeNoLabel],
         &[],
-    );
-
-    write_dot_state_diagram_mapped(
-        "promela-diagram.dot",
-        TestMachine2,
-        1,
-        &DiagramConfig {
-            max_depth: None,
-            ..Default::default()
-        },
-        Some,
-        Some,
     );
 }
