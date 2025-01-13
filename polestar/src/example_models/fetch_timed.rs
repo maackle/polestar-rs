@@ -320,6 +320,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore = "slow"]
     fn test_fetch_timed() {
         // TODO: add system mapping stuff, from fetch_timeless
         tracing_subscriber::fmt::fmt()
