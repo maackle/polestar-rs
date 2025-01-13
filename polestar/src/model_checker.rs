@@ -1,11 +1,8 @@
 pub mod buchi;
 
-mod check;
-pub use check::*;
 #[cfg(test)]
 mod tests;
 
-use std::sync::Arc;
 use std::{fmt::Debug, hash::Hash};
 
 use buchi::*;
@@ -15,6 +12,7 @@ use crate::machine::{
     store_path::{StorePathMachine, StorePathState},
     Machine, TransitionResult,
 };
+use crate::traversal::TraversalReport;
 
 pub struct ModelChecker<M, P>
 where
@@ -23,6 +21,54 @@ where
 {
     buchi: BuchiAutomaton<M, P>,
     machine: StorePathMachine<M>,
+}
+
+pub fn model_checker_report<M: Machine>(result: Result<TraversalReport, ModelCheckerError<M>>)
+where
+    M::State: Debug,
+    M::Action: Debug + Clone,
+{
+    match result {
+        Ok(report) => println!("{report:#?}"),
+        Err(e) => {
+            match e {
+                ModelCheckerError::Safety {
+                    path,
+                    states: (cur, next),
+                } => {
+                    println!("Model checker safety check failed.");
+                    println!();
+                    println!("path: {path:#?}");
+                    println!();
+                    println!("last two states:");
+                    println!();
+                    println!("failing state: {cur:#?}");
+                    println!("next state: {next:#?}");
+                }
+                ModelCheckerError::Liveness { paths } => {
+                    println!("Model checker liveness check failed.");
+                    println!();
+                    println!("paths: {paths:#?}");
+                }
+            }
+            panic!("model checker error");
+        }
+    }
+}
+
+#[derive(derive_bounded::Debug)]
+#[bounded_to(M::State, M::Action)]
+pub enum ModelCheckerError<M: Machine>
+where
+    M::Action: Clone,
+{
+    Safety {
+        path: im::Vector<M::Action>,
+        states: (M::State, M::State),
+    },
+    Liveness {
+        paths: Vec<im::Vector<M::Action>>,
+    },
 }
 
 /*                                   █████       ███
@@ -39,7 +85,7 @@ where
     M: Machine,
     M::State: Clone + Debug + Eq + Hash,
     M::Action: Clone + Debug,
-    P: PropMapping,
+    P: PropMapping + Send + Sync + 'static,
     // TODO: if a proc macro is ever written, make it clearer that you must implement Propositions for
     // pairs + action, not just the state. (or somehow make this easier)
     Transition<M>: Propositions<P::Prop>,
@@ -128,9 +174,9 @@ pub struct ModelCheckerBuchiError<M: Machine>
 where
     M::Action: Clone,
 {
-    error: BuchiError,
-    path: im::Vector<M::Action>,
-    states: (M::State, M::State),
+    pub error: BuchiError,
+    pub path: im::Vector<M::Action>,
+    pub states: (M::State, M::State),
 }
 
 /*        █████               █████

@@ -121,10 +121,11 @@ fn model_checker_test() {
         negatives.map(|p| format!("!({p})")).join(" && "),
     );
 
-    let checker = ModelChecker::new(TestMachine2, (), &ltl).unwrap();
-    let initial = checker.initial(1);
-
-    model_checker_report(checker.check(1));
+    TestMachine2
+        .traverse([1])
+        .specced((), &ltl)
+        .unwrap()
+        .model_check_report();
 
     // write_dot_state_diagram_mapped(
     //     "promela-diagram.dot",
@@ -253,21 +254,7 @@ fn test_checker() {
 #[test]
 #[ignore = "diagram"]
 fn model_checker_diagram() {
-    let (_, graph, _) = traverse(
-        TestMachine2.into(),
-        1,
-        TraversalConfig {
-            // record_terminals: true,
-            // trace_every: 1,
-            graphing: Some(TraversalGraphingConfig::default()),
-            ..Default::default()
-        },
-        // .with_fatal_error(|e| !matches!(e, BuchiError::MachineError(_))),
-        Some,
-    )
-    .unwrap();
-
-    let graph = graph.unwrap();
+    let graph = TestMachine2.traverse([1]).graph().unwrap();
 
     crate::diagram::write_dot(
         "out.dot",

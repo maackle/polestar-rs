@@ -147,16 +147,7 @@ mod tests {
         };
 
         let (nodes_traversal, edges_traversal) = {
-            let (_, graph, _) = traverse(
-                CycleMachine.into(),
-                Cycle::D,
-                TraversalConfig::builder()
-                    .graphing(TraversalGraphingConfig::default())
-                    .build(),
-                Some,
-            )
-            .unwrap();
-            let graph = graph.unwrap();
+            let graph = CycleMachine.traverse([Cycle::D]).graph().unwrap();
             let nodes: HashSet<_> = graph.node_weights().cloned().collect();
             let edges: HashSet<_> = graph.edge_weights().cloned().collect();
 

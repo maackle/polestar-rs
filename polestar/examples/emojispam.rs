@@ -14,14 +14,12 @@
 //! - Pasting the clipboard is slightly more laborious.
 //! - "Select All" + "Paste" is the most laborious action.
 
-use std::sync::Arc;
-
 use anyhow::bail;
 use exhaustive::Exhaustive;
 use polestar::{
     machine::store_path::{StorePathMachine, StorePathState},
     prelude::*,
-    traversal::TraversalConfig,
+    traversal::Traversal,
 };
 
 fn main() {
@@ -33,16 +31,11 @@ fn main() {
 
     let machine = StorePathMachine::from(SpamMachine { target });
     let initial = StorePathState::new(SpamState::default());
-    let config = TraversalConfig::builder()
+    let terminals = Traversal::new(machine, [initial])
         .max_depth(50)
-        .record_terminals(true)
-        .build();
+        .run_terminal();
 
-    let (report, _graph, terminals) =
-        polestar::traversal::traverse(Arc::new(machine), initial, config, Some).unwrap();
-
-    dbg!(&report);
-    let (terminals, _loop_terminals) = terminals.unwrap();
+    let terminals = terminals.unwrap();
     let mut states: Vec<_> = terminals.into_iter().filter(|s| s.len >= target).collect();
     states.sort_by_key(|s| s.cost);
     let min_cost = states[0].cost;

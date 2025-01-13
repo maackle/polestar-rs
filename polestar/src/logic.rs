@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Display};
+use std::{collections::HashMap, fmt::Display, hash::Hash};
 
 use itertools::Itertools;
 
@@ -93,7 +93,19 @@ impl std::fmt::Display for LogicPredicate {
     }
 }
 
+#[derive(
+    derive_bounded::Clone, derive_bounded::Debug, derive_bounded::PartialEq, derive_bounded::Eq,
+)]
+#[bounded_to(M::State, M::Action)]
 pub struct Transition<M: Machine>(pub M::State, pub M::Action, pub M::State);
+
+impl<M: Machine> Hash for Transition<M> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
+        self.1.hash(state);
+        self.2.hash(state);
+    }
+}
 
 #[cfg(test)]
 mod tests {

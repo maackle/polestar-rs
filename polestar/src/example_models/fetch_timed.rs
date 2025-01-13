@@ -319,7 +319,13 @@ mod tests {
 
     use super::*;
 
-    fn explore(do_graph: bool) {
+    #[test]
+    fn test_fetch_timed() {
+        // TODO: add system mapping stuff, from fetch_timeless
+        tracing_subscriber::fmt::fmt()
+            .with_max_level(tracing::Level::INFO)
+            .init();
+
         let model = Model::new(
             UpTo::new(TIMEOUT).into(),
             UpTo::new(TIMEOUT_GRACE).into(),
@@ -327,16 +333,20 @@ mod tests {
         );
         let initial = model.initial();
 
-        let config = TraversalConfig::builder()
-            .graphing(TraversalGraphingConfig {
-                ignore_loopbacks: true,
-            })
-            .trace_every(100_000)
-            // .trace_error(true)
-            .build();
-        let (report, graph, _) = traverse(model.into(), initial, config, Some).unwrap();
-        if do_graph {
-            let graph = graph.unwrap();
+        let traversal = model
+            .traverse([initial])
+            .ignore_loopbacks(true)
+            .trace_every(100_000);
+
+        if true
+        // model check
+        {
+            let (props, ltl) = props_and_ltl();
+            traversal.specced(props, &ltl).unwrap().model_check_report();
+        } else
+        // graph
+        {
+            let graph = traversal.graph().unwrap();
             let graph = graph.map(|_, n| n, |_, (i, e)| format!("n{i}: {e}"));
             write_dot("out.dot", &graph, &[]);
             println!(
@@ -345,30 +355,5 @@ mod tests {
                 graph.edge_count()
             );
         }
-        dbg!(&report);
-    }
-
-    fn model_check() {
-        let model = Model::new(
-            UpTo::new(TIMEOUT).into(),
-            UpTo::new(TIMEOUT_GRACE).into(),
-            (0..AGENTS).map(Agent::new).collect(),
-        );
-        let (propmap, ltl) = props_and_ltl();
-        println!("checking LTL:\n{}", ltl);
-        let initial = model.initial();
-        let checker = ModelChecker::new(model, propmap, &ltl).unwrap();
-
-        model_checker_report(checker.check(initial));
-    }
-
-    #[test]
-    fn test_fetch_timed() {
-        // TODO: add system mapping stuff, from fetch_timeless
-        tracing_subscriber::fmt::fmt()
-            .with_max_level(tracing::Level::INFO)
-            .init();
-
-        model_check();
     }
 }

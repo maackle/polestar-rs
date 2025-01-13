@@ -19,6 +19,9 @@ pub trait Id:
     + TryFrom<usize>
     + std::fmt::Display
     + std::fmt::Debug
+    + Send
+    + Sync
+    + 'static
 {
     fn choices() -> IdChoices {
         IdChoices::Large

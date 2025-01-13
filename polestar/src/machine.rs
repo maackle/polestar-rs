@@ -1,25 +1,30 @@
 pub mod store_path;
 
-use std::sync::Arc;
+use std::{fmt::Debug, hash::Hash};
+
+use exhaustive::Exhaustive;
 
 use crate::{traversal::Traversal, util::first};
 
+pub trait Cog: Clone + Debug + Eq + Hash + Send + Sync {}
+impl<T: Clone + Debug + Eq + Hash + Send + Sync> Cog for T {}
+
 pub trait Machine
 where
-    Self: Sized,
+    Self: Sized + Send + Sync + 'static,
 {
-    type State;
-    type Action;
+    type State: Cog;
+    type Action: Cog;
 
     #[cfg(not(nightly))]
     type Fx;
     #[cfg(not(nightly))]
-    type Error;
+    type Error: Debug + Send + Sync;
 
     #[cfg(nightly)]
     type Fx = ();
     #[cfg(nightly)]
-    type Error: std::fmt::Debug = anyhow::Error;
+    type Error: Debug = anyhow::Error;
 
     fn transition(&self, state: Self::State, action: Self::Action) -> TransitionResult<Self>;
 
@@ -44,7 +49,8 @@ where
 
     fn traverse(self, initial: impl IntoIterator<Item = Self::State>) -> Traversal<Self>
     where
-        Self::State: Clone,
+        Self::State: Clone + Debug,
+        Self::Action: Clone + Debug + Exhaustive,
     {
         Traversal::new(self, initial)
     }

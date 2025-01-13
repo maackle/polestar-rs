@@ -307,48 +307,38 @@ mod tests {
         ]);
 
         println!("LTL: {ltl}");
-        let checker = ModelChecker::new(model, props, &ltl).unwrap();
 
-        let traversal_config = TraversalConfig::builder()
-            .graphing(TraversalGraphingConfig {
-                ignore_loopbacks: true,
-                ..Default::default()
-            })
-            .build();
-
-        let (_report, graph, _) = traverse(
-            checker.clone(),
-            checker.initial(State::default()),
-            traversal_config,
-            Some,
-        )
-        .unwrap();
-
-        let graph = graph.unwrap();
+        let graph = model
+            .clone()
+            .traverse([State::default()])
+            .ignore_loopbacks(true)
+            .specced(props.clone(), &ltl)
+            .unwrap()
+            .graph()
+            .unwrap();
         let graph = graph.map(|_, s| format!("{s:?}"), |_, e| format!("{e:?}"));
         write_dot("dining-philosophers-mc.dot", &graph, &[]);
 
-        let result = checker.check(State::default());
-        model_checker_report(result);
+        model
+            .traverse([State::default()])
+            .ignore_loopbacks(true)
+            .specced(props, &ltl)
+            .unwrap()
+            .model_check_report();
     }
 
     #[test]
     fn graph_dining_philosophers() {
-        let dining_philosophers = State::default();
+        let initial = State::default();
 
-        let traversal_config = TraversalConfig::builder()
-            .graphing(TraversalGraphingConfig {
-                ignore_loopbacks: true,
-                ..Default::default()
-            })
-            .build();
-
-        let (report, graph, _) =
-            traverse::<Model, State>(Model.into(), dining_philosophers, traversal_config, Some)
-                .unwrap();
+        let graph = Model
+            .traverse([State::default()])
+            .ignore_loopbacks(true)
+            .graph()
+            .unwrap();
 
         {
-            let graph = graph.unwrap().map(
+            let graph = graph.map(
                 |_, s| {
                     Id::iter_exhaustive(None)
                         .map(|p| {
@@ -385,11 +375,7 @@ mod tests {
                 &[],
             );
         }
-
-        println!("{:#?}", report);
     }
 }
 
-mod implementation {
-    
-}
+mod implementation {}

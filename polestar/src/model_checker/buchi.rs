@@ -26,7 +26,7 @@ pub(crate) struct BuchiAutomaton<M: Machine, PM: PropMapping> {
 impl<M, PM> Machine for BuchiAutomaton<M, PM>
 where
     M: Machine,
-    PM: PropMapping,
+    PM: PropMapping + Send + Sync + 'static,
     Transition<M>: Propositions<PM::Prop>,
 {
     type State = BuchiPaths;

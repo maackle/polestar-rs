@@ -22,6 +22,9 @@ pub trait TimeInterval:
     + std::fmt::Debug
     + Zero
     + Sub<Output = Self> // + Mul<usize, Output = Self>
+    + Send
+    + Sync
+    + 'static
 {
     /// The function which converts a duration into a time interval, with remainder.
     /// Essentially, division with remainder.
