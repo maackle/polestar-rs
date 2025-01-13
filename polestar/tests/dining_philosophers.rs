@@ -132,7 +132,7 @@ impl Default for State {
             forks: Forks(
                 (0..N)
                     .map(|i| Fork {
-                        holder: Id::new(if i == 1 { 0 } else { i }),
+                        holder: Id::wrapping(if i == 1 { 0 } else { i }),
                         clean: false,
                     })
                     .collect_vec()

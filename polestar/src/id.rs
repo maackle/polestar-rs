@@ -120,8 +120,8 @@ mod tests {
 
     #[test]
     fn test_arithmetic() {
-        let a = UpTo::<3>::new(1);
-        let b = UpTo::<3>::new(2);
+        let a = UpTo::<3, true>::wrapping(1);
+        let b = UpTo::<3, true>::wrapping(2);
         assert_eq!(a + 1, UpTo(2));
         assert_eq!(b - 1, UpTo(1));
         assert_eq!(a + 3, UpTo(1));

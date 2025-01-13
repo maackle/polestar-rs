@@ -26,25 +26,25 @@ impl<const N: usize, const WRAP: bool> Id for UpTo<N, WRAP> {
     }
 }
 
-impl<const N: usize, const WRAP: bool> UpTo<N, WRAP> {
+impl<const N: usize> UpTo<N, false> {
     pub fn new(n: usize) -> Self {
         Self::try_from(n).unwrap_or_else(|_| panic!("Attempted to initialize UpTo<{N}> with {n}"))
     }
+}
 
+impl<const N: usize> UpTo<N, true> {
+    pub fn wrapping(n: usize) -> Self {
+        Self(n % N)
+    }
+}
+
+impl<const N: usize, const WRAP: bool> UpTo<N, WRAP> {
     pub fn limit() -> usize {
         N
     }
 
-    pub fn modulo(n: usize) -> Self {
-        Self(n % N)
-    }
-
     pub fn all_values() -> [Self; N] {
-        (0..N)
-            .map(Self::new)
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap()
+        (0..N).map(Self).collect::<Vec<_>>().try_into().unwrap()
     }
 }
 
@@ -82,8 +82,10 @@ impl<const N: usize, const WRAP: bool> std::ops::Add<usize> for UpTo<N, WRAP> {
     fn add(self, rhs: usize) -> Self::Output {
         if WRAP {
             Self((self.0 + rhs) % N)
-        } else {
+        } else if self.0 + rhs < N {
             Self(self.0 + rhs)
+        } else {
+            panic!("UpTo<{N}> overflowed")
         }
     }
 }
@@ -95,24 +97,20 @@ impl<const N: usize, const WRAP: bool> std::ops::Add<UpTo<N, WRAP>> for UpTo<N, 
     }
 }
 
-// impl<const N: usize> WrappingAdd for UpTo<N> {
-//     fn wrapping_add(&self, rhs: &Self) -> Self {
-//         Self((self.0 + rhs.0) % N)
-//     }
-// }
-
 impl<const N: usize, const WRAP: bool> std::ops::Sub<usize> for UpTo<N, WRAP> {
     type Output = UpTo<N, WRAP>;
     fn sub(self, rhs: usize) -> Self::Output {
         if WRAP {
             let v = if self.0 < rhs {
-                self.0 + N - rhs
+                (self.0 + N - (rhs % N)) % N
             } else {
                 self.0 - rhs
             };
             Self(v)
-        } else {
+        } else if self.0 >= rhs {
             Self(self.0 - rhs)
+        } else {
+            panic!("UpTo<{N}> underflowed")
         }
     }
 }
@@ -123,18 +121,6 @@ impl<const N: usize, const WRAP: bool> std::ops::Sub<UpTo<N, WRAP>> for UpTo<N, 
         self - rhs.0
     }
 }
-
-// impl<const N: usize> WrappingSub for UpTo<N> {
-//     fn wrapping_sub(&self, rhs: &Self) -> Self {
-//         let rhs = rhs.0;
-//         let v = if self.0 < rhs {
-//             self.0 + N - rhs
-//         } else {
-//             self.0 - rhs
-//         };
-//         UpTo(v)
-//     }
-// }
 
 impl<const N: usize> num_traits::Zero for UpTo<N> {
     fn zero() -> Self {
