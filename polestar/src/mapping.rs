@@ -1,3 +1,5 @@
+//! Connect a real-world system to a model of that system.
+
 use core::fmt::Debug;
 use std::{fs, io, io::Write, path::PathBuf};
 
@@ -6,36 +8,72 @@ use serde::{de::DeserializeOwned, Serialize};
 
 use crate::prelude::*;
 
-/// A Mapping simply contains functions for mapping
+/// Maps a model to the system of which it is a model.
 ///
-/// Invariants:
+/// # Invariants:
 ///
-/// commutativity: map_state(apply(x, event)) == transition(map_state(x), map_event(event))
+/// In order to be a valid mapping, some invariants must hold:
 ///
-/// idempotency: `self` should only be mutated to make the mapping possible,
-///               but mappings themselves must be idempotent.
+/// **Idempotency**: The ModelMapping is allowed to mutate itself when mapping states
+/// and events. This mutation must be idempotent, such that repeated calls to either function
+/// using the same input will always yield the same output.
+///
+/// **Commutativity**: The state transitions of the system must commute
+/// with the model's transitions according to the following diagram,
+/// where:
+/// - `map_state` and `map_event` are the functions defined by the ModelMapping trait
+/// - `S` and `S'` are the previous and next states of the system,
+/// - `Q` and `Q'` are the previous and next states of the model,
+/// - `event` causes a transition of the system state
+/// - `action` causes a transition of the model state
+///
+/// ```text
+///       S ─────transition(event)───────> S'
+///       │                   ┆            │
+///       │                   ┆            │
+///    map_state         map_event     map_state
+///       │                   ┆            │
+///       V                   V            V
+///       Q ─────transition(action)──────> Q'
+/// ```
+/// In other words, transitioning the system state `S` to `S'` and then
+/// using `map_state` to obtain a model state `Q'`, but yield the same result
+/// as first using `map_state` to go from system state `S` to model state `Q`,
+/// and then using the model's transition function to obtain `Q'`.
+///
+/// Upholding this invariant ensures that the model is properly tracking the system state
+/// through its transitions.
 ///
 pub trait ModelMapping
 where
     Self::Model: Machine,
 {
+    /// The model being mapped.
+    ///
+    /// (Model must implement [`Machine`], and so has associated types for `State` and `Action`)
     type Model;
+
+    /// The state of the system which the model is a model of.
     type System;
+
+    /// The events which the system emits to represent its own state changes.
     type Event;
 
+    /// Map a system state to a model State.
     fn map_state(&mut self, system: &Self::System) -> Option<StateOf<Self::Model>>;
+
+    /// Map a system event to a model Action.
     fn map_event(&mut self, event: &Self::Event) -> Vec<ActionOf<Self::Model>>;
 }
 
+/// Helper type for accessing the associated State type of a Machine.
 pub type StateOf<M> = <M as Machine>::State;
+
+/// Helper type for accessing the associated Action type of a Machine.
 pub type ActionOf<M> = <M as Machine>::Action;
+
+/// Helper type for accessing the associated Error type of a Machine.
 pub type ErrorOf<M> = <M as Machine>::Error;
-
-pub trait EventHandler<Event> {
-    type Error;
-
-    fn handle(&mut self, event: &Event) -> Result<(), Self::Error>;
-}
 
 /// One way to record actions from the system is by simply writing their JSON
 /// representation to a file, to be read back later.
@@ -93,9 +131,10 @@ where
     }
 }
 
-impl<M: ModelMapping> EventHandler<M::Event> for JsonActionWriter<M>
+impl<M: ModelMapping> crate::EventHandler<M::Event> for JsonActionWriter<M>
 where
-    M::Event: Debug,
+    M: Send + Sync + 'static,
+    M::Event: Debug + Send + Sync,
     ActionOf<M::Model>: Serialize,
 {
     type Error = io::Error;

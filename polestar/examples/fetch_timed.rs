@@ -17,9 +17,10 @@ use im::{HashMap, OrdSet};
 use itertools::Itertools;
 use polestar::{
     example_models::fetch_timed::{Action, Model, NodeAction, NodeState, State, *},
-    mapping::{ActionOf, EventHandler, ModelMapping, StateOf},
+    mapping::{ActionOf, ModelMapping, StateOf},
     prelude::*,
     time::{RealTime, TickBuffer},
+    EventHandler,
 };
 use rand::Rng;
 use tokio::{sync::Mutex, task::JoinSet, time::Instant};
@@ -260,11 +261,7 @@ impl polestar::mapping::ModelMapping for RealtimeMapping {
                         Agent::try_from(*n).unwrap(),
                         NodeState {
                             values: v.values.clone(),
-                            requests: v
-                                .requests
-                                .iter()
-                                .map(|(v, _)| Request::new(*v))
-                                .collect(),
+                            requests: v.requests.iter().map(|(v, _)| Request::new(*v)).collect(),
                         },
                     )
                 })
@@ -315,7 +312,7 @@ impl polestar::mapping::ModelMapping for RealtimeMapping {
     }
 }
 
-impl polestar::mapping::EventHandler<(usize, Event)> for RealtimeMapping {
+impl polestar::EventHandler<(usize, Event)> for RealtimeMapping {
     type Error = anyhow::Error;
 
     fn handle(&mut self, event: &(usize, Event)) -> Result<(), Self::Error> {

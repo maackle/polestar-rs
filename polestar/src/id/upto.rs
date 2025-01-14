@@ -27,22 +27,30 @@ impl<const N: usize, const WRAP: bool> Id for UpTo<N, WRAP> {
 }
 
 impl<const N: usize> UpTo<N, false> {
+    /// Create a new (non-wrapping) value in [0, N)
+    ///
+    /// # Panics
+    ///
+    /// Panics if `n` is not in the range [0, N)
     pub fn new(n: usize) -> Self {
         Self::try_from(n).unwrap_or_else(|_| panic!("Attempted to initialize UpTo<{N}> with {n}"))
     }
 }
 
 impl<const N: usize> UpTo<N, true> {
+    /// Create a new wrapped (modulo N) value
     pub fn wrapping(n: usize) -> Self {
         Self(n % N)
     }
 }
 
 impl<const N: usize, const WRAP: bool> UpTo<N, WRAP> {
+    /// Return the constant number of possible values
     pub fn limit() -> usize {
         N
     }
 
+    /// Return all possible values [0, 1, 2, ..., N-1]
     pub fn all_values() -> [Self; N] {
         (0..N).map(Self).collect::<Vec<_>>().try_into().unwrap()
     }

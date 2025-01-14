@@ -9,7 +9,7 @@ use std::{
 use anyhow::anyhow;
 
 use crate::{
-    logic::{LogicPredicate, PropMapping, Propositions, Transition},
+    logic::{LogicStatement, PropMapping, Propositions, Transition},
     Machine, TransitionResult,
 };
 
@@ -72,10 +72,12 @@ where
     }
 }
 
+/// Errors while transitioning a Buchi automaton.
 #[derive(Debug)]
 pub enum BuchiError {
-    // Internal(anyhow::Error),
+    /// The LTL expression is not satisfied.
     LtlError(anyhow::Error),
+    // Internal(anyhow::Error),
 }
 
 impl<M: Machine, PM: PropMapping> BuchiAutomaton<M, PM> {
@@ -124,7 +126,7 @@ impl<M: Machine, PM: PropMapping> BuchiAutomaton<M, PM> {
                 if let BuchiState::Conditional { predicates, .. } = &mut current.as_mut().unwrap().1
                 {
                     predicates.push((
-                        LogicPredicate::from_promela_predicate(predicate).unwrap(),
+                        LogicStatement::from_promela_predicate(predicate).unwrap(),
                         next.to_string(),
                     ));
                 } else {
@@ -146,10 +148,10 @@ impl<M: Machine, PM: PropMapping> BuchiAutomaton<M, PM> {
     }
 }
 
-pub type StateName = String;
+pub(crate) type StateName = String;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, derive_more::Deref, derive_more::From)]
-pub struct BuchiPaths(pub(crate) BTreeSet<StateName>);
+pub(crate) struct BuchiPaths(pub(crate) BTreeSet<StateName>);
 
 impl BuchiPaths {
     pub fn is_accepting(&self) -> bool {
@@ -158,15 +160,20 @@ impl BuchiPaths {
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]
-pub enum BuchiState {
+pub(crate) enum BuchiState {
     Conditional {
         accepting: bool,
-        predicates: Vec<(LogicPredicate, StateName)>,
+        predicates: Vec<(LogicStatement, StateName)>,
     },
     Skip,
 }
 
 impl BuchiState {
+    /// Is this an accepting state?
+    ///
+    /// A path through a Buchi automaton is accepted if the path always eventually
+    /// passes through an accepting state.
+    /// (see https://en.wikipedia.org/wiki/B%C3%BCchi_automaton)
     pub fn is_accepting(&self) -> bool {
         match self {
             BuchiState::Skip => true,

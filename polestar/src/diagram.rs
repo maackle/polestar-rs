@@ -1,12 +1,17 @@
+//! Functions for generating DOT representations of state graphs.
+
 use petgraph::graph::DiGraph;
 
 use crate::prelude::*;
 
 #[deprecated = "use traversal with graphing enabled instead"]
+#[allow(missing_docs)]
 pub mod exhaustive;
 #[deprecated = "use traversal with graphing enabled instead"]
+#[allow(missing_docs)]
 pub mod montecarlo;
 
+/// Write a DOT representation of a graph to a file
 pub fn write_dot<N, E>(filename: &str, graph: &DiGraph<N, E>, config: &[petgraph::dot::Config])
 where
     N: core::fmt::Display,
@@ -16,6 +21,7 @@ where
     std::fs::write(filename, dot).unwrap();
 }
 
+/// Get a DOT representation of a graph
 pub fn to_dot<N, E>(graph: &DiGraph<N, E>, config: &[petgraph::dot::Config]) -> String
 where
     N: core::fmt::Display,
@@ -145,7 +151,7 @@ mod tests {
         };
 
         let (nodes_traversal, edges_traversal) = {
-            let graph = CycleMachine.traverse([Cycle::D]).graph().unwrap();
+            let graph = CycleMachine.traverse([Cycle::D]).diagram().unwrap();
             let nodes: HashSet<_> = graph.node_weights().cloned().collect();
             let edges: HashSet<_> = graph.edge_weights().cloned().collect();
 

@@ -109,10 +109,7 @@ fn model_checker_test() {
         "G ( increasing || X loopmin )",
     ]);
 
-    let ltl = conjoin([
-        positives,
-        negatives,
-    ]);
+    let ltl = conjoin([positives, negatives]);
 
     println!("ltl: {ltl}");
 
@@ -214,7 +211,7 @@ fn model_checker_test() {
 #[test]
 #[ignore = "diagram"]
 fn model_checker_diagram() {
-    let graph = TestMachine2.traverse([1]).graph().unwrap();
+    let graph = TestMachine2.traverse([1]).diagram().unwrap();
 
     crate::diagram::write_dot(
         "out.dot",

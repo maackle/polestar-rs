@@ -55,4 +55,8 @@ ltl3ba = ["nom"]
 # only applicable with the "projection" system
 # invariant-testing = ["prettydiff"]
 
+
 nightly = []
+
+# stuff that is not currently prioritized for stability
+nonessential = []

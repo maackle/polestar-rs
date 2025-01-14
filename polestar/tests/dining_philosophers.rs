@@ -6,11 +6,7 @@
 #![allow(unused)]
 
 use exhaustive::Exhaustive;
-use polestar::{
-    id::UpTo,
-    prelude::*,
-    traversal::{traverse, TraversalConfig, TraversalGraphingConfig},
-};
+use polestar::{id::UpTo, prelude::*, traversal::traverse};
 
 use itertools::Itertools;
 
@@ -247,7 +243,7 @@ mod tests {
 
     use polestar::diagram::write_dot;
     use polestar::logic::{conjoin, PropRegistry, Propositions, Transition};
-    use polestar::model_checker::{model_checker_report, ModelChecker};
+    use polestar::model_checker::ModelChecker;
     use polestar::util::product_exhaustive;
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, derive_more::Display)]
@@ -314,7 +310,7 @@ mod tests {
             .ignore_loopbacks(true)
             .specced(props.clone(), &ltl)
             .unwrap()
-            .graph()
+            .diagram()
             .unwrap();
         let graph = graph.map(|_, s| format!("{s:?}"), |_, e| format!("{e:?}"));
         write_dot("dining-philosophers-mc.dot", &graph, &[]);
@@ -334,7 +330,7 @@ mod tests {
         let graph = Model
             .traverse([State::default()])
             .ignore_loopbacks(true)
-            .graph()
+            .diagram()
             .unwrap();
 
         {

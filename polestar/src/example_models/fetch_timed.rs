@@ -1,3 +1,5 @@
+//! A simple example of using clocks to model timeouts
+
 #![allow(unused)]
 
 use std::{fmt::Display, marker::PhantomData};
@@ -22,22 +24,29 @@ use itertools::Itertools;
 ░░████████░░██████   ░░█████  █████░░██████  ████ █████
  ░░░░░░░░  ░░░░░░     ░░░░░  ░░░░░  ░░░░░░  ░░░░ ░░░░░   */
 
+/// Action for fetch_timed
 pub type Action<Agent, Val, Time> = (Agent, NodeAction<Agent, Val, Time>);
 
+/// Action taken by a single node
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, exhaustive::Exhaustive, derive_more::Display)]
 pub enum NodeAction<Agent, Val, Time: TimeInterval> {
+    /// Advance all clocks by a given duration
     #[display("Tick {_0}")]
     Tick(Time),
 
+    /// Create a new value to be fetched by others
     #[display("Auth(v{_0})")]
     Author(Val),
 
+    /// Request a value be sent
     #[display("Req(v{_0} ⇐ n{_1})")]
     Request(Val, Agent),
 
+    /// Stop waiting on a request
     #[display("Timeout(v{_0})")]
     Timeout(Val),
 
+    /// Receive and store a value
     #[display("Recv(v{_0}, {_1})")]
     Receive(Val, bool),
 }
@@ -51,8 +60,10 @@ pub enum NodeAction<Agent, Val, Time: TimeInterval> {
  ██████   ░░█████ ░░████████  ░░█████ ░░██████
 ░░░░░░     ░░░░░   ░░░░░░░░    ░░░░░   ░░░░░░  */
 
+/// State for fetch_timed
 #[derive(Debug, Clone, PartialEq, Eq, Hash, derive_more::Constructor)]
 pub struct State<Agent: Clone + Ord, Val: Clone + Ord, Time: Ord + Clone> {
+    /// The nodes in the system
     pub nodes: OrdMap<Agent, NodeState<Val, Time>>,
 }
 
@@ -69,9 +80,13 @@ impl<Agent: Id, Val: Id, Time: TimeInterval> Display for State<Agent, Val, Time>
     }
 }
 
+/// State for a single node
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct NodeState<Val: Clone + Ord, Time: Clone> {
+    /// The values stored by this node
     pub values: OrdSet<Val>,
+
+    /// The outstanding requests made by this node
     pub requests: Vector<Request<Val, Time>>,
 }
 
@@ -98,13 +113,18 @@ impl<Val: Id, Time: TimeInterval> Display for NodeState<Val, Time> {
     }
 }
 
+/// A request for a value
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Request<Val: Clone + Ord, Time: Clone> {
+    /// The value being requested
     pub val: Val,
+
+    /// The time elapsed since the request was made
     pub elapsed: Time,
 }
 
 impl<Val: Id, Time: TimeInterval> Request<Val, Time> {
+    /// Constructor
     pub fn new(val: Val) -> Self {
         Self {
             val,
@@ -122,14 +142,23 @@ impl<Val: Id, Time: TimeInterval> Request<Val, Time> {
  █████░███ █████░░██████ ░░████████░░██████  █████
 ░░░░░ ░░░ ░░░░░  ░░░░░░   ░░░░░░░░  ░░░░░░  ░░░░░  */
 
+/// Model for fetch_timed
 pub struct Model<Agent: Id, Val: Id, Time: TimeInterval> {
+    /// Interval after which a request may timeout
     pub timeout: Time,
+
+    /// Interval after which a timeout is considered an error.
+    /// Timeouts must occur between `timeout` and `timeout_grace`
     pub timeout_grace: Time,
+
+    /// The nodes in the system
     nodes: Vec<Agent>,
+
     phantom: PhantomData<Val>,
 }
 
 impl<Agent: Id, Val: Id, Time: TimeInterval> Model<Agent, Val, Time> {
+    /// Constructor
     pub fn new(timeout: Time, timeout_grace: Time, nodes: Vec<Agent>) -> Self {
         assert!(timeout <= timeout_grace);
         Self {
@@ -140,6 +169,7 @@ impl<Agent: Id, Val: Id, Time: TimeInterval> Model<Agent, Val, Time> {
         }
     }
 
+    /// Initial state
     pub fn initial(&self) -> State<Agent, Val, Time> {
         State {
             nodes: self
@@ -299,10 +329,7 @@ fn props_and_ltl<Agent: Id + Exhaustive, Val: Id + Exhaustive, Time: TimeInterva
 #[cfg(test)]
 mod tests {
     use crate::{
-        diagram::write_dot,
-        model_checker::{model_checker_report, ModelChecker},
-        time::FiniteTime,
-        traversal::{traverse, TraversalConfig, TraversalGraphingConfig},
+        diagram::write_dot, model_checker::ModelChecker, time::FiniteTime, traversal::traverse,
     };
 
     const AGENTS: usize = 3;
@@ -347,7 +374,7 @@ mod tests {
         } else
         // graph
         {
-            let graph = traversal.graph().unwrap();
+            let graph = traversal.diagram().unwrap();
             let graph = graph.map(|_, n| n, |_, (i, e)| format!("n{i}: {e}"));
             write_dot("out.dot", &graph, &[]);
             println!(

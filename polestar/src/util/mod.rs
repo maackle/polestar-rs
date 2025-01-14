@@ -1,3 +1,5 @@
+//! Utility functions and types.
+
 mod combinators;
 mod delay;
 

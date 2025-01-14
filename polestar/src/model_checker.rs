@@ -1,3 +1,6 @@
+//! Performs model checking by connecting a state machine with a Buchi automaton
+//! which represents a set of safety and liveness specifications.
+
 pub mod buchi;
 
 #[cfg(test)]
@@ -14,6 +17,8 @@ use crate::machine::{
 };
 use crate::traversal::TraversalReport;
 
+/// A model checker which connects a state machine with a Buchi automaton
+/// to check a set of safety and liveness specifications.
 pub struct ModelChecker<M, P>
 where
     M: Machine,
@@ -21,44 +26,6 @@ where
 {
     buchi: BuchiAutomaton<M, P>,
     machine: StorePathMachine<M>,
-}
-
-pub fn model_checker_report<M: Machine>(
-    result: Result<TraversalReport, ModelCheckerError<M>>,
-) -> Result<(), String>
-where
-    M::State: Debug,
-    M::Action: Debug + Clone,
-{
-    match result {
-        Ok(report) => {
-            println!("{report:#?}");
-            Ok(())
-        }
-        Err(e) => {
-            match e {
-                ModelCheckerError::Safety {
-                    path,
-                    states: (cur, next),
-                } => {
-                    println!("Model checker safety check failed.");
-                    println!();
-                    println!("path: {path:#?}");
-                    println!();
-                    println!("last two states:");
-                    println!();
-                    println!("failing state: {cur:#?}");
-                    println!("next state: {next:#?}");
-                }
-                ModelCheckerError::Liveness { paths } => {
-                    println!("Model checker liveness check failed.");
-                    println!();
-                    println!("paths: {paths:#?}");
-                }
-            }
-            Err("model checker error".into())
-        }
-    }
 }
 
 #[derive(derive_bounded::Debug)]

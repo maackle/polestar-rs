@@ -8,6 +8,7 @@
 //! language, Polestar is implemented as a set of tools and patterns that can
 //! be mixed, matched, and modified to fit your formal verification needs.
 
+#![warn(missing_docs)]
 #![cfg_attr(nightly, feature(associated_type_defaults))]
 
 pub mod event_handler;
@@ -32,8 +33,7 @@ pub mod diagram;
 #[cfg(feature = "example-models")]
 pub mod example_models;
 
-// pub use actor::Actor;
-pub use event_handler::{EventHandler, EventSink};
+pub use event_handler::EventHandler;
 pub use machine::{Machine, TransitionResult};
 
 pub mod prelude;

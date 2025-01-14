@@ -1,3 +1,5 @@
+//! An extension trait for working with maps in transition functions
+
 use std::{
     collections::{BTreeMap, HashMap},
     fmt::Debug,

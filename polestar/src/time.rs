@@ -1,3 +1,7 @@
+//! Representations of time suitable for deterministic model checking.
+//!
+//! This includes both discrete and continuous time.
+
 use human_repr::HumanDuration;
 use num_traits::*;
 use std::{
@@ -21,7 +25,7 @@ pub trait TimeInterval:
     + Display
     + std::fmt::Debug
     + Zero
-    + Sub<Output = Self> // + Mul<usize, Output = Self>
+    + Sub<Output = Self>
     + Send
     + Sync
     + 'static
@@ -126,12 +130,34 @@ impl Mul<usize> for RealTime {
     }
 }
 
+/// [`TickBuffer`] is an essential component of any time-aware model.
+/// (see https://en.wikipedia.org/wiki/Timed_automaton)
+///
+/// When using a model for both model checking as well as monitoring a real-world system,
+/// you will often want to reprent time both discretely and continuously.
+/// The discrete-time model will have only a few possible values for time intervals,
+/// to minimize the combinatorial explosion of the state space.
+/// The continuous-time model can track wall-clock time and match the real-world system.
+///
+/// The [`TickBuffer`] is a simple utility for working with both types of time.
+/// The state transition (a "tick" event) which advances the clocks in your state machine needs to be emitted
+/// by your system to represent real time passing in the real-world system. Whenever a tick
+/// occurs, [`TickBuffer::tick`] should be called. Then, according to the needs of your model,
+/// a sequence of time intervals will be returned, which represents the time that has passed since the last tick
+/// event.
+///
+/// If using continuous time, one interval will be returned corresponding to the elapsed time.
+/// If using discrete time, several intervals may be returned, or potentially zero intervals.
+///
+/// The tick function should be called by [`crate::mapping::ModelMapping`] *before* any other events are handled,
+/// so that the model can know how much time has passed before handling any other actions.
 pub struct TickBuffer<T: TimeInterval> {
     last_tick: Instant,
     phantom: PhantomData<T>,
 }
 
 impl<T: TimeInterval> TickBuffer<T> {
+    /// Initialize the tick buffer with the current time.
     pub fn new(start: Instant) -> Self {
         Self {
             last_tick: start,
@@ -139,6 +165,8 @@ impl<T: TimeInterval> TickBuffer<T> {
         }
     }
 
+    /// Find out how much time has passed since the last tick, in terms of the time interval type
+    /// appropriate to the model.
     pub fn tick(&mut self, now: Instant) -> impl Iterator<Item = T> {
         let mut elapsed = now - self.last_tick;
         let mut ticks = Vec::new();

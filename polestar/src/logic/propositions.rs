@@ -58,9 +58,8 @@
 //! let c = props.add(Prop::C).unwrap();
 //!
 //! let ltl = format!("G ({a} -> F {c})");
-//! let checker = ModelChecker::new(Model, props, &ltl).unwrap();
 //!
-//! model_checker_report(checker.check(State(0)));
+//! Model.traverse([State(0)]).specced(props, &ltl).unwrap().model_check_report().unwrap();
 //!
 //! ```
 

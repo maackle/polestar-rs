@@ -1,16 +1,23 @@
+//! A machine which wraps another machine, augmenting its state
+//! with a history of all actions taken to reach that state.
+
 use std::{fmt::Debug, hash::Hash};
 
 use crate::prelude::*;
 
 use derive_more::derive::Deref;
 
+/// The state for [`StorePathMachine`]
 #[derive(Deref, derive_more::Debug)]
 pub struct StorePathState<S, A>
 where
     S: Debug,
 {
+    /// The wrapped state of the inner machine
     #[deref]
     pub state: S,
+
+    /// The history of all actions taken thus far
     #[debug(skip)]
     pub path: im::Vector<A>,
 }
@@ -20,6 +27,7 @@ where
     S: Debug,
     A: Clone,
 {
+    /// Wrap a state in a [`StorePathState`], with an empty history
     pub fn new(state: S) -> Self {
         Self {
             state,
@@ -62,6 +70,8 @@ where
     }
 }
 
+/// A machine which wraps another machine, augmenting its state
+/// with a history of all actions taken to reach that state.
 #[derive(Clone, Debug, Deref, derive_more::From)]
 pub struct StorePathMachine<M>
 where
