@@ -242,7 +242,7 @@ mod tests {
     use super::*;
 
     use polestar::diagram::write_dot;
-    use polestar::logic::{conjoin, PropRegistry, Propositions, Transition};
+    use polestar::logic::{conjoin, EvaluatePropositions, PropositionRegistry, Transition};
     use polestar::model_checker::ModelChecker;
     use polestar::util::product_exhaustive;
 
@@ -258,8 +258,8 @@ mod tests {
         ShareFork(Id, Id),
     }
 
-    impl Propositions<Prop> for Transition<Model> {
-        fn eval(&self, prop: &Prop) -> bool {
+    impl EvaluatePropositions<Prop> for Transition<Model> {
+        fn evaluate(&self, prop: &Prop) -> bool {
             let Transition(s, _, _) = self;
             let out = match *prop {
                 Prop::Eating(p) => s.philosophers[*p].phase == Phase::Eating,
@@ -277,7 +277,7 @@ mod tests {
     fn model_check_dining_philosophers() {
         let model = Model;
 
-        let mut props = PropRegistry::empty();
+        let mut props = PropositionRegistry::empty();
 
         let exclusive_access = conjoin(product_exhaustive::<Id, Id>().filter_map(|(p, q)| {
             if p != q {

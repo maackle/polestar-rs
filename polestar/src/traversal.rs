@@ -23,7 +23,7 @@ use std::{
     },
 };
 
-use crate::logic::{PropMapping, Propositions, Transition};
+use crate::logic::{EvaluatePropositions, PropositionMapping, Transition};
 use crate::machine::Cog;
 use crate::model_checker::{ModelCheckerError, ModelCheckerState, ModelCheckerTransitionError};
 use crate::prelude::ModelChecker;
@@ -186,8 +186,8 @@ where
         ltl: &str,
     ) -> anyhow::Result<Traversal<ModelChecker<M, P>, ModelCheckerState<S, M::Action>, A>>
     where
-        P: PropMapping + Send + Sync + 'static,
-        Transition<M>: Propositions<P::Prop>,
+        P: PropositionMapping + Send + Sync + 'static,
+        Transition<M>: EvaluatePropositions<P::Proposition>,
     {
         let machine = ModelChecker::new(self.machine, props, ltl)?;
         let initial = self
@@ -225,8 +225,8 @@ where
     M::Action: Clone + Debug + Eq + Hash + Exhaustive + Send + Sync + 'static,
     A: Clone + Debug + Eq + Hash + Exhaustive + Send + Sync + 'static,
     M::Error: Debug + Send + Sync + 'static,
-    P: PropMapping + Send + Sync + 'static,
-    Transition<M>: Propositions<P::Prop>,
+    P: PropositionMapping + Send + Sync + 'static,
+    Transition<M>: EvaluatePropositions<P::Proposition>,
 {
     /// Do a model check on a traversal on which [`Traversal::specced`] has been called.
     /// This returns a report if the model check succeeds, or any errors if it fails.

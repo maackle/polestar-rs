@@ -65,8 +65,10 @@
 
 use super::*;
 
-pub trait Propositions<P> {
-    fn eval(&self, prop: &P) -> bool;
+/// A source of truth for finding the truth value of a proposition `P`.
+pub trait EvaluatePropositions<P> {
+    /// Evaluate the truth value of a proposition `P`.
+    fn evaluate(&self, proposition: &P) -> bool;
 }
 
 /// A registry for atomic propositions, used to build up LTL formulae.
@@ -83,24 +85,26 @@ pub trait Propositions<P> {
 /// to actually evaluate the truth value of that proposition against your model states.
 ///
 #[derive(Clone, Debug)]
-pub struct PropRegistry<P>(HashMap<String, P>);
+pub struct PropositionRegistry<P>(HashMap<String, P>);
 
-impl<P: Clone> PropMapping for PropRegistry<P> {
-    type Prop = P;
+impl<P: Clone> PropositionMapping for PropositionRegistry<P> {
+    type Proposition = P;
 
-    fn map(&self, name: &str) -> Option<Self::Prop> {
+    fn map(&self, name: &str) -> Option<Self::Proposition> {
         self.0.get(name).cloned()
     }
 }
 
-impl<P> PropRegistry<P>
+impl<P> PropositionRegistry<P>
 where
     P: Display + Clone + PartialEq,
 {
+    /// Create an empty [`PropRegistry`].
     pub fn empty() -> Self {
         Self(HashMap::new())
     }
 
+    /// Create a [`PropRegistry`] pre-populated with a list of [`P`]s.
     pub fn new<'a, T: Into<P>>(ps: impl IntoIterator<Item = T>) -> Result<Self, String> {
         let mut props = Self::empty();
 
@@ -111,6 +115,8 @@ where
         Ok(props)
     }
 
+    /// Add a [`P`] to the registry, and return the string representation of the [`P`]
+    /// which can be used in an LTL formula.
     pub fn add(&mut self, p: P) -> Result<String, String> {
         let disp = p.to_string();
         let name = disp
@@ -133,56 +139,58 @@ where
     }
 }
 
-pub trait PropMapping {
-    type Prop;
+/// Maps the string name of a proposition back to its proper type.
+///
+/// Basically, the reverse of what the [`PropositionRegistry`] provides.
+pub trait PropositionMapping {
+    /// The type of the proposition.
+    type Proposition;
 
-    fn map(&self, name: &str) -> Option<Self::Prop>;
-
-    fn bind<M: Machine>(&self, states: Transition<M>) -> PropositionBindings<M, Self>
-    where
-        Self: Sized,
-        Transition<M>: Propositions<Self::Prop>,
-    {
-        PropositionBindings {
-            props: self,
-            states,
-        }
-    }
+    /// Map a string name back to its proper type.
+    fn map(&self, name: &str) -> Option<Self::Proposition>;
 }
 
-impl PropMapping for () {
-    type Prop = String;
+impl PropositionMapping for () {
+    type Proposition = String;
 
     fn map(&self, name: &str) -> Option<String> {
         Some(name.to_string())
     }
 }
 
-/// Used internally in polestar's model checker to bind propositions to states.
-pub struct PropositionBindings<'p, M, P>
+/// Simply groups together a [`Transition`], which can always evaluate
+/// a proposition, and a [`PropositionMapping`], which maps the string
+/// name of a proposition back to its proper type which can be evaluated
+/// by the [`Transition`].
+pub(crate) struct PropositionBindings<'p, M, P>
 where
     M: Machine,
-    P: PropMapping,
+    P: PropositionMapping,
 {
-    props: &'p P,
-    states: Transition<M>,
+    pub(crate) props: &'p P,
+    pub(crate) transition: Transition<M>,
 }
 
-impl<M, P> Propositions<String> for PropositionBindings<'_, M, P>
+impl<M, P> EvaluatePropositions<String> for PropositionBindings<'_, M, P>
 where
     M: Machine,
-    P: PropMapping,
-    Transition<M>: Propositions<P::Prop>,
+    P: PropositionMapping,
+    Transition<M>: EvaluatePropositions<P::Proposition>,
 {
-    fn eval(&self, prop: &String) -> bool {
+    fn evaluate(&self, prop: &String) -> bool {
         let name = self
             .props
             .map(prop)
             .unwrap_or_else(|| panic!("no closure for prop: {}", prop));
-        self.states.eval(&name)
+        self.transition.evaluate(&name)
     }
 }
 
+/// Helper function to join two logic statements via a conjunction ("&&")
+///
+/// ```
+/// assert_eq!(conjoin(&["a", "b || c", "!d"]), "((a) && (b || c) && (!d))");
+/// ```
 pub fn conjoin<T: Display>(predicates: impl IntoIterator<Item = T>) -> String {
     predicates
         .into_iter()

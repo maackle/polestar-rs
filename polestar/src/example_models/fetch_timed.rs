@@ -5,7 +5,7 @@
 use std::{fmt::Display, marker::PhantomData};
 
 use crate::{
-    logic::{conjoin, PropRegistry, Propositions, Transition},
+    logic::{conjoin, EvaluatePropositions, PropositionRegistry, Transition},
     prelude::*,
     time::TimeInterval,
     util::product_exhaustive,
@@ -267,10 +267,10 @@ enum Prop<Agent: Id, Val: Id, Time: TimeInterval> {
     Action(Action<Agent, Val, Time>),
 }
 
-impl<Agent: Id, Val: Id, Time: TimeInterval> Propositions<Prop<Agent, Val, Time>>
+impl<Agent: Id, Val: Id, Time: TimeInterval> EvaluatePropositions<Prop<Agent, Val, Time>>
     for Transition<Model<Agent, Val, Time>>
 {
-    fn eval(&self, prop: &Prop<Agent, Val, Time>) -> bool {
+    fn evaluate(&self, prop: &Prop<Agent, Val, Time>) -> bool {
         let Transition(state, action, _) = self;
         match prop {
             Prop::Requesting(agent, val) => state
@@ -293,8 +293,8 @@ impl<Agent: Id, Val: Id, Time: TimeInterval> Propositions<Prop<Agent, Val, Time>
 }
 
 fn props_and_ltl<Agent: Id + Exhaustive, Val: Id + Exhaustive, Time: TimeInterval>(
-) -> (PropRegistry<Prop<Agent, Val, Time>>, String) {
-    let mut propmap = PropRegistry::empty();
+) -> (PropositionRegistry<Prop<Agent, Val, Time>>, String) {
+    let mut propmap = PropositionRegistry::empty();
     let pairs = product_exhaustive::<Agent, Val>();
     let pairwise = conjoin(pairs.flat_map(|(agent, val)| {
         let req = propmap.add(Prop::Requesting(agent, val)).unwrap();

@@ -1,4 +1,4 @@
-use crate::logic::{conjoin, Propositions};
+use crate::logic::{conjoin, EvaluatePropositions};
 
 use super::*;
 
@@ -53,8 +53,8 @@ impl Machine for TestMachine2 {
     }
 }
 
-impl Propositions<String> for Transition<TestMachine2> {
-    fn eval(&self, p: &String) -> bool {
+impl EvaluatePropositions<String> for Transition<TestMachine2> {
+    fn evaluate(&self, p: &String) -> bool {
         let Transition(s, _, ss) = *self;
         match p.as_str() {
             "even" => s % 2 == 0,

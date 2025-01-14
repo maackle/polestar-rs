@@ -10,7 +10,7 @@ use std::{fmt::Debug, hash::Hash};
 
 use buchi::*;
 
-use crate::logic::{PropMapping, Propositions, Transition};
+use crate::logic::{EvaluatePropositions, PropositionMapping, Transition};
 use crate::machine::{
     store_path::{StorePathMachine, StorePathState},
     Machine, TransitionResult,
@@ -22,7 +22,7 @@ use crate::traversal::TraversalReport;
 pub struct ModelChecker<M, P>
 where
     M: Machine,
-    P: PropMapping,
+    P: PropositionMapping,
 {
     buchi: BuchiAutomaton<M, P>,
     machine: StorePathMachine<M>,
@@ -57,10 +57,10 @@ where
     M: Machine,
     M::State: Clone + Debug + Eq + Hash,
     M::Action: Clone + Debug,
-    P: PropMapping + Send + Sync + 'static,
+    P: PropositionMapping + Send + Sync + 'static,
     // TODO: if a proc macro is ever written, make it clearer that you must implement Propositions for
     // pairs + action, not just the state. (or somehow make this easier)
-    Transition<M>: Propositions<P::Prop>,
+    Transition<M>: EvaluatePropositions<P::Proposition>,
 {
     type State = ModelCheckerState<M::State, M::Action>;
     type Action = M::Action;
@@ -108,7 +108,7 @@ where
     M: Machine,
     M::State: Clone + Debug + Eq + Hash,
     M::Action: Clone + Debug,
-    P: PropMapping,
+    P: PropositionMapping,
 {
     pub fn new(machine: M, propmap: P, ltl: &str) -> anyhow::Result<Self> {
         let buchi = BuchiAutomaton::from_ltl(propmap, ltl)?;

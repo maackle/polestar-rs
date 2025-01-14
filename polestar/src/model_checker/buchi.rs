@@ -9,12 +9,14 @@ use std::{
 use anyhow::anyhow;
 
 use crate::{
-    logic::{LogicStatement, PropMapping, Propositions, Transition},
+    logic::{
+        EvaluatePropositions, LogicStatement, PropositionBindings, PropositionMapping, Transition,
+    },
     Machine, TransitionResult,
 };
 
 #[derive(derive_more::Debug)]
-pub(crate) struct BuchiAutomaton<M: Machine, PM: PropMapping> {
+pub(crate) struct BuchiAutomaton<M: Machine, PM: PropositionMapping> {
     pub states: HashMap<StateName, Arc<BuchiState>>,
 
     #[debug(skip)]
@@ -26,16 +28,23 @@ pub(crate) struct BuchiAutomaton<M: Machine, PM: PropMapping> {
 impl<M, PM> Machine for BuchiAutomaton<M, PM>
 where
     M: Machine,
-    PM: PropMapping + Send + Sync + 'static,
-    Transition<M>: Propositions<PM::Prop>,
+    PM: PropositionMapping + Send + Sync + 'static,
+    Transition<M>: EvaluatePropositions<PM::Proposition>,
 {
     type State = BuchiPaths;
     type Action = Transition<M>;
     type Error = BuchiError;
     type Fx = ();
 
-    fn transition(&self, state: Self::State, action: Self::Action) -> TransitionResult<Self> {
-        let props = self.propmap.bind(action);
+    fn transition(
+        &self,
+        state: Self::State,
+        inner_transition: Self::Action,
+    ) -> TransitionResult<Self> {
+        let props = PropositionBindings {
+            props: &self.propmap,
+            transition: inner_transition,
+        };
         let next = state
             .0
             .into_iter()
@@ -80,7 +89,7 @@ pub enum BuchiError {
     // Internal(anyhow::Error),
 }
 
-impl<M: Machine, PM: PropMapping> BuchiAutomaton<M, PM> {
+impl<M: Machine, PM: PropositionMapping> BuchiAutomaton<M, PM> {
     pub fn from_ltl(propmap: PM, ltl_str: &str) -> Result<Self, anyhow::Error> {
         let output = Command::new("ltl3ba")
             .args(["-f", ltl_str])
@@ -208,7 +217,7 @@ impl Debug for BuchiState {
 
 #[cfg(test)]
 mod tests {
-    use crate::logic::PropRegistry;
+    use crate::logic::PropositionRegistry;
 
     use super::*;
 
@@ -284,8 +293,9 @@ accept_S10:
 	fi;
 }
         "#;
-        let propmap = PropRegistry::<String>::new(["open", "call", "at_floor"]).unwrap();
-        let machine = BuchiAutomaton::<(), PropRegistry<String>>::from_promela(propmap, promela);
+        let propmap = PropositionRegistry::<String>::new(["open", "call", "at_floor"]).unwrap();
+        let machine =
+            BuchiAutomaton::<(), PropositionRegistry<String>>::from_promela(propmap, promela);
         dbg!(&machine);
     }
 }

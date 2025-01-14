@@ -41,12 +41,12 @@ type BoxPredicate = Box<LogicStatement>;
 #[allow(clippy::should_implement_trait)]
 impl LogicStatement {
     /// Evaluate the logic statement against the set of propositions
-    pub fn eval(&self, props: &impl Propositions<String>) -> bool {
+    pub fn eval(&self, props: &impl EvaluatePropositions<String>) -> bool {
         match self {
             LogicStatement::True => true,
             LogicStatement::False => false,
 
-            LogicStatement::Prop(name) => props.eval(name),
+            LogicStatement::Prop(name) => props.evaluate(name),
             LogicStatement::And(p1, p2) => p1.eval(props) && p2.eval(props),
             LogicStatement::Or(p1, p2) => p1.eval(props) || p2.eval(props),
             LogicStatement::Not(p) => !p.eval(props),
@@ -134,10 +134,10 @@ mod tests {
 
     struct PropositionsAllTrue;
 
-    impl<B: std::borrow::Borrow<str> + std::str::FromStr + std::fmt::Display> Propositions<B>
-        for PropositionsAllTrue
+    impl<B: std::borrow::Borrow<str> + std::str::FromStr + std::fmt::Display>
+        EvaluatePropositions<B> for PropositionsAllTrue
     {
-        fn eval(&self, _: &B) -> bool {
+        fn evaluate(&self, _: &B) -> bool {
             true
         }
     }
