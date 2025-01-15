@@ -189,7 +189,7 @@ where
         P: PropositionMapping + Send + Sync + 'static,
         Transition<M>: EvaluatePropositions<P::Proposition>,
     {
-        let machine = ModelChecker::new(self.machine, props, ltl)?;
+        let machine = ModelChecker::from_ltl(self.machine, props, ltl)?;
         let initial = self
             .initial
             .into_iter()
@@ -303,24 +303,38 @@ where
     }
 }
 
+/// Specifies some context about a visit to a state
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum VisitType {
+    /// A normal visit to a state
     Normal,
+    /// The state is a terminal state
     Terminal,
+    /// The state is the last in a loop
     LoopTerminal,
 }
 
+/// Information about a successfully completed traversal
 #[derive(Debug, Default)]
 pub struct TraversalReport {
+    /// Total states visited
     pub num_visited: usize,
+    /// Total states that were terminal (TODO: revisit actual meaning of "terminal", see other todos)
     pub num_terminations: usize,
+    /// Total edges skipped due to errors
     pub num_edges_skipped: usize,
+    /// Total iterations taken
     pub total_steps: usize,
+    /// Maximum graph depth reached
     pub max_depth: usize,
+    /// Time taken
     pub time_taken: std::time::Duration,
 }
 
-pub fn traverse<M, S, A>(
+/// Somewhat messy function that performs the traversal.
+///
+/// This function is the core of the model checker as well as the diagram generator.
+fn traverse<M, S, A>(
     traversal: Traversal<M, S, A>,
     do_graphing: bool,
     record_terminals: bool,
@@ -609,10 +623,11 @@ where
     Ok((report, graph, terminals))
 }
 
+/// A set of terminal nodes.
 pub type TerminalSet<S> = HashSet<S>;
 
 #[derive(Default)]
-pub struct IterTrace {
+struct IterTrace {
     pub iter: usize,
     pub queued: usize,
     pub visited: usize,

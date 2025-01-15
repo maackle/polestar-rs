@@ -1,3 +1,5 @@
+//! Implements a (nondeterministic) Buchi automaton, a necessary part of model checking using LTL.
+
 use std::{
     collections::{BTreeSet, HashMap},
     fmt::Debug,
@@ -31,7 +33,7 @@ where
     PM: PropositionMapping + Send + Sync + 'static,
     Transition<M>: EvaluatePropositions<PM::Proposition>,
 {
-    type State = BuchiPaths;
+    type State = BuchiStateNames;
     type Action = Transition<M>;
     type Error = BuchiError;
     type Fx = ();
@@ -160,9 +162,9 @@ impl<M: Machine, PM: PropositionMapping> BuchiAutomaton<M, PM> {
 pub(crate) type StateName = String;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, derive_more::Deref, derive_more::From)]
-pub(crate) struct BuchiPaths(pub(crate) BTreeSet<StateName>);
+pub(crate) struct BuchiStateNames(pub(crate) BTreeSet<StateName>);
 
-impl BuchiPaths {
+impl BuchiStateNames {
     pub fn is_accepting(&self) -> bool {
         self.iter().any(|n| n.starts_with("accept_"))
     }
@@ -177,19 +179,19 @@ pub(crate) enum BuchiState {
     Skip,
 }
 
-impl BuchiState {
-    /// Is this an accepting state?
-    ///
-    /// A path through a Buchi automaton is accepted if the path always eventually
-    /// passes through an accepting state.
-    /// (see https://en.wikipedia.org/wiki/B%C3%BCchi_automaton)
-    pub fn is_accepting(&self) -> bool {
-        match self {
-            BuchiState::Skip => true,
-            BuchiState::Conditional { accepting, .. } => *accepting,
-        }
-    }
-}
+// impl BuchiState {
+//     /// Is this an accepting state?
+//     ///
+//     /// A path through a Buchi automaton is accepted if the path always eventually
+//     /// passes through an accepting state.
+//     /// (see https://en.wikipedia.org/wiki/B%C3%BCchi_automaton)
+//     pub fn is_accepting(&self) -> bool {
+//         match self {
+//             BuchiState::Skip => true,
+//             BuchiState::Conditional { accepting, .. } => *accepting,
+//         }
+//     }
+// }
 
 impl Debug for BuchiState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

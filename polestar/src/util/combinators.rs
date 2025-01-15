@@ -26,6 +26,7 @@ pub fn swap2<A, B>(tup: (A, B)) -> (B, A) {
     (tup.1, tup.0)
 }
 
+/// Cartesian product of two iterators
 pub fn product2<A, B, IB>(a: impl IntoIterator<Item = A>, b: IB) -> impl Iterator<Item = (A, B)>
 where
     A: Clone,
@@ -36,6 +37,7 @@ where
     a.into_iter().cartesian_product(b)
 }
 
+/// Cartesian product of all possible values of two Exhaustive types
 pub fn product_exhaustive<A, B>() -> impl Iterator<Item = (A, B)>
 where
     A: Clone + Exhaustive,

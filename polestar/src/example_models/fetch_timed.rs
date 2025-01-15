@@ -328,9 +328,7 @@ fn props_and_ltl<Agent: Id + Exhaustive, Val: Id + Exhaustive, Time: TimeInterva
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        diagram::write_dot, model_checker::ModelChecker, time::FiniteTime, traversal::traverse,
-    };
+    use crate::{diagram::write_dot, model_checker::ModelChecker, time::FiniteTime};
 
     const AGENTS: usize = 3;
     const VALUES: usize = 2;

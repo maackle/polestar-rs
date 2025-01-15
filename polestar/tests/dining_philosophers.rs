@@ -6,7 +6,7 @@
 #![allow(unused)]
 
 use exhaustive::Exhaustive;
-use polestar::{id::UpTo, prelude::*, traversal::traverse};
+use polestar::{id::UpTo, prelude::*};
 
 use itertools::Itertools;
 

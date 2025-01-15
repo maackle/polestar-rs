@@ -75,8 +75,9 @@ pub type ActionOf<M> = <M as Machine>::Action;
 /// Helper type for accessing the associated Error type of a Machine.
 pub type ErrorOf<M> = <M as Machine>::Error;
 
-/// One way to record actions from the system is by simply writing their JSON
-/// representation to a file, to be read back later.
+/// One way to record events from the system is by simply writing the JSON
+/// representation of the mapped actions to a file, to be read back later
+/// and replayed through a [`Machine`].
 #[cfg(feature = "recording")]
 pub struct JsonActionWriter<M: ModelMapping> {
     mapping: M,
@@ -88,12 +89,18 @@ where
     M::Event: Debug,
     ActionOf<M::Model>: Serialize,
 {
+    /// Create a new JsonEventWriter which will write events to the given file
+    /// after being mapped into model Actions.
+    ///
+    /// The file will be created if it does not exist, and overwritten if it does.
     pub fn new(path: impl Into<PathBuf>, mapping: M) -> io::Result<Self> {
         let path = path.into();
         fs::File::create(&path)?;
         Ok(Self { mapping, path })
     }
 
+    /// Write a raw, unprocessed line to the file.
+    /// Useful for adding comments.
     pub fn write_line_raw(&mut self, what: &str) -> io::Result<()> {
         let mut file = fs::OpenOptions::new()
             .create(false)
@@ -104,6 +111,7 @@ where
         Ok(())
     }
 
+    /// Write an event to the file, after mapping it into an Action.
     pub fn write_event(&mut self, event: &M::Event) -> io::Result<()> {
         let actions = self.mapping.map_event(event);
         if actions.is_empty() {
