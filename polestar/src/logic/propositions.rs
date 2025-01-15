@@ -40,8 +40,8 @@
 //! }
 //!
 //!
-//! impl Propositions<Prop> for Transition<Model> {
-//!     fn eval(&self, prop: &Prop) -> bool {
+//! impl EvaluatePropositions<Prop> for Transition<Model> {
+//!     fn evaluate(&self, prop: &Prop) -> bool {
 //!         let Transition(s0, _action, _s1) = self;
 //!         match *prop {
 //!             Prop::A => s0.0 == 0,
@@ -52,7 +52,7 @@
 //! }
 //!
 //!
-//! let mut props = PropRegistry::<Prop>::empty();
+//! let mut props = PropositionRegistry::<Prop>::empty();
 //! let a = props.add(Prop::A).unwrap();
 //! let b = props.add(Prop::B).unwrap();
 //! let c = props.add(Prop::C).unwrap();
@@ -76,7 +76,7 @@ pub trait EvaluatePropositions<P> {
 /// This mechanism is mostly a necessity because polestar leans on an external command-line tool,
 /// `ltl3ba`, for incorporating LTL formulae into [`crate::model_checker::ModelChecker`],
 /// and so the input must be passed as a string.
-/// The `PropRegistry` provides a relatively easy way to map between a custom type `P`
+/// The `PropositionRegistry` provides a relatively easy way to map between a custom type `P`
 /// representing propositions, and strings which are used in an LTL formula.
 ///
 /// Essentially, when registering a [`P`], its Display representation is used as the
@@ -99,12 +99,12 @@ impl<P> PropositionRegistry<P>
 where
     P: Display + Clone + PartialEq,
 {
-    /// Create an empty [`PropRegistry`].
+    /// Create an empty [`PropositionRegistry`].
     pub fn empty() -> Self {
         Self(HashMap::new())
     }
 
-    /// Create a [`PropRegistry`] pre-populated with a list of [`P`]s.
+    /// Create a [`PropositionRegistry`] pre-populated with a list of [`P`]s.
     pub fn new<'a, T: Into<P>>(ps: impl IntoIterator<Item = T>) -> Result<Self, String> {
         let mut props = Self::empty();
 
@@ -189,7 +189,7 @@ where
 /// Helper function to join two logic statements via a conjunction ("&&")
 ///
 /// ```
-/// assert_eq!(conjoin(&["a", "b || c", "!d"]), "((a) && (b || c) && (!d))");
+/// assert_eq!(polestar::logic::conjoin(&["a", "b || c", "!d"]), "(a) && (b || c) && (!d)");
 /// ```
 pub fn conjoin<T: Display>(predicates: impl IntoIterator<Item = T>) -> String {
     predicates
