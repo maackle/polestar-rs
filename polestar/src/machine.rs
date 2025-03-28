@@ -36,7 +36,7 @@ where
     #[cfg(nightly)]
     type Fx = ();
     #[cfg(nightly)]
-    type Error: Debug = anyhow::Error;
+    type Error: Debug + Send + Sync = anyhow::Error;
 
     /// Defines the transition function of the machine.
     fn transition(&self, state: Self::State, action: Self::Action) -> TransitionResult<Self>;
