@@ -61,7 +61,6 @@ use proptest_derive::Arbitrary;
 pub trait Id:
     Clone
     + Copy
-    + Default
     + PartialEq
     + Eq
     + PartialOrd
