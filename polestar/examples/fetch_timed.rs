@@ -129,10 +129,10 @@ async fn run(num_agents: usize, num_values: usize, timeout: Duration, timeout_gr
                 loop {
                     let receiver = receiver.clone();
                     // Select target val and requestee
-                    let r = rand::thread_rng().gen_range(0..num_values);
-                    let mut giver_ix = rand::thread_rng().gen_range(0..num_agents);
+                    let r = rand::rng().random_range(0..num_values);
+                    let mut giver_ix = rand::rng().random_range(0..num_agents);
                     while receiver_ix == giver_ix {
-                        giver_ix = rand::thread_rng().gen_range(0..num_agents);
+                        giver_ix = rand::rng().random_range(0..num_agents);
                     }
                     let giver = nodes[giver_ix].clone();
                     let val = r;
@@ -168,9 +168,9 @@ async fn run(num_agents: usize, num_values: usize, timeout: Duration, timeout_gr
                         }
 
                         // request has 50% success rate
-                        if rand::thread_rng().gen_bool(0.5) {
+                        if rand::rng().random_bool(0.5) {
                             let delay = tokio::time::Duration::from_millis(
-                                rand::thread_rng().gen_range(10..500),
+                                rand::rng().random_range(10..500),
                             );
                             let receiver = receiver.clone();
                             let mapping = mapping.clone();
