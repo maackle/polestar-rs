@@ -29,6 +29,7 @@ exhaustive = { version = "0.2", optional = true }
 nom = { version = "7.1", optional = true }
 petgraph = { version = "0.6", optional = true }
 prettydiff = { version = "0.8", optional = true }
+pretty_assertions = { version = "*", optional = true }
 rand = { version = "0.9", optional = true }
 serde = { version = "1.0", features = ["derive"], optional = true }
 serde_json = { version = "1.0", optional = true }
@@ -46,7 +47,7 @@ default = ["diagrams", "example-models", "ltl3ba", "recording"]
 diagrams = ["exhaustive", "petgraph"]
 example-models = ["testing"]
 recording = ["serde", "serde_json"]
-testing = ["rand", "tokio"]
+testing = ["rand", "pretty_assertions", "tokio"]
 
 # this feature must be enabled, but once native LTL-to-Buchi is implemented,
 # this and all related codepaths can go away

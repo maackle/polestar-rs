@@ -388,6 +388,7 @@ where
     let num_edges_skipped = Arc::new(AtomicUsize::new(0));
     let max_depth_seen = Arc::new(AtomicUsize::new(0));
 
+    tracing::info!("traversal starting");
     let all_actions: im::Vector<_> = M::Action::iter_exhaustive(None).collect();
 
     let start_time = std::time::Instant::now();

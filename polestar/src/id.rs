@@ -2,6 +2,8 @@
 
 use std::{collections::HashMap, hash::Hash};
 
+mod bag;
+pub use bag::*;
 mod upto;
 pub use upto::*;
 
