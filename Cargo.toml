@@ -2,7 +2,7 @@
 [workspace]
 resolver = "2"
 
-members = ["polestar", "polestar-macros"]
+members = ["polestar", "polestar-macros", "polestar-patterns"]
 
 [workspace.dependencies]
 
