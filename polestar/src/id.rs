@@ -140,6 +140,44 @@ impl TryFrom<usize> for IdUnit {
     }
 }
 
+// /// Create a convenient newtype for an ID.
+// #[macro_export]
+// macro_rules! id_newtype {
+//     ($t:ident : $ty:ty) => {
+//         #[derive(
+//             Clone,
+//             Copy,
+//             Default,
+//             PartialEq,
+//             Eq,
+//             PartialOrd,
+//             Ord,
+//             Hash,
+//             exhaustive::Exhaustive,
+//             derive_more::Into,
+//             derive_more::Deref,
+//             derive_more::Display,
+//             derive_more::Debug,
+//         )]
+//         #[debug("{}", _0)]
+//         #[display("{}", _0)]
+//         pub struct $t($ty);
+
+//         impl $crate::id::Id for $t {
+//             fn choices() -> IdChoices {
+//                 IdChoices::Large
+//             }
+//         }
+
+//         impl TryFrom<usize> for $t {
+//             type Error = String;
+//             fn try_from(value: usize) -> Result<Self, Self::Error> {
+//                 Ok(Self(value.try_into()?))
+//             }
+//         }
+//     };
+// }
+
 /// A map which associates values with IDs in the order of appearance.
 ///
 /// This is useful in creating [`crate::mapping`]s, where real-world values

@@ -98,6 +98,12 @@ where
         self
     }
 
+    /// Whether to print a log message for each error encountered.
+    pub fn trace_errors(mut self, trace_errors: bool) -> Self {
+        self.trace_errors = trace_errors;
+        self
+    }
+
     /// Ignore edges of the graph where a node is directly connected to itself.
     /// This is primarily intended to reduce clutter on state diagrams.
     // TODO: does this have negative implications on model checking?
@@ -567,7 +573,7 @@ where
                                 return Err(err);
                             }
                             if trace_errors {
-                                tracing::error!("edge skipped: {:?}", err);
+                                tracing::error!(?err, ?action, ?state, "edge skipped");
                             }
                         }
                     }

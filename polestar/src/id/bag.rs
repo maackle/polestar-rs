@@ -14,25 +14,21 @@ use exhaustive::Exhaustive;
     Hash,
     derive_more::Into,
     derive_more::Deref,
+    derive_more::Display,
 )]
+#[display("{:?}", _0)]
 #[cfg_attr(feature = "recording", derive(serde::Serialize, serde::Deserialize))]
 pub struct Bag<const N: usize, T>(BTreeSet<T>)
 where
     T: Ord + TryFrom<usize>;
 
 impl<const N: usize, T: Ord + TryFrom<usize>> Bag<N, T> {
+    /// Constructor
     pub fn new(values: impl IntoIterator<Item = T>) -> Self {
         Self(values.into_iter().collect())
     }
 
-    pub fn insert(&mut self, value: T) {
-        self.0.insert(value);
-    }
-
-    pub fn remove(&mut self, value: T) {
-        self.0.remove(&value);
-    }
-
+    /// Intersect with another bag
     pub fn extend(&mut self, values: impl IntoIterator<Item = T>) {
         self.0.extend(values);
     }

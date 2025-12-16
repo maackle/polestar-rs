@@ -2,13 +2,7 @@
 [workspace]
 resolver = "2"
 
-members = [
-  # "model-crates/holochain-model",
-  # "model-crates/holochain-toy",
-  # "model-crates/kitsune-model",
-  "polestar",
-  "polestar-macros",
-]
+members = ["polestar", "polestar-macros"]
 
 [workspace.dependencies]
 

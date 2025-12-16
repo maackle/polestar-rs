@@ -3,7 +3,6 @@
 //! This includes both discrete and continuous time.
 
 use human_repr::HumanDuration;
-use num_traits::*;
 use std::{
     fmt::Display,
     marker::PhantomData,
@@ -12,6 +11,8 @@ use std::{
 };
 
 use crate::id::UpTo;
+
+pub use num_traits::{One, Zero};
 
 /// Types which can represent an interval of time as needed by a model.
 pub trait TimeInterval:
@@ -56,6 +57,13 @@ pub trait TimeInterval:
 )]
 pub struct FiniteTime<const N: usize, const T_MILLIS: u64>(UpTo<N>);
 
+impl<const N: usize, const T_MILLIS: u64> FiniteTime<N, T_MILLIS> {
+    /// Increment the time by one unit.
+    pub fn inc(&mut self) -> anyhow::Result<()> {
+        self.0.inc()
+    }
+}
+
 impl<const N: usize, const T_MILLIS: u64> exhaustive::Exhaustive for FiniteTime<N, T_MILLIS> {
     fn generate(u: &mut exhaustive::DataSourceTaker) -> exhaustive::Result<Self> {
         u.choice(N).map(|x| Self(UpTo::new(x)))
@@ -78,16 +86,27 @@ impl<const N: usize, const T_MILLIS: u64> Zero for FiniteTime<N, T_MILLIS> {
     }
 }
 
+impl<const N: usize, const T_MILLIS: u64> Mul<FiniteTime<N, T_MILLIS>> for FiniteTime<N, T_MILLIS> {
+    type Output = Self;
+    fn mul(self, rhs: Self) -> Self::Output {
+        Self(self.0 * rhs.0)
+    }
+}
+
+impl<const N: usize, const T_MILLIS: u64> One for FiniteTime<N, T_MILLIS> {
+    fn one() -> Self {
+        Self(UpTo::new(1))
+    }
+
+    fn is_one(&self) -> bool {
+        self.0.is_one()
+    }
+}
+
 impl<const N: usize, const T_MILLIS: u64> TimeInterval for FiniteTime<N, T_MILLIS> {
     fn division(duration: Duration) -> (Self, Duration) {
         let (t, d) = int_time_scaling(N, Duration::from_millis(T_MILLIS))(duration);
         (Self(UpTo::new(t)), d)
-    }
-}
-
-impl TimeInterval for RealTime {
-    fn division(duration: Duration) -> (Self, Duration) {
-        (Self(duration), Duration::ZERO)
     }
 }
 
@@ -127,6 +146,12 @@ impl Mul<usize> for RealTime {
     type Output = Self;
     fn mul(self, rhs: usize) -> Self {
         Self(self.0 * rhs as u32)
+    }
+}
+
+impl TimeInterval for RealTime {
+    fn division(duration: Duration) -> (Self, Duration) {
+        (Self(duration), Duration::ZERO)
     }
 }
 

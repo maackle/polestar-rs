@@ -16,8 +16,12 @@ use super::*;
     Hash,
     derive_more::Into,
     derive_more::Deref,
+    derive_more::Debug,
+    derive_more::Display,
 )]
 #[cfg_attr(feature = "recording", derive(serde::Serialize, serde::Deserialize))]
+#[debug("{}", _0)]
+#[display("{}", _0)]
 pub struct UpTo<const N: usize, const WRAP: bool = false>(pub(super) usize);
 
 impl<const N: usize, const WRAP: bool> Id for UpTo<N, WRAP> {
@@ -50,6 +54,16 @@ impl<const N: usize, const WRAP: bool> UpTo<N, WRAP> {
         N
     }
 
+    /// Increment the value by one if possible.
+    pub fn inc(&mut self) -> anyhow::Result<()> {
+        if self.0 + 1 < N {
+            self.0 += 1;
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("UpTo overflowed"))
+        }
+    }
+
     /// Return all possible values [0, 1, 2, ..., N-1]
     pub fn all_values() -> [Self; N] {
         (0..N).map(Self).collect::<Vec<_>>().try_into().unwrap()
@@ -70,18 +84,6 @@ impl<const N: usize, const WRAP: bool> TryFrom<usize> for UpTo<N, WRAP> {
         } else {
             Err(format!("Cannot use {value} for UpTo<{N}>"))
         }
-    }
-}
-
-impl<const N: usize, const WRAP: bool> std::fmt::Debug for UpTo<N, WRAP> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Id({})", self.0)
-    }
-}
-
-impl<const N: usize, const WRAP: bool> std::fmt::Display for UpTo<N, WRAP> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
     }
 }
 
