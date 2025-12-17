@@ -1,6 +1,5 @@
 use crate::prelude::*;
 
-use itertools::Itertools;
 use petgraph::graph::{EdgeIndex, NodeIndex};
 use petgraph::{EdgeType, Graph, Undirected};
 
