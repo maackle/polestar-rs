@@ -1,3 +1,5 @@
+#![cfg(feature = "example-models")]
+
 //! This example demonstrates a system of nodes where each node can author a value,
 //! and each other node can request that value from a node who knows about it.
 //! Nodes will timeout their requests if they don't receive a response within a certain time.
