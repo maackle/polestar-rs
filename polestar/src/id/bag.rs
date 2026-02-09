@@ -84,7 +84,10 @@ mod tests {
         type T = UpTo<3>;
         type B = Bag<3, T>;
         let bags = B::iter_exhaustive(None).collect_vec();
+        let total = bags.len();
         let bags: BTreeSet<B> = bags.into_iter().collect();
+
+        assert_eq!(total, bags.len());
 
         let expected = [
             vec![],
