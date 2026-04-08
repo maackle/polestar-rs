@@ -81,8 +81,8 @@ impl<M, S, A> Traversal<M, S, A>
 where
     M: Machine,
     M::Action: Exhaustive,
-    S: Cog + 'static,
-    A: Cog + 'static,
+    S: Cog + Hash + Eq + 'static,
+    A: Cog + Hash + Eq + 'static,
 {
     /// Set the maximum depth of the graph to be traversed.
     /// This can be used to perform bounded model checking.
@@ -357,8 +357,8 @@ where
     M::State: Cog + 'static,
     M::Action: Exhaustive + Cog + 'static,
     M::Error: Debug + Send + Sync + 'static,
-    S: Cog + 'static,
-    A: Cog + 'static,
+    S: Cog + Hash + Eq + 'static,
+    A: Cog + Hash + Eq + 'static,
 {
     let machine = traversal.machine;
     let initial = traversal.initial;

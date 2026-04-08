@@ -7,9 +7,21 @@ use polestar::prelude::*;
 mod adjacency;
 pub mod topology;
 
-pub trait Node: Cog + 'static {
-    type ID: Cog + Ord + Display;
-    type Model: Machine<State = Self, Fx = Vec<Effect<Self>>, Error = anyhow::Error>;
+pub trait Node: Cog + Eq + Hash + 'static
+// where
+//     <Self::Model as Machine>::Action: Eq + Hash,
+{
+    type ID: Cog + Eq + Hash + Ord + Display;
+    type Model: Machine<
+        State = Self,
+        Action = Self::Action,
+        Fx = Vec<Effect<Self>>,
+        Error = anyhow::Error,
+    >;
+
+    /// This is an unfortunate appendage needed to add extra trait bounds,
+    /// it should be able to be inferred from the Self::Model type.
+    type Action: Cog + Eq + Hash + 'static;
 }
 
 pub type ActionOf<N> = <<N as Node>::Model as Machine>::Action;
@@ -119,6 +131,7 @@ mod tests {
 
     impl Node for TestNode {
         type ID = Id;
+        type Action = u32;
         type Model = TestModel;
     }
 

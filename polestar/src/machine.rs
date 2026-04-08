@@ -2,7 +2,7 @@
 
 pub mod store_path;
 
-use std::{fmt::Debug, hash::Hash};
+use std::fmt::Debug;
 
 use exhaustive::Exhaustive;
 
@@ -11,8 +11,8 @@ use crate::{traversal::Traversal, util::first};
 /// A type alias for all the trait bounds required for a
 /// State or Action of a Machine
 /// (a machine is made out of cogs, get it?)
-pub trait Cog: Clone + Debug + Eq + Hash + Send + Sync {}
-impl<T: Clone + Debug + Eq + Hash + Send + Sync> Cog for T {}
+pub trait Cog: Clone + Debug + Send + Sync {}
+impl<T: Clone + Debug + Send + Sync> Cog for T {}
 
 /// The essential trait which defines a state machine, specifically
 /// a deterministic finite automaton.

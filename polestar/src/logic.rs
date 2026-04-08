@@ -120,7 +120,11 @@ impl std::fmt::Display for LogicStatement {
 #[bounded_to(M::State, M::Action)]
 pub struct Transition<M: Machine>(pub M::State, pub M::Action, pub M::State);
 
-impl<M: Machine> Hash for Transition<M> {
+impl<M: Machine> Hash for Transition<M>
+where
+    M::State: Hash,
+    M::Action: Hash,
+{
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.0.hash(state);
         self.1.hash(state);
