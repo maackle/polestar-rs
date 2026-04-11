@@ -2,7 +2,7 @@
 
 pub mod store_path;
 
-use std::fmt::Debug;
+use std::{fmt::Debug, marker::PhantomData};
 
 use exhaustive::Exhaustive;
 
@@ -26,6 +26,17 @@ where
     type Action: Cog;
 
     /// The type representing the side effects of the machine
+    ///
+    /// Typically effects are used to model nested state machines,
+    /// where the top-level state machine is effectless (`Fx = ()`),
+    /// and sub machines have effects that are handled by higher-level machines.
+    ///
+    /// In this way, the sub-machines can be modeled and tested in their own right,
+    /// with higher-level machines have actions that may trigger many actions
+    /// on the lower-level machines by recursively resolving effects which trigger
+    /// more actions.
+    ///
+    /// Care must be taken to resolve effects deterministically.
     #[cfg(not(nightly))]
     type Fx;
 
@@ -130,6 +141,20 @@ impl Machine for () {
     type Action = ();
     type Fx = ();
     type Error = ();
+
+    fn transition(&self, (): (), (): ()) -> TransitionResult<Self> {
+        Ok(((), ()))
+    }
+}
+
+/// An empty machine with a specified error type
+pub struct EmptyMachine<E = anyhow::Error>(PhantomData<E>);
+
+impl<E: Cog + 'static> Machine for EmptyMachine<E> {
+    type State = ();
+    type Action = ();
+    type Fx = ();
+    type Error = E;
 
     fn transition(&self, (): (), (): ()) -> TransitionResult<Self> {
         Ok(((), ()))
