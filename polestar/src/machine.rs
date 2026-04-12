@@ -71,6 +71,21 @@ where
         self.transition(state, action).map(first)
     }
 
+    /// Perform a sequence of transitions, collecting the list of effects and returning the final state.
+    fn transitions(
+        &self,
+        mut state: Self::State,
+        actions: impl IntoIterator<Item = Self::Action>,
+    ) -> Result<(Self::State, Vec<Self::Fx>), Self::Error> {
+        let mut fxs = vec![];
+        for action in actions {
+            let (s, fx) = self.transition(state, action)?;
+            state = s;
+            fxs.push(fx);
+        }
+        Ok((state, fxs))
+    }
+
     /// Create a new [`Traversal`] for this machine.
     fn traverse(self, initial: impl IntoIterator<Item = Self::State>) -> Traversal<Self>
     where
@@ -147,9 +162,15 @@ impl Machine for () {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug)]
 /// An empty machine with a specified error type
 pub struct EmptyMachine<E = anyhow::Error>(PhantomData<E>);
+
+impl<E: Debug + Send + Sync + 'static> Default for EmptyMachine<E> {
+    fn default() -> Self {
+        Self(PhantomData)
+    }
+}
 
 impl<E: Debug + Send + Sync + 'static> Machine for EmptyMachine<E> {
     type State = ();
