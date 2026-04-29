@@ -11,20 +11,20 @@
 //! - there is a race condition where a node can request a value even after it has stored that value
 
 use std::{
-    sync::{atomic::AtomicBool, Arc},
+    sync::{Arc, atomic::AtomicBool},
     time::Duration,
 };
 
 use im::{HashMap, OrdSet};
 use itertools::Itertools;
 use polestar::{
+    EventHandler,
     example_models::fetch_timed::{Action, Model, NodeAction, NodeState, State, *},
     mapping::{ActionOf, ModelMapping, StateOf},
     prelude::*,
     time::{RealTime, TickBuffer},
-    EventHandler,
 };
-use rand::Rng;
+use rand::{Rng, RngExt};
 use tokio::{sync::Mutex, task::JoinSet, time::Instant};
 
 /*                          ███

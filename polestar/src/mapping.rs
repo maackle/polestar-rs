@@ -72,6 +72,9 @@ pub type StateOf<M> = <M as Machine>::State;
 /// Helper type for accessing the associated Action type of a Machine.
 pub type ActionOf<M> = <M as Machine>::Action;
 
+/// Helper type for accessing the associated Fx type of a Machine.
+pub type FxOf<M> = <M as Machine>::Fx;
+
 /// Helper type for accessing the associated Error type of a Machine.
 pub type ErrorOf<M> = <M as Machine>::Error;
 

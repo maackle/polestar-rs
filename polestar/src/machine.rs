@@ -1,7 +1,9 @@
 //! Traits defining state machines, the foundation of polestar Models.
 
 pub mod store_path;
-pub mod unit;
+mod unit;
+
+pub use unit::*;
 
 use std::{fmt::Debug, marker::PhantomData};
 

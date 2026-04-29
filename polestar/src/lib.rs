@@ -34,7 +34,7 @@ pub mod diagram;
 pub mod example_models;
 
 pub use event_handler::EventHandler;
-pub use machine::{Machine, TransitionResult};
+pub use machine::{Machine, MachineUnit, StateModel, TransitionResult};
 
 pub mod prelude;
 
