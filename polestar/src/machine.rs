@@ -209,6 +209,27 @@ impl<M: Machine> Machine for std::sync::Arc<M> {
     }
 }
 
+/// A combination of a Machine and a State, so that a State can transition itself in a self-contained manner.
+#[derive(Clone, derive_more::Debug)]
+pub struct StateMachine<M: Machine> {
+    state: M::State,
+    machine: std::sync::Arc<M>,
+}
+
+impl<M: Machine> StateMachine<M> {
+    /// Create a new StateMachine from a Machine and a State
+    pub fn new(machine: std::sync::Arc<M>, state: M::State) -> Self {
+        Self { state, machine }
+    }
+
+    /// Transition the StateMachine by taking an action, returning the new StateMachine and the effect.
+    pub fn transition(mut self, action: M::Action) -> Result<(Self, M::Fx), M::Error> {
+        let (next, fx) = self.machine.transition(self.state, action)?;
+        self.state = next;
+        Ok((self, fx))
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 /// An empty machine with a specified error type
 pub struct EmptyMachine<E = anyhow::Error>(PhantomData<E>);
