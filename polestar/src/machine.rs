@@ -48,8 +48,22 @@ where
     type Error: Debug + Send + Sync;
 
     #[cfg(nightly)]
+    /// The type representing the side effects of the machine
+    ///
+    /// Typically effects are used to model nested state machines,
+    /// where the top-level state machine is effectless (`Fx = ()`),
+    /// and sub machines have effects that are handled by higher-level machines.
+    ///
+    /// In this way, the sub-machines can be modeled and tested in their own right,
+    /// with higher-level machines have actions that may trigger many actions
+    /// on the lower-level machines by recursively resolving effects which trigger
+    /// more actions.
+    ///
+    /// Care must be taken to resolve effects deterministically.
     type Fx = ();
+
     #[cfg(nightly)]
+    /// The type corresponding to invalid state transitions
     type Error: Debug + Send + Sync = anyhow::Error;
 
     /// Defines the transition function of the machine.
@@ -162,6 +176,36 @@ impl Machine for () {
 
     fn transition(&self, (): (), (): ()) -> TransitionResult<Self> {
         Ok(((), ()))
+    }
+}
+
+impl<M: Machine> Machine for Box<M> {
+    type State = M::State;
+    type Action = M::Action;
+    type Fx = M::Fx;
+    type Error = M::Error;
+
+    fn transition(&self, state: Self::State, action: Self::Action) -> TransitionResult<Self> {
+        (**self).transition(state, action)
+    }
+
+    fn is_terminal(&self, state: &Self::State) -> bool {
+        (**self).is_terminal(state)
+    }
+}
+
+impl<M: Machine> Machine for std::sync::Arc<M> {
+    type State = M::State;
+    type Action = M::Action;
+    type Fx = M::Fx;
+    type Error = M::Error;
+
+    fn transition(&self, state: Self::State, action: Self::Action) -> TransitionResult<Self> {
+        (**self).transition(state, action)
+    }
+
+    fn is_terminal(&self, state: &Self::State) -> bool {
+        (**self).is_terminal(state)
     }
 }
 
