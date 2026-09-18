@@ -242,7 +242,7 @@ mod tests {
     use super::*;
 
     use polestar_core::util::product_exhaustive;
-    use polestar_model_checker::diagram::write_dot;
+    use polestar_diagram::write_dot;
     use polestar_model_checker::logic::{
         EvaluatePropositions, PropositionRegistry, Transition, conjoin,
     };
@@ -312,7 +312,7 @@ mod tests {
             .ignore_loopbacks(true)
             .specced(props.clone(), &ltl)
             .unwrap()
-            .diagram()
+            .run_graphing()
             .unwrap();
         let graph = graph.map(|_, s| format!("{s:?}"), |_, e| format!("{e:?}"));
         write_dot("dining-philosophers-mc.dot", &graph, &[]);
@@ -332,7 +332,7 @@ mod tests {
         let graph = Model
             .traverse([State::default()])
             .ignore_loopbacks(true)
-            .diagram()
+            .run_graphing()
             .unwrap();
 
         {
@@ -366,7 +366,7 @@ mod tests {
                 },
                 |_, (p, a)| format!("{p}:{a:?}"),
             );
-            polestar_model_checker::diagram::write_dot(
+            polestar_diagram::write_dot(
                 "dining-philosophers.dot",
                 &graph,
                 // &[petgraph::dot::Config::EdgeNoLabel],

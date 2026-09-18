@@ -16,7 +16,7 @@
 
 use anyhow::bail;
 use exhaustive::Exhaustive;
-use polestar_model_checker::{
+use polestar_traversal::{
     prelude::*,
     store_path::{StorePathMachine, StorePathState},
     traversal::Traversal,

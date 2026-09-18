@@ -1,5 +1,5 @@
 //! Deprecated state-diagram generators, superseded by
-//! [`Traversal::diagram`](polestar_model_checker::traversal::Traversal::diagram).
+//! [`Traversal::diagram`](polestar_traversal::Traversal::diagram).
 
 #[deprecated = "use traversal with graphing enabled instead"]
 pub mod exhaustive;
@@ -14,7 +14,8 @@ mod tests {
     use num_derive::{FromPrimitive, ToPrimitive};
     use num_traits::{FromPrimitive, ToPrimitive};
     use polestar_core::prelude::*;
-    use polestar_model_checker::{diagram::to_dot, prelude::MachineExt};
+    use polestar_diagram::to_dot;
+    use polestar_traversal::MachineExt;
     use proptest_derive::Arbitrary;
 
     #[derive(Clone)]
@@ -115,7 +116,7 @@ mod tests {
         };
 
         let (nodes_traversal, edges_traversal) = {
-            let graph = CycleMachine.traverse([Cycle::D]).diagram().unwrap();
+            let graph = CycleMachine.traverse([Cycle::D]).run_graphing().unwrap();
             let nodes: HashSet<_> = graph.node_weights().cloned().collect();
             let edges: HashSet<_> = graph.edge_weights().cloned().collect();
 

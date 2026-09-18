@@ -2,28 +2,25 @@
 name = "polestar-model-checker"
 version = "0.1.0"
 edition = "2024"
-description = "Exhaustive state-space traversal, LTL model checking, and DOT diagrams for polestar Machines"
+description = "LTL model checking (safety and liveness via Büchi automata) for polestar Machines"
 
 [dependencies]
 polestar-core = { workspace = true }
+polestar-traversal = { workspace = true }
 
 anyhow = "1.0"
-colored = "2.2"
-crossbeam = { version = "0.8.4", features = ["crossbeam-channel"] }
 derive_bounded = "0.5"
 derive_more = { version = "1", features = ["full"] }
 exhaustive = "0.2"
-human-repr = "1.1"
 im = { version = "15.1", features = ["rayon"] }
 itertools = "0.14"
 nom = "7.1"
-parking_lot = "0.12"
 petgraph = "0.8.3"
-rayon = "1.10"
 regex = "1.11"
 tracing = "0.1"
 
 [dev-dependencies]
+polestar-diagram = { workspace = true }
 polestar-model-checker = { path = ".", features = ["example-models"] }
 tracing-subscriber = "0.3"
 

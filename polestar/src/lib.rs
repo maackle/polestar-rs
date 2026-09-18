@@ -9,24 +9,33 @@
 //! be mixed, matched, and modified to fit your formal verification needs.
 //!
 //! This crate is a facade. The stable core lives in `polestar-core` and is
-//! re-exported here wholesale. Model checking lives in `polestar-model-checker`
-//! and is re-exported under the `model-checker` feature. Experimental material
-//! lives in `polestar-experiments` and is not re-exported.
+//! re-exported here wholesale. The other crates are re-exported behind features:
+//! `traversal` (`polestar-traversal`), `diagram` (`polestar-diagram`) and
+//! `model-checker` (`polestar-model-checker`). Experimental material lives in
+//! `polestar-experiments` and is not re-exported.
 
 #![warn(missing_docs)]
 
 pub use polestar_core::*;
 
+#[cfg(feature = "traversal")]
+pub use polestar_traversal::{MachineExt, Traversal, TraversalReport, store_path, traversal};
+
+#[cfg(feature = "diagram")]
+pub use polestar_diagram as diagram;
+
 #[cfg(feature = "model-checker")]
 pub use polestar_model_checker::{
-    MachineExt, ModelChecker, ModelCheckerError, Traversal, TraversalReport, diagram, logic,
-    model_checker, store_path, traversal,
+    ModelChecker, ModelCheckerError, TraversalModelCheckExt, TraversalSpecExt, logic, model_checker,
 };
 
-/// Commonly used items from `polestar-core`, plus those from
-/// `polestar-model-checker` when the `model-checker` feature is enabled.
+/// Commonly used items from `polestar-core`, plus those from the optional
+/// crates whose features are enabled.
 pub mod prelude {
     pub use polestar_core::prelude::*;
+
+    #[cfg(feature = "traversal")]
+    pub use polestar_traversal::prelude::*;
 
     #[cfg(feature = "model-checker")]
     pub use polestar_model_checker::prelude::*;

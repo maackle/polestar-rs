@@ -1,4 +1,7 @@
-//! Functions for generating DOT representations of state graphs.
+//! Functions for generating DOT representations of state graphs,
+//! such as those produced by `polestar_traversal::Traversal::diagram`.
+
+#![warn(missing_docs)]
 
 use petgraph::graph::DiGraph;
 

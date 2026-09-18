@@ -11,8 +11,8 @@ use std::{fmt::Debug, hash::Hash};
 use buchi::*;
 
 use crate::logic::{EvaluatePropositions, PropositionMapping, Transition};
-use crate::store_path::{StorePathMachine, StorePathState};
 use polestar_core::{Machine, TransitionResult};
+use polestar_traversal::store_path::{StorePathMachine, StorePathState};
 
 /// A model checker which connects a state machine with a Buchi automaton
 /// to check a set of safety and liveness specifications.

@@ -327,8 +327,9 @@ fn props_and_ltl<Agent: Id + Exhaustive, Val: Id + Exhaustive, Time: TimeInterva
 
 #[cfg(test)]
 mod tests {
-    use crate::{diagram::write_dot, model_checker::ModelChecker};
+    use crate::model_checker::ModelChecker;
     use polestar_core::time::FiniteTime;
+    use polestar_diagram::write_dot;
 
     const AGENTS: usize = 3;
     const VALUES: usize = 2;
@@ -372,7 +373,7 @@ mod tests {
         } else
         // graph
         {
-            let graph = traversal.diagram().unwrap();
+            let graph = traversal.run_graphing().unwrap();
             let graph = graph.map(|_, n| n, |_, (i, e)| format!("n{i}: {e}"));
             write_dot("out.dot", &graph, &[]);
             println!(

@@ -13,7 +13,7 @@ use petgraph::graph::DiGraph;
 use proptest::prelude::{Arbitrary, BoxedStrategy, Strategy};
 
 use polestar_core::{Machine, util::first};
-use polestar_model_checker::diagram::to_dot;
+use polestar_diagram::to_dot;
 
 #[derive(Debug, Clone)]
 pub struct DiagramConfig {

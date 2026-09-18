@@ -1,5 +1,5 @@
 use crate::logic::{EvaluatePropositions, conjoin};
-use crate::machine_ext::MachineExt;
+use crate::prelude::*;
 
 use super::*;
 
@@ -156,7 +156,7 @@ fn model_checker_test() {
     //         |_, n: &ModelCheckerState<u8, bool>| Node(n.state, n.buchi.is_accepting()),
     //         |_, e| e,
     //     );
-    //     crate::diagram::write_dot(
+    //     polestar_diagram::write_dot(
     //         "promela-verify.dot",
     //         &graph,
     //         // &[petgraph::dot::Config::EdgeNoLabel],
@@ -189,7 +189,7 @@ fn model_checker_test() {
     //         |_, e| e,
     //     );
 
-    //     crate::diagram::write_dot(
+    //     polestar_diagram::write_dot(
     //         "promela-verify-condensed.dot",
     //         &condensed,
     //         &[petgraph::dot::Config::EdgeNoLabel],
@@ -212,9 +212,9 @@ fn model_checker_test() {
 #[test]
 #[ignore = "diagram"]
 fn model_checker_diagram() {
-    let graph = TestMachine2.traverse([1]).diagram().unwrap();
+    let graph = TestMachine2.traverse([1]).run_graphing().unwrap();
 
-    crate::diagram::write_dot(
+    polestar_diagram::write_dot(
         "out.dot",
         &graph,
         // &[petgraph::dot::Config::EdgeNoLabel],

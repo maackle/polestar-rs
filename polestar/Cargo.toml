@@ -2,10 +2,12 @@
 name = "polestar"
 version = "0.1.0"
 edition = "2024"
-description = "Facade crate: re-exports polestar-core, with optional model checking"
+description = "Facade crate: re-exports polestar-core, with optional traversal, diagrams and model checking"
 
 [dependencies]
 polestar-core = { workspace = true }
+polestar-traversal = { workspace = true, optional = true }
+polestar-diagram = { workspace = true, optional = true }
 polestar-model-checker = { workspace = true, optional = true }
 
 [features]
@@ -14,8 +16,14 @@ default = []
 # serde impls for the id types
 serde = ["polestar-core/serde"]
 
-# Exhaustive traversal, LTL model checking and DOT diagrams
-model-checker = ["dep:polestar-model-checker"]
+# Exhaustive state-space traversal
+traversal = ["dep:polestar-traversal"]
+
+# Graphviz DOT output for state graphs
+diagram = ["dep:polestar-diagram", "traversal"]
+
+# LTL model checking
+model-checker = ["dep:polestar-model-checker", "traversal"]
 
 # associated type defaults on Machine (nightly only)
 nightly = ["polestar-core/nightly"]

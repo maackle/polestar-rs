@@ -4,6 +4,8 @@ resolver = "2"
 members = [
     "polestar",
     "polestar-core",
+    "polestar-traversal",
+    "polestar-diagram",
     "polestar-model-checker",
     "polestar-experiments",
     "polestar-macros",
@@ -13,6 +15,8 @@ members = [
 [workspace.dependencies]
 polestar = { path = "polestar" }
 polestar-core = { path = "polestar-core" }
+polestar-traversal = { path = "polestar-traversal" }
+polestar-diagram = { path = "polestar-diagram" }
 polestar-model-checker = { path = "polestar-model-checker" }
 polestar-experiments = { path = "polestar-experiments" }
 

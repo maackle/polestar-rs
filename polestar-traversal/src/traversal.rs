@@ -8,7 +8,6 @@
 use colored::Colorize;
 use exhaustive::Exhaustive;
 use human_repr::HumanCount;
-use itertools::Itertools;
 use parking_lot::Mutex;
 use petgraph::graph::{DiGraph, NodeIndex};
 
@@ -23,9 +22,6 @@ use std::{
     },
 };
 
-use crate::logic::{EvaluatePropositions, PropositionMapping, Transition};
-use crate::model_checker::ModelChecker;
-use crate::model_checker::{ModelCheckerError, ModelCheckerState, ModelCheckerTransitionError};
 use polestar_core::machine::Cog;
 use polestar_core::{Machine, util::first};
 
@@ -44,15 +40,23 @@ pub struct Traversal<M: Machine, S = <M as Machine>::State, A = <M as Machine>::
     /// The initial states to start the traversal from.
     pub initial: im::Vector<M::State>,
 
-    max_depth: Option<usize>,
-    trace_every: Option<usize>,
-    trace_errors: bool,
-    ignore_loopbacks: bool,
+    /// See [`Traversal::max_depth`].
+    pub max_depth: Option<usize>,
+    /// See [`Traversal::trace_every`].
+    pub trace_every: Option<usize>,
+    /// See [`Traversal::trace_errors`].
+    pub trace_errors: bool,
+    /// See [`Traversal::ignore_loopbacks`].
+    pub ignore_loopbacks: bool,
 
-    visitor: Arc<dyn Fn(&M::State, VisitType) -> Result<(), M::Error> + Send + Sync>,
-    is_fatal_error: Arc<dyn Fn(&M::Error) -> bool + Send + Sync>,
-    map_state: Arc<dyn Fn(M::State) -> Option<S> + Send + Sync>,
-    map_action: Arc<dyn Fn(M::Action) -> Option<A> + Send + Sync>,
+    /// See [`Traversal::visitor`].
+    pub visitor: Arc<dyn Fn(&M::State, VisitType) -> Result<(), M::Error> + Send + Sync>,
+    /// See [`Traversal::is_fatal_error`].
+    pub is_fatal_error: Arc<dyn Fn(&M::Error) -> bool + Send + Sync>,
+    /// See [`Traversal::map_state`].
+    pub map_state: Arc<dyn Fn(M::State) -> Option<S> + Send + Sync>,
+    /// See [`Traversal::map_action`].
+    pub map_action: Arc<dyn Fn(M::Action) -> Option<A> + Send + Sync>,
 }
 
 impl<M: Machine> Traversal<M>
@@ -163,149 +167,11 @@ where
     }
 
     /// Return a graph of the traversed state machine.
-    /// This can be fed to [`diagram::write_dot`] to generate a graphviz dot file,
+    /// This can be fed to `polestar_diagram::write_dot` to generate a graphviz dot file,
     /// which can be visualized.
-    pub fn diagram(self) -> Result<DiGraph<S, A>, M::Error> {
+    pub fn run_graphing(self) -> Result<DiGraph<S, A>, M::Error> {
         let (_report, graph, _) = traverse(self, true, false)?;
         Ok(graph.unwrap())
-    }
-}
-
-impl<M, S, A> Traversal<M, S, A>
-where
-    M: Machine,
-    S: 'static + Clone + Debug + Eq + Hash,
-    A: 'static + Clone + Debug,
-    M::State: 'static + Clone + Debug + Eq + Hash,
-    M::Action: 'static + Clone + Debug,
-    M::Error: 'static,
-{
-    /// Add a the specificiation to this traversal.
-    /// This is the first step in performing model checking.
-    ///
-    /// This causes a Buchi automaton to be built from the specification,
-    /// which adds additional guards to the state machine. It also sets the
-    /// Traversal with the appropriate settings for model checking.
-    pub fn specced<P>(
-        self,
-        props: P,
-        ltl: &str,
-    ) -> anyhow::Result<Traversal<ModelChecker<M, P>, ModelCheckerState<S, M::Action>, A>>
-    where
-        P: PropositionMapping + Send + Sync + 'static,
-        Transition<M>: EvaluatePropositions<P::Proposition>,
-    {
-        let machine = ModelChecker::from_ltl(self.machine, props, ltl)?;
-        let initial = self
-            .initial
-            .into_iter()
-            .map(|s| machine.initial(s))
-            .collect();
-        let visitor = self.visitor;
-        let map_state = self.map_state;
-        let map_action = self.map_action;
-        Ok(Traversal {
-            machine,
-            initial,
-            max_depth: self.max_depth,
-            trace_every: self.trace_every,
-            trace_errors: self.trace_errors,
-            ignore_loopbacks: self.ignore_loopbacks,
-            visitor: Arc::new(move |s, visit| {
-                visitor(&*s, visit).map_err(ModelCheckerTransitionError::MachineError)
-            }),
-            is_fatal_error: Arc::new(|e| {
-                !matches!(e, ModelCheckerTransitionError::MachineError(_))
-            }),
-            map_state: Arc::new(move |s| s.map_state(|ss| (map_state)(ss))),
-            map_action: Arc::new(move |a| (map_action)(a)),
-        })
-    }
-}
-
-impl<M, S, A, P> Traversal<ModelChecker<M, P>, ModelCheckerState<S, M::Action>, A>
-where
-    M: Machine + Send + Sync + 'static,
-    M::State: Clone + Debug + Eq + Hash + Send + Sync + 'static,
-    S: Clone + Debug + Eq + Hash + Send + Sync + 'static,
-    M::Action: Clone + Debug + Eq + Hash + Exhaustive + Send + Sync + 'static,
-    A: Clone + Debug + Eq + Hash + Exhaustive + Send + Sync + 'static,
-    M::Error: Debug + Send + Sync + 'static,
-    P: PropositionMapping + Send + Sync + 'static,
-    Transition<M>: EvaluatePropositions<P::Proposition>,
-{
-    /// Do a model check on a traversal on which [`Traversal::specced`] has been called.
-    /// This returns a report if the model check succeeds, or any errors if it fails.
-    ///
-    /// For a more easily readable report, see [`Traversal::model_check_report`].
-    pub fn model_check(self) -> Result<TraversalReport, ModelCheckerError<M>> {
-        match traverse(self, true, false) {
-            Ok((report, graph, _)) => {
-                let condensed = petgraph::algo::condensation(graph.unwrap(), true);
-
-                let leaves = condensed.node_indices().filter(|n| {
-                    let outgoing = condensed
-                        .neighbors_directed(*n, petgraph::Direction::Outgoing)
-                        .count();
-                    outgoing == 0
-                });
-
-                for index in leaves {
-                    let scc = condensed.node_weight(index).unwrap();
-                    let accepting = scc.iter().any(|n| n.buchi.is_accepting());
-                    if !accepting {
-                        let mut paths = scc.iter().map(|n| n.pathstate.path.clone()).collect_vec();
-                        paths.sort_by_key(|p| p.len());
-                        return Err(ModelCheckerError::Liveness { paths });
-                    }
-                }
-
-                Ok(report)
-            }
-            Err(e) => match e {
-                ModelCheckerTransitionError::BuchiError(e) => Err(ModelCheckerError::Safety {
-                    path: e.path,
-                    states: e.states,
-                }),
-                ModelCheckerTransitionError::MachineError(e) => {
-                    unreachable!("{e:?}");
-                }
-            },
-        }
-    }
-
-    /// Performs a model check, and prints a handy report to the console.
-    /// This can be unwrapped to panic on error.
-    pub fn model_check_report(self) -> Result<(), String> {
-        match self.model_check() {
-            Ok(report) => {
-                println!("{report:#?}");
-                Ok(())
-            }
-            Err(e) => {
-                match e {
-                    ModelCheckerError::Safety {
-                        path,
-                        states: (cur, next),
-                    } => {
-                        println!("Model checker safety check failed.");
-                        println!();
-                        println!("path: {path:#?}");
-                        println!();
-                        println!("last two states:");
-                        println!();
-                        println!("failing state: {cur:#?}");
-                        println!("next state: {next:#?}");
-                    }
-                    ModelCheckerError::Liveness { paths } => {
-                        println!("Model checker liveness check failed.");
-                        println!();
-                        println!("paths: {paths:#?}");
-                    }
-                }
-                Err("model checker error".into())
-            }
-        }
     }
 }
 
@@ -340,7 +206,9 @@ pub struct TraversalReport {
 /// Somewhat messy function that performs the traversal.
 ///
 /// This function is the core of the model checker as well as the diagram generator.
-fn traverse<M, S, A>(
+/// Most callers want [`Traversal::run_terminal`] or [`Traversal::diagram`] instead;
+/// this is public so that other crates (e.g. the model checker) can build on it.
+pub fn traverse<M, S, A>(
     traversal: Traversal<M, S, A>,
     do_graphing: bool,
     record_terminals: bool,

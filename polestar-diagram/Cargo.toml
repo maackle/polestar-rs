@@ -1,0 +1,8 @@
+[package]
+name = "polestar-diagram"
+version = "0.1.0"
+edition = "2024"
+description = "Graphviz DOT rendering of state graphs produced by polestar-traversal"
+
+[dependencies]
+petgraph = "0.8.3"

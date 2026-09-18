@@ -6,6 +6,8 @@ description = "Half-baked and experimental polestar material: model/system mappi
 
 [dependencies]
 polestar-core = { workspace = true, features = ["serde"] }
+polestar-traversal = { workspace = true }
+polestar-diagram = { workspace = true }
 polestar-model-checker = { workspace = true, features = ["example-models"] }
 
 anyhow = "1.0"
