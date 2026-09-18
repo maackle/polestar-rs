@@ -7,37 +7,27 @@
 //! are designed as complete environments with their own in-built specification
 //! language, Polestar is implemented as a set of tools and patterns that can
 //! be mixed, matched, and modified to fit your formal verification needs.
+//!
+//! This crate is a facade. The stable core lives in `polestar-core` and is
+//! re-exported here wholesale. Model checking lives in `polestar-model-checker`
+//! and is re-exported under the `model-checker` feature. Experimental material
+//! lives in `polestar-experiments` and is not re-exported.
 
 #![warn(missing_docs)]
-#![cfg_attr(nightly, feature(associated_type_defaults))]
 
-pub mod event_handler;
-pub mod ext;
-pub mod generate;
-pub mod id;
-pub mod logic;
-pub mod machine;
-pub mod mapping;
-pub mod model_checker;
-pub mod time;
-pub mod traversal;
-pub mod util;
+pub use polestar_core::*;
 
-// pub mod ltl;
-// pub mod actor;
-// pub mod projection;
+#[cfg(feature = "model-checker")]
+pub use polestar_model_checker::{
+    MachineExt, ModelChecker, ModelCheckerError, Traversal, TraversalReport, diagram, logic,
+    model_checker, store_path, traversal,
+};
 
-#[cfg(feature = "diagrams")]
-pub mod diagram;
+/// Commonly used items from `polestar-core`, plus those from
+/// `polestar-model-checker` when the `model-checker` feature is enabled.
+pub mod prelude {
+    pub use polestar_core::prelude::*;
 
-#[cfg(feature = "example-models")]
-pub mod example_models;
-
-pub use event_handler::EventHandler;
-pub use machine::{Machine, MachineUnit, StateModel, TransitionResult};
-
-pub mod prelude;
-
-/// experimental
-#[allow(unused)]
-mod nondeterministic_automaton;
+    #[cfg(feature = "model-checker")]
+    pub use polestar_model_checker::prelude::*;
+}

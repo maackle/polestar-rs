@@ -1,9 +1,19 @@
-
 [workspace]
 resolver = "2"
 
-members = ["polestar", "polestar-macros", "polestar-patterns"]
+members = [
+    "polestar",
+    "polestar-core",
+    "polestar-model-checker",
+    "polestar-experiments",
+    "polestar-macros",
+    "polestar-patterns",
+]
 
 [workspace.dependencies]
+polestar = { path = "polestar" }
+polestar-core = { path = "polestar-core" }
+polestar-model-checker = { path = "polestar-model-checker" }
+polestar-experiments = { path = "polestar-experiments" }
 
 [patch.crates-io]

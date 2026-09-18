@@ -1,0 +1,32 @@
+[package]
+name = "polestar-core"
+version = "0.1.0"
+edition = "2024"
+description = "The Machine trait and the small set of well-exercised helpers around it"
+
+[dependencies]
+anyhow = "1.0"
+derive_more = { version = "1", features = ["full"] }
+exhaustive = "0.2"
+human-repr = "1.1"
+im = "15.1"
+itertools = "0.14"
+num-traits = "0.2"
+tracing = "0.1"
+
+serde = { version = "1.0", features = ["derive"], optional = true }
+
+[dev-dependencies]
+pretty_assertions = "1"
+
+[build-dependencies]
+rustversion = "1.0"
+
+[features]
+default = []
+
+# serde impls for the id types
+serde = ["dep:serde"]
+
+# associated type defaults on Machine (nightly only)
+nightly = []
