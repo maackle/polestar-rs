@@ -14,8 +14,8 @@ pub mod time;
 pub mod util;
 
 pub use machine::{
-    ActionOf, ErrorOf, FxOf, Machine, MachineUnit, StateMachine, StateModel, StateOf,
-    TransitionResult,
+    ActionOf, Behavior, BehaviorModel, ErrorOf, FxOf, Machine, MachineUnit, StateMachine,
+    StateModel, StateOf, TransitionResult,
 };
 
 pub mod prelude;

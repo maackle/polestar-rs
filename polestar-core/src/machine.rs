@@ -1,7 +1,9 @@
 //! Traits defining state machines, the foundation of polestar Models.
 
+mod behavior;
 mod unit;
 
+pub use behavior::*;
 pub use unit::*;
 
 use std::{fmt::Debug, marker::PhantomData};
