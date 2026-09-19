@@ -150,6 +150,11 @@ where
     {
         self.apply_actions(state, actions).map(first)
     }
+
+    /// Create a new StateMachine from this Machine and an initial State
+    fn state_machine(self: &std::sync::Arc<Self>, state: Self::State) -> StateMachine<Self> {
+        StateMachine::new(self.clone(), state)
+    }
 }
 
 /// Helper type for the return value of the [`Machine::transition`] function.
@@ -212,21 +217,51 @@ impl<M: Machine> Machine for std::sync::Arc<M> {
 /// A combination of a Machine and a State, so that a State can transition itself in a self-contained manner.
 #[derive(Clone, derive_more::Debug)]
 pub struct StateMachine<M: Machine> {
-    state: M::State,
+    state: Option<M::State>,
     machine: std::sync::Arc<M>,
 }
 
 impl<M: Machine> StateMachine<M> {
     /// Create a new StateMachine from a Machine and a State
     pub fn new(machine: std::sync::Arc<M>, state: M::State) -> Self {
-        Self { state, machine }
+        Self {
+            state: Some(state),
+            machine,
+        }
     }
 
     /// Transition the StateMachine by taking an action, returning the new StateMachine and the effect.
     pub fn transition(mut self, action: M::Action) -> Result<(Self, M::Fx), M::Error> {
-        let (next, fx) = self.machine.transition(self.state, action)?;
-        self.state = next;
+        let state = self
+            .state
+            .take()
+            .expect("Can't transition a failed StateMachine");
+        let (next, fx) = self.machine.transition(state, action)?;
+        self.state = Some(next);
         Ok((self, fx))
+    }
+
+    /// Transition the StateMachine in-place by taking an action, returning the effect.
+    pub fn step(&mut self, action: M::Action) -> Result<M::Fx, M::Error> {
+        let state = self.state.take().expect("Can't step a failed StateMachine");
+        let (next, fx) = self.machine.transition(state, action)?;
+        self.state = Some(next);
+        Ok(fx)
+    }
+
+    /// The current state.
+    pub fn state(&self) -> &M::State {
+        self.state
+            .as_ref()
+            .expect("Failed StateMachine has no state")
+    }
+}
+
+impl<M: Machine> std::ops::Deref for StateMachine<M> {
+    type Target = M::State;
+
+    fn deref(&self) -> &Self::Target {
+        self.state()
     }
 }
 
