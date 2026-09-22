@@ -2,7 +2,7 @@ use std::ops::{Add, Sub};
 
 use num_traits::Zero;
 
-use polestar_core::id::Id;
+use polestar_core::id::EnumerableId;
 
 #[derive(
     Clone,
@@ -25,7 +25,7 @@ pub enum Delay<T> {
 
 impl<T> Delay<T>
 where
-    T: Id + Zero + Sub<usize, Output = T>,
+    T: EnumerableId + Zero + Sub<usize, Output = T>,
     T::Error: std::fmt::Debug,
 {
     pub fn finite(num: usize) -> Self {

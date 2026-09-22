@@ -219,18 +219,21 @@ impl<M: Machine> Machine for std::sync::Arc<M> {
 }
 
 /// A combination of a Machine and a State, so that a State can transition itself in a self-contained manner.
-#[derive(Clone, derive_more::Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, derive_more::Debug)]
 pub struct StateMachine<M: Machine> {
     state: Option<M::State>,
     machine: std::sync::Arc<M>,
 }
 
+/// A shorthand for the StateMachine type
+pub type SM<M> = StateMachine<M>;
+
 impl<M: Machine> StateMachine<M> {
     /// Create a new StateMachine from a Machine and a State
-    pub fn new(machine: std::sync::Arc<M>, state: M::State) -> Self {
+    pub fn new(machine: impl Into<std::sync::Arc<M>>, state: M::State) -> Self {
         Self {
             state: Some(state),
-            machine,
+            machine: machine.into(),
         }
     }
 
@@ -257,6 +260,15 @@ impl<M: Machine> StateMachine<M> {
     pub fn state(&self) -> &M::State {
         self.state
             .as_ref()
+            .expect("Failed StateMachine has no state")
+    }
+
+    /// Direct mutable access to the state.
+    /// ONLY use this in tests, and with care!
+    /// Bypassing the transition function is dangerous, and can lead to invalid states.
+    pub fn state_mut(&mut self) -> &mut M::State {
+        self.state
+            .as_mut()
             .expect("Failed StateMachine has no state")
     }
 }

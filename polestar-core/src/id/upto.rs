@@ -24,7 +24,7 @@ use super::*;
 #[display("{}", _0)]
 pub struct UpTo<const N: usize, const WRAP: bool = false>(pub(super) usize);
 
-impl<const N: usize, const WRAP: bool> Id for UpTo<N, WRAP> {
+impl<const N: usize, const WRAP: bool> EnumerableId for UpTo<N, WRAP> {
     fn choices() -> IdChoices {
         IdChoices::Small(N)
     }

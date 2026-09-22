@@ -30,7 +30,7 @@ macro_rules! upto_lazy {
     };
 }
 
-impl<const UID: u64> Id for UpToLazy<UID> {
+impl<const UID: u64> EnumerableId for UpToLazy<UID> {
     fn choices() -> IdChoices {
         IdChoices::Small(Self::limit())
     }

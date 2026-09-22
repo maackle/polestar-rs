@@ -174,7 +174,7 @@ impl<Agent: Id, Val: Id, Time: TimeInterval> Model<Agent, Val, Time> {
             nodes: self
                 .nodes
                 .iter()
-                .map(|n| (*n, NodeState::default()))
+                .map(|n| (n.clone(), NodeState::default()))
                 .collect(),
         }
     }
@@ -232,7 +232,7 @@ impl<Agent: Id, Val: Id, Time: TimeInterval> Machine for Model<Agent, Val, Time>
             }
             NodeAction::Receive(v, found) => {
                 if found {
-                    state.nodes[&node].values.insert(v);
+                    state.nodes[&node].values.insert(v.clone());
                 }
                 state.nodes[&node].requests.retain(|r| r.val != v);
             }
@@ -291,7 +291,7 @@ impl<Agent: Id, Val: Id, Time: TimeInterval> EvaluatePropositions<Prop<Agent, Va
     }
 }
 
-fn props_and_ltl<Agent: Id + Exhaustive, Val: Id + Exhaustive, Time: TimeInterval>()
+fn props_and_ltl<Agent: Id + Exhaustive + Copy, Val: Id + Exhaustive + Copy, Time: TimeInterval>()
 -> (PropositionRegistry<Prop<Agent, Val, Time>>, String) {
     let mut propmap = PropositionRegistry::empty();
     let pairs = product_exhaustive::<Agent, Val>();

@@ -26,7 +26,7 @@ use polestar_experiments::{
 use polestar_model_checker::example_models::fetch_timed::{
     Action, Model, NodeAction, NodeState, State, *,
 };
-use rand::{Rng, RngExt};
+use rand::RngExt;
 use tokio::{sync::Mutex, task::JoinSet, time::Instant};
 
 /*                          ███

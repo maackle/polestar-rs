@@ -7,7 +7,8 @@ pub use bag::*;
 mod upto;
 pub use upto::*;
 
-/// A type that is suitable for use as an identifier in models.
+/// A type that is suitable for use as an identifier in models *and* in the
+/// real systems those models describe.
 ///
 /// The use of identifiers in models is a crucial consideration.
 /// The space of possible ID values determines the space of distinct
@@ -18,7 +19,13 @@ pub use upto::*;
 /// the real system.
 ///
 /// By defining the ID types of a model generically, the same model
-/// can be used in both contexts.
+/// can be used in both contexts. `Id` is the bound for that generic
+/// code: it asks only for what any identifier needs (copyable, ordered,
+/// hashable, printable, thread-safe), and is implemented automatically
+/// for every type that meets those bounds -- including real-world
+/// identities such as public keys. Machinery that must *enumerate* an
+/// ID space (exhaustive traversal, [`IdMap`]) additionally needs
+/// [`EnumerableId`].
 ///
 ///
 /// ```
@@ -61,13 +68,36 @@ pub trait Id:
     + PartialOrd
     + Ord
     + Hash
-    + TryFrom<usize>
     + std::fmt::Display
     + std::fmt::Debug
     + Send
     + Sync
     + 'static
 {
+}
+
+impl<T> Id for T where
+    T: Clone
+        + Copy
+        + PartialEq
+        + Eq
+        + PartialOrd
+        + Ord
+        + Hash
+        + std::fmt::Display
+        + std::fmt::Debug
+        + Send
+        + Sync
+        + 'static
+{
+}
+
+/// An [`Id`] whose value space can be enumerated by index: the bound for
+/// model-side machinery that needs to *construct* IDs from a counter --
+/// exhaustive traversal, [`IdMap`], [`Bag`] -- as opposed to merely
+/// carrying them. Real-world identities (e.g. public keys) are `Id` but
+/// not `EnumerableId`.
+pub trait EnumerableId: Id + TryFrom<usize> {
     /// Specifies the number of possible values for this type.
     /// (See [`IdChoices`] for more details.)
     fn choices() -> IdChoices {
@@ -75,11 +105,11 @@ pub trait Id:
     }
 }
 
-impl Id for u8 {}
-impl Id for u16 {}
-impl Id for u32 {}
-impl Id for u64 {}
-impl Id for usize {}
+impl EnumerableId for u8 {}
+impl EnumerableId for u16 {}
+impl EnumerableId for u32 {}
+impl EnumerableId for u64 {}
+impl EnumerableId for usize {}
 
 /// Specifies the number of possible values for a type.
 pub enum IdChoices {
@@ -100,7 +130,7 @@ pub enum IdChoices {
 )]
 pub struct IdUnit;
 
-impl Id for IdUnit {
+impl EnumerableId for IdUnit {
     fn choices() -> IdChoices {
         IdChoices::Small(1)
     }
@@ -179,13 +209,13 @@ impl TryFrom<usize> for IdUnit {
 /// assert!(m.lookup("k").is_err());
 /// ```
 #[derive(Debug)]
-pub struct IdMap<V, I: Id> {
+pub struct IdMap<V, I: EnumerableId> {
     map: HashMap<V, I>,
 }
 
 impl<V, I> Default for IdMap<V, I>
 where
-    I: Id,
+    I: EnumerableId,
     V: Hash + Eq,
 {
     fn default() -> Self {
@@ -197,7 +227,7 @@ where
 
 impl<V, I> IdMap<V, I>
 where
-    I: Id,
+    I: EnumerableId + Copy,
     I::Error: std::fmt::Debug,
     V: Hash + Eq,
 {
