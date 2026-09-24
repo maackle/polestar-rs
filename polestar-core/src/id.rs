@@ -128,6 +128,7 @@ pub enum IdChoices {
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, exhaustive::Exhaustive,
 )]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IdUnit;
 
 impl EnumerableId for IdUnit {
