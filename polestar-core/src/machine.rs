@@ -263,6 +263,11 @@ impl<M: Machine> StateMachine<M> {
             .expect("Failed StateMachine has no state")
     }
 
+    /// Set the state directly
+    pub fn set_state(&mut self, state: M::State) {
+        self.state = Some(state);
+    }
+
     /// Direct mutable access to the state.
     /// ONLY use this in tests, and with care!
     /// Bypassing the transition function is dangerous, and can lead to invalid states.

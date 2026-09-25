@@ -1,4 +1,4 @@
-use polestar_core::{ActionOf, Behavior, FxOf, Machine, StateOf};
+use polestar_core::{ActionOf, Behavior, FxOf, StateMachine, StateOf};
 
 /// A Scenario takes an initial model State and a Behavior,
 /// and uses the Behavior to produce Actions to perform state transitions.
@@ -6,8 +6,7 @@ pub struct Scenario<B>
 where
     B: Behavior,
 {
-    model: B::Model,
-    state: Option<StateOf<B::Model>>,
+    state: StateMachine<B::Model>,
     initial_state: StateOf<B::Model>,
     behavior: B,
     steps: usize,
@@ -45,10 +44,10 @@ where
     FxOf<B::Model>: std::fmt::Debug,
 {
     /// Create a new Scenario with the given Model, initial state, and Behavior.
-    pub fn initial(model: B::Model, initial_state: StateOf<B::Model>, behavior: B) -> Self {
+    pub fn initial(state: StateMachine<B::Model>, behavior: B) -> Self {
+        let initial_state = state.state().clone();
         Self {
-            model,
-            state: Some(initial_state.clone()),
+            state,
             initial_state,
             behavior,
             steps: 0,
@@ -59,7 +58,7 @@ where
 
     /// Bring the Scenario back to its initial state.
     pub fn reset(&mut self) {
-        self.state = Some(self.initial_state.clone());
+        self.state.set_state(self.initial_state.clone());
         self.steps = 0;
     }
 
@@ -94,43 +93,27 @@ where
         if let Some(on_step) = self.handlers.on_step.as_ref() {
             on_step(self);
         }
-        if let Some(mut state) = self.state.take() {
-            let actions = self.behavior.next_tick(&state)?;
-            for action in actions.iter() {
-                let (new_state, fx) = self.model.transition(state, action.clone())?;
-                if let Some((_, on_action)) = self.handlers.on_action.as_ref() {
-                    on_action(action);
-                }
-                if let Some((_, on_fx)) = self.handlers.on_fx.as_ref() {
-                    on_fx(&fx);
-                }
-                state = new_state;
-                let unhandled = self.behavior.handle_fx(&state, fx)?;
-                if let Some(fx) = unhandled {
-                    tracing::warn!("Scenario received unhandled effects: {:?}", fx);
-                }
+        let actions = self.behavior.next_tick(&self.state.state())?;
+        for action in actions.iter() {
+            let fx = self.state.step(action.clone())?;
+            if let Some((_, on_action)) = self.handlers.on_action.as_ref() {
+                on_action(action);
             }
-            self.state = Some(state);
-            self.steps += 1;
-            Ok(actions)
-        } else {
-            // TODO: invalid actions would be due to a misguided behavior.
-            //       ideally the behavior should be written to not produce invalid actions.
-            //       in practice maybe we should be lenient and just let it continue.
-            anyhow::bail!("The scenario has already finished due to invalid action");
+            if let Some((_, on_fx)) = self.handlers.on_fx.as_ref() {
+                on_fx(&fx);
+            }
+            let unhandled = self.behavior.handle_fx(&self.state.state(), fx)?;
+            if let Some(fx) = unhandled {
+                tracing::warn!("Scenario received unhandled effects: {:?}", fx);
+            }
         }
+        self.steps += 1;
+        Ok(actions)
     }
 
     /// Get the current state of the Scenario.
     pub fn state(&self) -> &StateOf<B::Model> {
-        self.state
-            .as_ref()
-            .expect("scenario encountered an error in a previous step and has no state")
-    }
-
-    /// Get the Model of the Scenario.
-    pub fn model(&self) -> &B::Model {
-        &self.model
+        self.state.state()
     }
 
     /// Get the number of steps taken by the Scenario so far.
