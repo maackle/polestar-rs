@@ -5,16 +5,16 @@ edition = "2024"
 description = "The Machine trait and the small set of well-exercised helpers around it"
 
 [dependencies]
-anyhow = "1.0"
-derive_more = { version = "1", features = ["full"] }
-exhaustive = "0.2"
-human-repr = "1.1"
-im = "15.1"
-itertools = "0.14"
-num-traits = "0.2"
-tracing = "0.1"
+anyhow = { workspace = true }
+derive_more = { workspace = true }
+exhaustive = { workspace = true }
+human-repr = { workspace = true }
+im = { workspace = true }
+itertools = { workspace = true }
+num-traits = { workspace = true }
+tracing = { workspace = true }
 
-serde = { version = "1.0", features = ["derive"], optional = true }
+serde = { workspace = true, optional = true }
 
 [dev-dependencies]
 pretty_assertions = "1"

@@ -7,15 +7,15 @@ description = "Parallel breadth-first traversal of a polestar Machine's state gr
 [dependencies]
 polestar-core = { workspace = true }
 
-anyhow = "1.0"
+anyhow = { workspace = true }
 colored = "2.2"
 crossbeam = { version = "0.8.4", features = ["crossbeam-channel"] }
-derive_more = { version = "1", features = ["full"] }
-exhaustive = "0.2"
-human-repr = "1.1"
-im = { version = "15.1", features = ["rayon"] }
-itertools = "0.14"
-parking_lot = "0.12"
-petgraph = "0.8.3"
+derive_more = { workspace = true }
+exhaustive = { workspace = true }
+human-repr = { workspace = true }
+im = { workspace = true, features = ["rayon"] }
+itertools = { workspace = true }
+parking_lot = { workspace = true }
+petgraph = { workspace = true }
 rayon = "1.10"
-tracing = "0.1"
+tracing = { workspace = true }

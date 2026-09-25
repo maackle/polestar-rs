@@ -5,4 +5,4 @@ edition = "2024"
 description = "Graphviz DOT rendering of state graphs produced by polestar-traversal"
 
 [dependencies]
-petgraph = "0.8.3"
+petgraph = { workspace = true }

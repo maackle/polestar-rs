@@ -10,14 +10,29 @@ members = [
     "polestar-experiments",
     "polestar-macros",
     "polestar-patterns",
+    "polestar-sim",
 ]
 
 [workspace.dependencies]
 polestar = { path = "polestar" }
 polestar-core = { path = "polestar-core" }
+polestar-sim = { path = "polestar-sim" }
 polestar-traversal = { path = "polestar-traversal" }
 polestar-diagram = { path = "polestar-diagram" }
 polestar-model-checker = { path = "polestar-model-checker" }
 polestar-experiments = { path = "polestar-experiments" }
+
+anyhow = "1.0"
+derive_more = { version = "1", features = ["full"] }
+exhaustive = "0.2"
+human-repr = "1.1"
+im = "15.1"
+itertools = "0.14"
+num-traits = "0.2"
+parking_lot = "0.12"
+petgraph = "0.8.3"
+serde = { version = "1.0", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
 
 [patch.crates-io]

@@ -8,21 +8,21 @@ description = "LTL model checking (safety and liveness via Büchi automata) for 
 polestar-core = { workspace = true }
 polestar-traversal = { workspace = true }
 
-anyhow = "1.0"
+anyhow = { workspace = true }
 derive_bounded = "0.5"
-derive_more = { version = "1", features = ["full"] }
-exhaustive = "0.2"
-im = { version = "15.1", features = ["rayon"] }
-itertools = "0.14"
+derive_more = { workspace = true }
+exhaustive = { workspace = true }
+im = { workspace = true, features = ["rayon"] }
+itertools = { workspace = true }
 nom = "7.1"
-petgraph = "0.8.3"
+petgraph = { workspace = true }
 regex = "1.11"
-tracing = "0.1"
+tracing = { workspace = true }
 
 [dev-dependencies]
 polestar-diagram = { workspace = true }
 polestar-model-checker = { path = ".", features = ["example-models"] }
-tracing-subscriber = "0.3"
+tracing-subscriber = { workspace = true }
 
 [features]
 default = []
